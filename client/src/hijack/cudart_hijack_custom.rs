@@ -277,3 +277,28 @@ pub extern "C" fn __cudaPopCallConfiguration(
         cudaError_t::cudaErrorMissingConfiguration
     }
 }
+
+// The following functions can't be implemented trivially because we intercepted the registration
+// of the functions and CUDA runtime knows nothing about them.
+#[no_mangle]
+extern "C" fn cudaFuncGetAttributes(
+    _attr: *mut cudaFuncAttributes,
+    _func: *const c_void,
+) -> cudaError_t {
+    log::debug!("[{}:{}] cudaFuncGetAttributes", std::file!(), std::line!());
+    // HACK: implementation with cuFuncGetAttribute depends on CUDA version
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+extern "C" fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+    _numBlocks: *mut c_int,
+    _func: *const c_void,
+    _blockSize: c_int,
+    _dynamicSMemSize: usize,
+    _flags: c_uint,
+) -> cudaError_t {
+    log::debug!("[{}:{}] cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags", std::file!(), std::line!());
+    // HACK: only used in logging stats
+    cudaError_t::cudaSuccess
+}

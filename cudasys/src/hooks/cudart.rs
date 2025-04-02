@@ -87,10 +87,10 @@ fn cudaPointerGetAttributes(
 #[cuda_custom_hook] // local
 fn cudaHostAlloc(pHost: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t;
 
-#[cuda_hook(proc_id = 230)]
+#[cuda_custom_hook] // local
 fn cudaFuncGetAttributes(
     attr: *mut cudaFuncAttributes,
-    #[device] func: *const c_void,
+    func: *const c_void,
 ) -> cudaError_t;
 
 #[cuda_custom_hook] // local
@@ -195,3 +195,19 @@ fn cudaStreamWaitEvent(stream: cudaStream_t, event: cudaEvent_t, flags: c_uint) 
 
 #[cuda_hook(proc_id = 202)]
 fn cudaEventDestroy(event: cudaEvent_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 102)]
+fn cudaDeviceGetAttribute(
+    value: *mut c_int,
+    attr: cudaDeviceAttr,
+    device: c_int,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+    numBlocks: *mut c_int,
+    func: *const c_void,
+    blockSize: c_int,
+    dynamicSMemSize: usize,
+    flags: c_uint,
+) -> cudaError_t;
