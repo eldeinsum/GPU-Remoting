@@ -231,7 +231,9 @@ struct CallConfiguration {
 }
 
 thread_local! {
-    static CALL_CONFIGURATIONS: RefCell<Vec<CallConfiguration>> = const { RefCell::new(Vec::new()) };
+    static CALL_CONFIGURATIONS: RefCell<Vec<CallConfiguration>> = const {
+        RefCell::new(Vec::new())
+    };
 }
 
 #[no_mangle]
