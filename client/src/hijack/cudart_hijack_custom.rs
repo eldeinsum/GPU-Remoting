@@ -3,7 +3,6 @@ use super::*;
 use cudasys::types::cudart::*;
 use std::cell::RefCell;
 use std::ffi::*;
-use std::alloc::{alloc, Layout};
 
 #[no_mangle]
 #[use_thread_local(client = CLIENT_THREAD.with_borrow_mut)]
@@ -181,15 +180,10 @@ pub extern "C" fn cudaHostAlloc(
         std::line!()
     );
     assert_eq!(flags, cudaHostAllocDefault);
-    let Ok(layout) = Layout::from_size_align(size as _, 1) else {
-        return cudaError_t::cudaErrorInvalidValue;
-    };
     // TODO: handle pinned memory at server side in a better way
+    // FIXME: some GPU kernels might write to pinned memory directly; currently CUDA will report illegal memory access
+    let ptr = Box::into_raw(Box::<[u8]>::new_uninit_slice(size));
     unsafe {
-        let ptr = alloc(layout);
-        if ptr.is_null() {
-            return cudaError_t::cudaErrorMemoryAllocation;
-        }
         *pHost = ptr as _;
     }
     cudaError_t::cudaSuccess
