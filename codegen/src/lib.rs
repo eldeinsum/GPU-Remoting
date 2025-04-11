@@ -391,14 +391,14 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                     let Type::Ptr(ptr) = &param.ty else { panic!() };
                     let ty = ptr.elem.as_ref();
                     let ptr_ident = param.get_exe_ptr_ident();
-                    return quote_spanned! {name.span()=>
+                    quote_spanned! {name.span()=>
                         let #name = match recv_slice::<#ty, _>(channel_receiver) {
                             Ok(slice) => slice,
                             Err(e) => panic!("failed to receive {}: {}", stringify!(#name), e),
                         };
                         log::trace!("(input) {} = {:p}", stringify!(#name), #name.as_ptr());
                         let #ptr_ident = #name.as_ptr();
-                    };
+                    }
                 }
                 PassBy::InputCStr => {
                     let ptr_ident = param.get_exe_ptr_ident();
@@ -452,7 +452,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         let exec_args = params.iter().map(|param| {
             let name = &param.name;
             let arg = if let PassBy::InputValue = param.pass_by {
-                &name
+                name
             } else {
                 &param.get_exe_ptr_ident()
             };

@@ -98,6 +98,7 @@ impl HookFn {
         if !self.is_async_api
             && check_async_api(&sig.output, &self.injections).is_ok()
             && self.params.iter().all(|x| x.mode == ElementMode::Input)
+            && !self.func.to_string().contains("Error")
         {
             sig.ident.span().unwrap().note("this function can be `async_api`").emit();
         }
