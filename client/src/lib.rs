@@ -27,6 +27,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ffi::c_char;
 use std::io::Read as _;
+use std::sync::RwLock;
 
 use cudasys::types::cuda::{CUfunction, CUmodule};
 type FatBinaryHandle = usize;
@@ -39,8 +40,6 @@ struct ClientThread {
     resource_idx: usize,
     /// Used in `cuModuleLoadData` to judge if the image is a static fatbin.
     is_cuda_launch_kernel: bool,
-    driver: DriverCache,
-    #[cfg(feature = "local")]
     cuda_device: Option<std::ffi::c_int>,
     #[cfg(feature = "phos")]
     phos_agent: *mut std::ffi::c_void,
@@ -106,8 +105,6 @@ impl ClientThread {
             channel_receiver,
             resource_idx: 0,
             is_cuda_launch_kernel: false,
-            driver: Default::default(),
-            #[cfg(feature = "local")]
             cuda_device: None,
             #[cfg(feature = "phos")]
             phos_agent: unsafe { phos::pos_create_agent() },
@@ -129,10 +126,11 @@ impl Drop for ClientThread {
 
 thread_local! {
     static CLIENT_THREAD: RefCell<ClientThread> = RefCell::new(ClientThread::new());
-    static RUNTIME_CACHE: RefCell<RuntimeCache> = const { RefCell::new(RuntimeCache::new()) };
 }
 
-#[derive(Default)]
+static DRIVER_CACHE: RwLock<DriverCache> = RwLock::new(DriverCache::new());
+static RUNTIME_CACHE: RwLock<RuntimeCache> = RwLock::new(RuntimeCache::new());
+
 struct DriverCache {
     /// Used in `cuModuleGetFunction`, populated by `cuModuleLoadData`.
     images: BTreeMap<CUmodule, Cow<'static, [u8]>>,
@@ -140,7 +138,21 @@ struct DriverCache {
     function_params: BTreeMap<CUfunction, Box<[KernelParamInfo]>>,
 }
 
+// The pointers are server-side.
+unsafe impl Send for DriverCache {}
+unsafe impl Sync for DriverCache {}
+
+impl DriverCache {
+    const fn new() -> Self {
+        Self {
+            images: BTreeMap::new(),
+            function_params: BTreeMap::new(),
+        }
+    }
+}
+
 struct RuntimeCache {
+    cuda_device: Option<std::ffi::c_int>,
     /// Populated by `__cudaRegisterFatBinary`.
     lazy_fatbins: Vec<*const FatBinaryHeader>,
     /// Populated by `__cudaRegisterFunction`.
@@ -153,9 +165,14 @@ struct RuntimeCache {
     loaded_functions: BTreeMap<HostPtr, CUfunction>,
 }
 
+// The pointers are either static or server-side.
+unsafe impl Send for RuntimeCache {}
+unsafe impl Sync for RuntimeCache {}
+
 impl RuntimeCache {
     const fn new() -> Self {
         Self {
+            cuda_device: None,
             lazy_fatbins: Vec::new(),
             lazy_functions: BTreeMap::new(),
             lazy_variables: BTreeMap::new(),

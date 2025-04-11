@@ -104,6 +104,59 @@ pub extern "C" fn cudaMemcpyAsync(
     cudaMemcpy(dst, src, count, kind)
 }
 
+fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
+    if let Some(&cufunc) = RUNTIME_CACHE.read().unwrap().loaded_functions.get(&func) {
+        return cufunc;
+    }
+
+    let runtime = &mut *RUNTIME_CACHE.write().unwrap();
+
+    // TODO: In CUDA 12, use `cuLibrary{LoadData,GetKernel}` to avoid pinning device.
+    if let Some(device) = runtime.cuda_device {
+        assert_eq!(
+            CLIENT_THREAD.with_borrow(|client| client.cuda_device),
+            Some(device),
+            "current device (left) and registered device (right) mismatch",
+        );
+    } else {
+        log::info!(
+            "#fatbins = {}, #functions = {}",
+            runtime.lazy_fatbins.len(),
+            runtime.lazy_functions.len(),
+        );
+
+        let mut device = 0;
+        assert_eq!(super::cudart_hijack::cudaGetDevice(&mut device), Default::default());
+        runtime.cuda_device = Some(device);
+    }
+
+    let load_module = |fatCubinHandle: &FatBinaryHandle| {
+        // See our implementation of `__cudaRegisterFatBinary`
+        let index = (*fatCubinHandle >> 4) - 1;
+        log::info!("registering fatbin #{index}");
+        let image = runtime.lazy_fatbins[index];
+        CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = true);
+        let mut module = std::ptr::null_mut();
+        assert_eq!(
+            super::cuda_hijack::cuModuleLoadData(&raw mut module, image.cast()),
+            Default::default(),
+        );
+        CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = false);
+        module
+    };
+
+    let (fatCubinHandle, deviceName) = *runtime.lazy_functions.get(&func).unwrap();
+    let module = *runtime.loaded_modules.entry(fatCubinHandle).or_insert_with_key(load_module);
+    log::info!("registering function {:?}", unsafe { CStr::from_ptr(deviceName) });
+    let mut cufunc = std::ptr::null_mut();
+    assert_eq!(
+        super::cuda_hijack::cuModuleGetFunction(&raw mut cufunc, module, deviceName),
+        Default::default(),
+    );
+    runtime.loaded_functions.insert(func, cufunc);
+    cufunc
+}
+
 #[no_mangle]
 pub extern "C" fn cudaLaunchKernel(
     func: MemPtr,
@@ -115,44 +168,10 @@ pub extern "C" fn cudaLaunchKernel(
 ) -> cudaError_t {
     log::debug!("[{}:{}] cudaLaunchKernel", std::file!(), std::line!());
 
-    use super::cuda_hijack::{cuLaunchKernel, cuModuleGetFunction, cuModuleLoadData};
-
-    let cufunc = RUNTIME_CACHE.with_borrow_mut(|runtime| {
-        if runtime.loaded_modules.is_empty() {
-            log::info!(
-                "#fatbins = {}, #functions = {}",
-                runtime.lazy_fatbins.len(),
-                runtime.lazy_functions.len(),
-            );
-        }
-        let load_module = |fatCubinHandle: &FatBinaryHandle| {
-            // See our implementation of `__cudaRegisterFatBinary`
-            let index = (*fatCubinHandle >> 4) - 1;
-            log::info!("registering fatbin #{index}");
-            let image = runtime.lazy_fatbins[index];
-            CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = true);
-            let mut module = std::ptr::null_mut();
-            assert_eq!(cuModuleLoadData(&raw mut module, image.cast()), Default::default());
-            CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = false);
-            module
-        };
-        let load_function = |func: &HostPtr| {
-            let (fatCubinHandle, deviceName) = *runtime.lazy_functions.get(func).unwrap();
-            log::info!("registering function {:?}", unsafe { CStr::from_ptr(deviceName) });
-            let module =
-                *runtime.loaded_modules.entry(fatCubinHandle).or_insert_with_key(load_module);
-            let mut cufunc = std::ptr::null_mut();
-            assert_eq!(
-                cuModuleGetFunction(&raw mut cufunc, module, deviceName),
-                Default::default()
-            );
-            cufunc
-        };
-        *runtime.loaded_functions.entry(func).or_insert_with_key(load_function)
-    });
+    let cufunc = get_cufunction(func);
 
     unsafe {
-        std::mem::transmute(cuLaunchKernel(
+        std::mem::transmute(super::cuda_hijack::cuLaunchKernel(
             cufunc,
             gridDim.x,
             gridDim.y,

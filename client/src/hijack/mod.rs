@@ -26,4 +26,4 @@ use network::type_impl::{recv_slice_to, send_slice, MemPtr};
 use network::{CommChannel, Transportable};
 
 use crate::elf::{FatBinaryHeader, FatBinaryWrapper};
-use crate::{ClientThread, FatBinaryHandle, HostPtr, CLIENT_THREAD, RUNTIME_CACHE};
+use crate::{ClientThread, FatBinaryHandle, HostPtr, CLIENT_THREAD, DRIVER_CACHE, RUNTIME_CACHE};

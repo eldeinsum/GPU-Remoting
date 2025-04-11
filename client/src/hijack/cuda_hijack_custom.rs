@@ -14,10 +14,9 @@ extern "C" fn __cudaRegisterFatBinary(fatCubin: *const FatBinaryWrapper) -> FatB
         unsafe { (*fatCubin).validate_code() };
     }
 
-    RUNTIME_CACHE.with_borrow_mut(|runtime| {
-        runtime.lazy_fatbins.push(fatCubin);
-        runtime.lazy_fatbins.len() << 4
-    })
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    runtime.lazy_fatbins.push(fatCubin);
+    runtime.lazy_fatbins.len() << 4
 }
 
 #[no_mangle]
@@ -44,7 +43,7 @@ pub extern "C" fn __cudaRegisterFunction(
     _gDim: MemPtr,
     _wSize: MemPtr,
 ) {
-    if cfg!(debug_assertions) && deviceName != _deviceFun {
+    if cfg!(debug_assertions) && !std::ptr::eq(deviceName, _deviceFun) {
         log::warn!(
             "deviceName: {:?}, deviceFun: {:?}",
             unsafe { std::ffi::CStr::from_ptr(deviceName) },
@@ -54,9 +53,8 @@ pub extern "C" fn __cudaRegisterFunction(
 
     // Some kernels are registered multiple times from different fatbins
     // e.g. "void cub::EmptyKernel<void>()"
-    RUNTIME_CACHE.with_borrow_mut(|runtime| {
-        runtime.lazy_functions.entry(hostFun).or_insert((fatCubinHandle, deviceName));
-    });
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    runtime.lazy_functions.entry(hostFun).or_insert((fatCubinHandle, deviceName));
 }
 
 #[no_mangle]
@@ -70,7 +68,7 @@ pub extern "C" fn __cudaRegisterVar(
     _constant: ::std::os::raw::c_int,
     _global: ::std::os::raw::c_int,
 ) {
-    if cfg!(debug_assertions) && deviceName != _deviceAddress {
+    if cfg!(debug_assertions) && !std::ptr::eq(deviceName, _deviceAddress) {
         log::warn!(
             "deviceName: {:?}, deviceFun: {:?}",
             unsafe { std::ffi::CStr::from_ptr(deviceName) },
@@ -78,7 +76,6 @@ pub extern "C" fn __cudaRegisterVar(
         );
     }
 
-    assert!(RUNTIME_CACHE.with_borrow_mut(|runtime| {
-        runtime.lazy_variables.insert(hostVar, (fatCubinHandle, deviceName)).is_none()
-    }));
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    assert!(runtime.lazy_variables.insert(hostVar, (fatCubinHandle, deviceName)).is_none());
 }

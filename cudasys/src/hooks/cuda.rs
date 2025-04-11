@@ -23,7 +23,7 @@ fn cuLaunchKernel(
         assert!(extra.is_null());
         let args = super::cuda_hijack_utils::pack_kernel_args(
             kernelParams,
-            client.driver.function_params.get(&f).unwrap(),
+            DRIVER_CACHE.read().unwrap().function_params.get(&f).unwrap(),
         );
     }
     'client_extra_send: {
@@ -66,7 +66,7 @@ fn cuModuleLoadData(module: *mut CUmodule, #[host(len = len)] image: *const c_vo
         } else {
             std::borrow::Cow::Owned(image.to_vec())
         };
-        assert!(client.driver.images.insert(*module, image).is_none());
+        assert!(DRIVER_CACHE.write().unwrap().images.insert(*module, image).is_none());
     }
     'server_after_send: {
         server.modules.push(module);
@@ -76,14 +76,15 @@ fn cuModuleLoadData(module: *mut CUmodule, #[host(len = len)] image: *const c_vo
 #[cuda_hook(proc_id = 705)]
 fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_char) -> CUresult {
     'client_after_recv: {
-        let image = client.driver.images.get(&hmod).unwrap();
+        let mut driver = DRIVER_CACHE.write().unwrap();
+        let image = driver.images.get(&hmod).unwrap();
         let params = if let std::borrow::Cow::Borrowed(image) = image {
             let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
             fatbin.find_kernel_params(name.to_str().unwrap())
         } else {
             todo!()
         };
-        assert!(client.driver.function_params.insert(*hfunc, params).is_none());
+        assert!(driver.function_params.insert(*hfunc, params).is_none());
     }
 }
 

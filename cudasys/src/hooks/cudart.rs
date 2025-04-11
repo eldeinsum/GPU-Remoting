@@ -14,7 +14,6 @@ fn cudaGetDevice(device: *mut c_int) -> cudaError_t {
         }
     }
     'client_after_recv: {
-        #[cfg(feature = "local")]
         {
             client.cuda_device = Some(*device);
         }
@@ -23,9 +22,10 @@ fn cudaGetDevice(device: *mut c_int) -> cudaError_t {
 
 #[cuda_hook(proc_id = 129)]
 fn cudaSetDevice(device: c_int) -> cudaError_t {
-    'client_before_send: {
-        #[cfg(feature = "local")]
-        {
+    'client_after_recv: {
+        if result == Default::default() {
+            client.cuda_device = Some(device);
+        } else {
             client.cuda_device = None;
         }
     }
