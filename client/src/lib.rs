@@ -4,10 +4,8 @@
 #[cfg(feature = "rdma")]
 use network::ringbufferchannel::RDMAChannel;
 
-use network::{
-    ringbufferchannel::{EmulatorChannel, SHMChannel},
-    Channel, Transportable,
-};
+use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
+use network::{Channel, CommChannel, Transportable};
 
 #[cfg(not(feature = "passthrough"))]
 mod hijack;
@@ -121,6 +119,7 @@ impl Drop for ClientThread {
 
         let proc_id = -1;
         proc_id.send(&self.channel_sender).unwrap();
+        self.channel_sender.flush_out().unwrap();
     }
 }
 
