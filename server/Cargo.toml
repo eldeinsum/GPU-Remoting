@@ -22,7 +22,7 @@ hookgen = { workspace = true }
 [features]
 # default = ["rdma"]
 # default = ["emulator"]
-rdma = []
+rdma = ["network/rdma"]
 emulator = []
 async_api = []
 shadow_desc = []
