@@ -285,27 +285,80 @@ pub extern "C" fn __cudaPopCallConfiguration(
     }
 }
 
-// The following functions can't be implemented trivially because we intercepted the registration
-// of the functions and CUDA runtime knows nothing about them.
 #[no_mangle]
 extern "C" fn cudaFuncGetAttributes(
-    _attr: *mut cudaFuncAttributes,
-    _func: *const c_void,
+    attr: *mut cudaFuncAttributes,
+    func: *const c_void,
 ) -> cudaError_t {
     log::debug!(target: "cudaFuncGetAttributes", "");
+    let func = get_cufunction(func as HostPtr);
+    let attr = unsafe {
+        attr.write_bytes(0u8, 1);
+        &mut *attr
+    };
     // HACK: implementation with cuFuncGetAttribute depends on CUDA version
+    macro_rules! get_attributes {
+        ($func:ident -> $struct:ident $($field:ident: $attr:ident,)+) => {
+            $(
+                let mut i = 0;
+                assert_eq!(
+                    super::cuda_hijack::cuFuncGetAttribute(
+                        &raw mut i,
+                        cudasys::cuda::CUfunction_attribute::$attr,
+                        $func,
+                    ),
+                    Default::default(),
+                );
+                $struct.$field = i as _;
+            )+
+        }
+    }
+    get_attributes! { func -> attr
+        sharedSizeBytes: CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+        constSizeBytes: CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES,
+        localSizeBytes: CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES,
+        maxThreadsPerBlock: CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
+        numRegs: CU_FUNC_ATTRIBUTE_NUM_REGS,
+        ptxVersion: CU_FUNC_ATTRIBUTE_PTX_VERSION,
+        binaryVersion: CU_FUNC_ATTRIBUTE_BINARY_VERSION,
+        cacheModeCA: CU_FUNC_ATTRIBUTE_CACHE_MODE_CA,
+        maxDynamicSharedSizeBytes: CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+    }
     cudaError_t::cudaSuccess
 }
 
 #[no_mangle]
 extern "C" fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
-    _numBlocks: *mut c_int,
-    _func: *const c_void,
-    _blockSize: c_int,
-    _dynamicSMemSize: usize,
-    _flags: c_uint,
+    numBlocks: *mut c_int,
+    func: *const c_void,
+    blockSize: c_int,
+    dynamicSMemSize: usize,
+    flags: c_uint,
 ) -> cudaError_t {
     log::debug!(target: "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags", "");
-    // HACK: only used in logging stats
-    cudaError_t::cudaSuccess
+    let result = super::cuda_hijack::cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+        numBlocks,
+        get_cufunction(func as HostPtr),
+        blockSize,
+        dynamicSMemSize,
+        flags,
+    );
+    unsafe { std::mem::transmute(result) }
+}
+
+#[no_mangle]
+extern "C" fn cudaFuncSetAttribute(
+    func: *const c_void,
+    attr: cudaFuncAttribute,
+    value: c_int,
+) -> cudaError_t {
+    log::debug!(target: "cudaFuncSetAttribute", "");
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuFuncSetAttribute(
+            get_cufunction(func as _),
+            std::mem::transmute(attr),
+            value,
+        ))
+    }
 }

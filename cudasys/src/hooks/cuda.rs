@@ -53,11 +53,11 @@ fn cuLaunchKernel(
 #[cuda_hook(proc_id = 701)]
 fn cuModuleLoadData(module: *mut CUmodule, #[host(len = len)] image: *const c_void) -> CUresult {
     'client_before_send: {
-        let len = if client.is_cuda_launch_kernel {
+        let len = if FatBinaryHeader::is_fat_binary(image) {
             let header: &FatBinaryHeader = unsafe { &*image.cast() };
             header.entire_len()
         } else {
-            todo!()
+            crate::elf::elf_len(image)
         };
     }
     'client_after_recv: {
@@ -78,11 +78,11 @@ fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_ch
     'client_after_recv: {
         let mut driver = DRIVER_CACHE.write().unwrap();
         let image = driver.images.get(&hmod).unwrap();
-        let params = if let std::borrow::Cow::Borrowed(image) = image {
+        let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
             let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
             fatbin.find_kernel_params(name.to_str().unwrap())
         } else {
-            todo!()
+            crate::elf::find_kernel_params(image, name.to_str().unwrap())
         };
         assert!(driver.function_params.insert(*hfunc, params).is_none());
     }
@@ -96,3 +96,31 @@ fn cuInit(Flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 684)]
 fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 650)]
+fn cuDeviceGet(device: *mut CUdevice, ordinal: c_int) -> CUresult;
+
+#[cuda_hook(proc_id = 651)]
+fn cuDeviceGetAttribute(pi: *mut c_int, attrib: CUdevice_attribute, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 910)]
+fn cuFuncGetAttribute(pi: *mut c_int, attrib: CUfunction_attribute, hfunc: CUfunction) -> CUresult;
+
+#[cuda_hook(proc_id = 844)]
+fn cuPointerGetAttribute(
+    #[host(output, len = attribute.data_size())] data: *mut c_void,
+    attribute: CUpointer_attribute,
+    ptr: CUdeviceptr,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 1002)]
+fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+    numBlocks: *mut c_int,
+    func: CUfunction,
+    blockSize: c_int,
+    dynamicSMemSize: usize,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 912)]
+fn cuFuncSetAttribute(hfunc: CUfunction, attrib: CUfunction_attribute, value: c_int) -> CUresult;

@@ -50,6 +50,7 @@ pub fn is_async_return_type(ty: &Type) -> bool {
         "cudaError_t",
         "cudnnStatus_t",
         "nvmlReturn_t",
+        "ncclResult_t",
     ].contains(&ty.to_token_stream().to_string().as_str())
 }
 

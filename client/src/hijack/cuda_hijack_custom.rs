@@ -77,5 +77,5 @@ pub extern "C" fn __cudaRegisterVar(
     }
 
     let mut runtime = RUNTIME_CACHE.write().unwrap();
-    assert!(runtime.lazy_variables.insert(hostVar, (fatCubinHandle, deviceName)).is_none());
+    runtime.lazy_variables.entry(hostVar).or_insert((fatCubinHandle, deviceName));
 }

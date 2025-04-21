@@ -51,6 +51,11 @@ impl FatBinaryHeader {
         };
     }
 
+    pub fn is_fat_binary(image: *const u8) -> bool {
+        let header: &Self = unsafe { &*image.cast() };
+        matches!(header, Self { magic: 0xBA55ED50, version: 1, header_size: 16, .. })
+    }
+
     pub fn entire_len(&self) -> usize {
         self.validate();
         self.header_size as usize + self.fat_size as usize
@@ -162,16 +167,27 @@ impl CodeHeader {
         };
         let kind = match self {
             Self { kind: 1, header_size: 0x48, options_offset: 0x40, .. } => CodeKind::Ptx,
-            Self { kind: 2, header_size: 0x40, options_offset: 0, .. } => CodeKind::Elf,
+            Self { kind: 2, header_size: 0x40 | 0x48, options_offset: 0, .. } => CodeKind::Elf,
             _ => bail(),
         };
         let is_compressed = match self {
             Self { compressed_size: 0, flags: 0x11, decompressed_size: 0, .. } => false,
             Self { compressed_size: 1.., flags: 0x2011, decompressed_size: 1.., .. } => true,
+            // flag 0x100000 is unknown
+            Self { compressed_size: 1.., flags: 0x102011, decompressed_size: 1.., .. } => true,
             _ => bail(),
         };
         (kind, is_compressed)
     }
+}
+
+pub fn elf_len(cubin: *const u8) -> usize {
+    let cubin = unsafe { slice::from_raw_parts(cubin, u32::MAX as _) }; // HACK
+    let file = ElfBytes::<NativeEndian>::minimal_parse(cubin).unwrap();
+    let shend = file.ehdr.e_shoff + (file.ehdr.e_shentsize * file.ehdr.e_shnum) as u64;
+    let phend = file.ehdr.e_phoff + (file.ehdr.e_phentsize * file.ehdr.e_phnum) as u64;
+    assert!(shend <= phend);
+    phend as usize
 }
 
 fn validate_cubin(cubin: &[u8]) {
@@ -191,7 +207,7 @@ fn validate_cubin(cubin: &[u8]) {
     }
 }
 
-fn find_kernel_params(cubin: &[u8], name: &str) -> Box<[KernelParamInfo]> {
+pub fn find_kernel_params(cubin: &[u8], name: &str) -> Box<[KernelParamInfo]> {
     let file = ElfBytes::<NativeEndian>::minimal_parse(cubin).unwrap();
     let Ok(Some(shdr)) = file.section_header_by_name(&[".nv.info.", name].concat()) else {
         panic!("Failed to find section header");

@@ -34,6 +34,16 @@ pub mod cuda {
 
     success_return_value!(CUresult::CUDA_SUCCESS);
     impl_is_error!(CUresult);
+
+    impl CUpointer_attribute {
+        pub fn data_size(&self) -> usize {
+            match self {
+                Self::CU_POINTER_ATTRIBUTE_DEVICE_POINTER => size_of::<*mut CUdeviceptr>(),
+                Self::CU_POINTER_ATTRIBUTE_RANGE_START_ADDR => size_of::<usize>(),
+                _ => panic!("unsupported pointer attribute {self:?}"),
+            }
+        }
+    }
 }
 
 pub mod cudart {

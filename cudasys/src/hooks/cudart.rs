@@ -87,11 +87,8 @@ fn cudaPointerGetAttributes(
 #[cuda_custom_hook] // local
 fn cudaHostAlloc(pHost: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t;
 
-#[cuda_custom_hook] // local
-fn cudaFuncGetAttributes(
-    attr: *mut cudaFuncAttributes,
-    func: *const c_void,
-) -> cudaError_t;
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncGetAttributes(attr: *mut cudaFuncAttributes, func: *const c_void) -> cudaError_t;
 
 #[cuda_custom_hook] // local
 fn __cudaRegisterFatBinary(fatCubin: *mut c_void) -> *mut *mut c_void;
@@ -128,7 +125,7 @@ fn __cudaRegisterVar(
     global: c_int,
 );
 
-#[cuda_custom_hook] // local
+#[cuda_custom_hook] // calls driver API
 fn cudaLaunchKernel(
     func: *const c_void,
     gridDim: dim3,
@@ -174,7 +171,7 @@ fn __cudaPopCallConfiguration(
     stream: *mut c_void,
 ) -> cudaError_t;
 
-#[cuda_hook(proc_id = 100123, min_cuda_version = 12)]
+#[cuda_hook(proc_id = 999123, min_cuda_version = 12)]
 fn cudaGetDeviceProperties_v2(prop: *mut cudaDeviceProp, device: c_int) -> cudaError_t;
 
 #[cuda_hook(proc_id = 167)]
@@ -197,13 +194,9 @@ fn cudaStreamWaitEvent(stream: cudaStream_t, event: cudaEvent_t, flags: c_uint) 
 fn cudaEventDestroy(event: cudaEvent_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 102)]
-fn cudaDeviceGetAttribute(
-    value: *mut c_int,
-    attr: cudaDeviceAttr,
-    device: c_int,
-) -> cudaError_t;
+fn cudaDeviceGetAttribute(value: *mut c_int, attr: cudaDeviceAttr, device: c_int) -> cudaError_t;
 
-#[cuda_custom_hook] // local
+#[cuda_custom_hook] // calls driver API
 fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     numBlocks: *mut c_int,
     func: *const c_void,
@@ -211,3 +204,37 @@ fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     dynamicSMemSize: usize,
     flags: c_uint,
 ) -> cudaError_t;
+
+#[cuda_hook(proc_id = 126)]
+fn cudaIpcGetMemHandle(
+    handle: *mut cudaIpcMemHandle_t,
+    #[device] devPtr: *mut c_void,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 128)]
+fn cudaIpcOpenMemHandle(
+    devPtr: *mut *mut c_void,
+    handle: cudaIpcMemHandle_t,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 204)]
+fn cudaEventQuery(event: cudaEvent_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 119)]
+fn cudaDeviceSynchronize() -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncSetAttribute(func: *const c_void, attr: cudaFuncAttribute, value: c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 203)]
+fn cudaEventElapsedTime(ms: *mut f32, start: cudaEvent_t, end: cudaEvent_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 412)]
+fn cudaDeviceEnablePeerAccess(peerDevice: c_int, flags: c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 297, async_api)]
+fn cudaMemset(#[device] devPtr: *mut c_void, value: c_int, count: usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 114)]
+fn cudaDeviceReset() -> cudaError_t;
