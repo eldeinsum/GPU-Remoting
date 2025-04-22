@@ -7,7 +7,7 @@ mod phos;
 
 use cudasys::{
     cuda::CUmodule,
-    cudart::{cudaDeviceSynchronize, cudaError_t, cudaGetDeviceCount, cudaSetDevice},
+    cudart::{cudaError_t, cudaGetDeviceCount},
 };
 use dispatcher::dispatch;
 
@@ -50,35 +50,24 @@ impl<C> Drop for ServerWorker<C> {
     }
 }
 
-fn create_buffer(#[expect(non_snake_case)] CONFIG: &NetworkConfig, id: i32) -> (Channel, Channel) {
+fn create_buffer(config: &NetworkConfig, id: i32) -> (Channel, Channel) {
     // Use features when compiling to decide what arm(s) will be supported.
     // In the server side, the sender's name is stoc_channel_name,
     // receiver's name is ctos_channel_name.
-    match CONFIG.comm_type.as_str() {
+    match config.comm_type.as_str() {
         "shm" => {
-            let sender = SHMChannel::new_server_with_id(&CONFIG.stoc_channel_name, id, CONFIG.buf_size).unwrap();
-            let receiver = SHMChannel::new_server_with_id(&CONFIG.ctos_channel_name, id, CONFIG.buf_size).unwrap();
+            let (receiver, sender) = SHMChannel::new_server_with_id(config, id).unwrap();
             if cfg!(feature = "emulator") {
                 return (
-                    Channel::new(Box::new(EmulatorChannel::new(Box::new(sender)))),
-                    Channel::new(Box::new(EmulatorChannel::new(Box::new(receiver)))),
+                    Channel::new(Box::new(EmulatorChannel::new(sender, config))),
+                    Channel::new(Box::new(EmulatorChannel::new(receiver, config))),
                 );
             }
             (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
         }
         #[cfg(feature = "rdma")]
         "rdma" => {
-            // Make sure to new receiver first! Client side sender will handshake with it first.
-            let receiver = RDMAChannel::new_server(
-                &CONFIG.ctos_channel_name,
-                CONFIG.buf_size,
-                CONFIG.receiver_socket.parse().unwrap(),
-            ).unwrap();
-            let sender = RDMAChannel::new_server(
-                &CONFIG.stoc_channel_name,
-                CONFIG.buf_size,
-                CONFIG.sender_socket.parse().unwrap(),
-            ).unwrap();
+            let (receiver, sender) = RDMAChannel::new_server(config, id);
             (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
         }
         &_ => panic!("Unsupported communication type in config"),
@@ -94,13 +83,18 @@ fn receive_request<T: CommChannel>(channel_receiver: &mut T) -> Result<i32, Comm
     }
 }
 
-pub fn launch_server(#[expect(non_snake_case)] CONFIG: &NetworkConfig, id: i32, tcp: Option<std::net::TcpStream>) {
-    let (channel_sender, channel_receiver) = create_buffer(CONFIG, id);
+pub fn launch_server(
+    config: &NetworkConfig,
+    id: i32,
+    barrier: Option<std::sync::Arc<std::sync::Barrier>>,
+    is_main_thread: bool,
+) {
+    let (channel_sender, channel_receiver) = create_buffer(config, id);
     info!(
         "[{}:{}] {} buffer created",
         std::file!(),
         std::line!(),
-        CONFIG.comm_type
+        config.comm_type
     );
     let mut max_devices = 0;
     if let cudaError_t::cudaSuccess =
@@ -115,30 +109,6 @@ pub fn launch_server(#[expect(non_snake_case)] CONFIG: &NetworkConfig, id: i32, 
     } else {
         error!(
             "[{}:{}] failed to find cuda devices",
-            std::file!(),
-            std::line!()
-        );
-        panic!();
-    }
-    if let cudaError_t::cudaSuccess = unsafe { cudaSetDevice(0) } {
-        info!("[{}:{}] cuda device set to 0", std::file!(), std::line!());
-    } else {
-        error!(
-            "[{}:{}] failed to set cuda device",
-            std::file!(),
-            std::line!()
-        );
-        panic!();
-    }
-    if let cudaError_t::cudaSuccess = unsafe { cudaDeviceSynchronize() } {
-        info!(
-            "[{}:{}] cuda driver initialized",
-            std::file!(),
-            std::line!()
-        );
-    } else {
-        error!(
-            "[{}:{}] failed to initialize cuda driver",
             std::file!(),
             std::line!()
         );
@@ -161,10 +131,7 @@ pub fn launch_server(#[expect(non_snake_case)] CONFIG: &NetworkConfig, id: i32, 
         },
     };
 
-    if let Some(mut stream) = tcp {
-        use std::io::Write as _;
-        stream.write_all(&id.to_be_bytes()).unwrap();
-    }
+    barrier.map(|b| b.wait());
 
     loop {
         if let Ok(proc_id) = receive_request(&mut server.channel_receiver) {
@@ -183,4 +150,8 @@ pub fn launch_server(#[expect(non_snake_case)] CONFIG: &NetworkConfig, id: i32, 
     }
 
     info!("[{}:{}] server #{} terminated", std::file!(), std::line!(), server.id);
+
+    if is_main_thread {
+        std::process::exit(0);
+    }
 }

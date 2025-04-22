@@ -21,10 +21,10 @@ mod dl;
 mod phos;
 
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::ffi::c_char;
-use std::io::Read as _;
+use std::io::{Read as _, Write as _};
 use std::sync::RwLock;
 
 use cudasys::types::cuda::{CUfunction, CUmodule};
@@ -57,54 +57,49 @@ impl ClientThread {
                 log::info!("{key}: {value}");
             }
         }
-        let config = &*network::CONFIG;
-        let (id, channel_sender, channel_receiver) = match config.comm_type.as_str() {
+        let config = network::NetworkConfig::read_from_file();
+        let id = {
+            let mut stream = std::net::TcpStream::connect(&config.daemon_socket).unwrap();
+            stream.write_all(&std::process::id().to_be_bytes()).unwrap();
+            let mut buf = [0u8; 4];
+            stream.read_exact(&mut buf).unwrap();
+            i32::from_be_bytes(buf)
+        };
+        log::info!("[#{id}] PID = {}, {:?}", std::process::id(), std::thread::current().id());
+        let (channel_sender, channel_receiver) = match config.comm_type.as_str() {
             "shm" => {
-                let id = {
-                    let mut stream = std::net::TcpStream::connect(&config.daemon_socket).unwrap();
-                    let mut buf = [0u8; 4];
-                    stream.read_exact(&mut buf).unwrap();
-                    i32::from_be_bytes(buf)
-                };
-                log::info!("Client id: {id}");
-                let sender =
-                    SHMChannel::new_client_with_id(&config.ctos_channel_name, id, config.buf_size)
-                        .unwrap();
-                let receiver =
-                    SHMChannel::new_client_with_id(&config.stoc_channel_name, id, config.buf_size)
-                        .unwrap();
+                let (sender, receiver) = SHMChannel::new_client_with_id(&config, id).unwrap();
                 if cfg!(feature = "emulator") {
                     (
-                        id,
-                        Channel::new(Box::new(EmulatorChannel::new(Box::new(sender)))),
-                        Channel::new(Box::new(EmulatorChannel::new(Box::new(receiver)))),
+                        Channel::new(Box::new(EmulatorChannel::new(sender, &config))),
+                        Channel::new(Box::new(EmulatorChannel::new(receiver, &config))),
                     )
                 } else {
-                    (id, Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+                    (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
                 }
             }
             #[cfg(feature = "rdma")]
             "rdma" => {
-                // client side sender should connect to server's receiver socket.
-                let sender = RDMAChannel::new_client(
-                    &config.ctos_channel_name,
-                    config.buf_size,
-                    config.receiver_socket.parse().unwrap(),
-                    1,
-                )
-                .unwrap();
-                // client side receiver should connect to server's sender socket.
-                let receiver = RDMAChannel::new_client(
-                    &config.stoc_channel_name,
-                    config.buf_size,
-                    config.sender_socket.parse().unwrap(),
-                    1,
-                )
-                .unwrap();
-                (0, Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+                let (sender, receiver) = RDMAChannel::new_client(&config, id);
+                (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
             }
             &_ => panic!("Unsupported communication type in config"),
         };
+
+        CLIENT_THREAD_INIT.set(true);
+        unsafe {
+            unsafe extern "C" fn atfork() {
+                assert!(!CLIENT_THREAD_INIT.get());
+            }
+            assert_eq!(0, libc::pthread_atfork(Some(atfork), None, None));
+
+            // HACK: should just send something to the daemon socket
+            fn atsignal(_info: &libc::siginfo_t) {
+                std::process::exit(0);
+            }
+            signal_hook_registry::register_sigaction(libc::SIGQUIT, atsignal).unwrap();
+            signal_hook_registry::register_sigaction(libc::SIGTERM, atsignal).unwrap();
+        }
 
         Self {
             id,
@@ -134,6 +129,7 @@ impl Drop for ClientThread {
 
 thread_local! {
     static CLIENT_THREAD: RefCell<ClientThread> = RefCell::new(ClientThread::new());
+    static CLIENT_THREAD_INIT: Cell<bool> = const { Cell::new(false) };
 }
 
 static DRIVER_CACHE: RwLock<DriverCache> = RwLock::new(DriverCache::new());

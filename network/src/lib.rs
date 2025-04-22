@@ -1,22 +1,19 @@
-#![expect(incomplete_features)]
-#![feature(generic_const_exprs)]
 use serde::Deserialize;
 use std::error::Error;
 use std::boxed::Box;
 use std::fmt;
-
-use lazy_static::lazy_static;
 
 pub mod ringbufferchannel;
 pub mod type_impl;
 
 pub use ringbufferchannel::types::NsTimestamp;
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct NetworkConfig {
     pub comm_type: String,
-    pub sender_socket: String,
     pub receiver_socket: String,
+    pub device_name: String,
+    pub device_port: u8,
     pub daemon_socket: String,
     pub stoc_channel_name: String,
     pub ctos_channel_name: String,
@@ -26,8 +23,8 @@ pub struct NetworkConfig {
 }
 
 
-lazy_static! {
-    pub static ref CONFIG: NetworkConfig = {
+impl NetworkConfig {
+    pub fn read_from_file() -> Self {
         // Use environment variable to set config file's path.
         let path = match std::env::var("NETWORK_CONFIG") {
             Ok(val) => val,
@@ -35,7 +32,7 @@ lazy_static! {
         };
         let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {}: {}", path, e));
         toml::from_str(&content).expect("Failed to parse config.toml")
-    };
+    }
 }
 
 /// A raw memory struct
@@ -180,7 +177,7 @@ impl Channel {
 }
 
 /// communication interface
-pub trait CommChannelInner: CommChannelInnerIO + Send + Sync {
+pub trait CommChannelInner: CommChannelInnerIO + Send {
     fn flush_out(&self) -> Result<(), CommChannelError>;
 
     fn recv_ts(&self) -> Result<(), CommChannelError> {

@@ -1,59 +1,56 @@
-use network::{
-    ringbufferchannel::RDMAChannel, Channel, CommChannel, CommChannelInnerIO, RawMemory, RawMemoryMut,
-};
-use std::net::SocketAddr;
+use network::ringbufferchannel::RDMAChannel;
+use network::{Channel, CommChannel, CommChannelInnerIO, NetworkConfig, RawMemory, RawMemoryMut};
 
 const BUF_SIZE: usize = 1024 + network::ringbufferchannel::META_AREA;
 const PORT: u8 = 1;
 
 #[test]
 fn rdma_channel_buffer_manager() {
-    let name = "/ctos";
-
-    let addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+    let config = NetworkConfig {
+        receiver_socket: "127.0.0.1:8001".to_owned(),
+        device_name: "mlx5_1".to_owned(),
+        device_port: PORT,
+        stoc_channel_name: "/stoc".to_owned(),
+        ctos_channel_name: "/ctos".to_owned(),
+        buf_size: BUF_SIZE,
+        ..Default::default()
+    };
 
     // First, new a RDMA server to listen at a socket address (s_sender_addr).
     // Then new a client with server's socket address to handshake with it.
     // The client side will use the server name (s_sender_name) to get its
     // remote info like raddr and rkey.
 
-    let s_handler =
-        std::thread::spawn(
-            move || match RDMAChannel::new_server(name, BUF_SIZE, addr) {
-                Ok(server) => {
+    let (r, s) = std::thread::scope(|scope| {
+        let s_handler = scope.spawn(
+            || match RDMAChannel::new_server(&config, 0) {
+                (server, _) => {
                     println!("Server created successfully");
                     server
                 }
-                Err(_) => {
-                    panic!("Server creation failed");
-                }
             },
         );
 
-    let c_handler =
-        std::thread::spawn(
-            move || match RDMAChannel::new_client(name, BUF_SIZE, addr, PORT) {
-                Ok(client) => {
+        let c_handler = scope.spawn(
+            || match RDMAChannel::new_client(&config, 0) {
+                (client, _) => {
                     println!("Client created successfully");
                     client
                 }
-                Err(_) => {
-                    panic!("Server creation failed");
-                }
             },
         );
 
-    let r = s_handler.join().unwrap();
-    let s = c_handler.join().unwrap();
+        (s_handler.join().unwrap(), c_handler.join().unwrap())
+    });
     let recver = Channel::new(Box::new(r));
     let sender = Channel::new(Box::new(s));
 
     const SZ: usize = 256;
-    let data = [48 as u8; SZ];
+    let data = [48_u8; SZ];
     let send_memory = RawMemory::new(&data, SZ);
     sender.put_bytes(&send_memory).unwrap();
 
-    let data2 = [97 as u8; SZ];
+    let data2 = [97_u8; SZ];
     let send_memory = RawMemory::new(&data2, SZ);
     sender.put_bytes(&send_memory).unwrap();
 

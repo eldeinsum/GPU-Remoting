@@ -17,6 +17,8 @@ small_ctor = "0.1"
 core_affinity = { workspace = true }
 lz4_flex = { version = "0.11", default-features = false }
 elf = "0.7"
+libc = { workspace = true }
+signal-hook-registry = "1.4"
 
 [build-dependencies]
 cudasys = { workspace = true }

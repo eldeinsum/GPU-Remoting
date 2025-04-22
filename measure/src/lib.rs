@@ -1,9 +1,5 @@
-use std::arch::asm;
 use std::fs::File;
 use std::io::{self, Write};
-
-use lazy_static::lazy_static;
-
 
 pub const MEASURE_START: usize = 0;
 pub const MEASURE_CSER: usize = 1;
@@ -30,12 +26,8 @@ pub struct Timer {
 
 #[inline]
 pub fn rdtscp() -> u64 {
-    let lo: u32;
-    let hi: u32;
-    unsafe {
-        asm!("rdtscp", out("rax") lo, out("rdx") hi, options(nomem, nostack));
-    }
-    ((hi as u64) << 32) | (lo as u64)
+    let mut aux = 0;
+    unsafe { core::arch::x86_64::__rdtscp(&raw mut aux) }
 }
 
 #[inline]
@@ -82,14 +74,6 @@ impl Timer {
         }
         Ok(())
     }
-}
-
-use std::sync::Mutex;
-lazy_static! {
-    pub static ref CTIMER: Mutex<Timer> =
-        Mutex::new(Timer::new("/workspace/xpuremoting/client.out".to_string()));
-    pub static ref STIMER: Mutex<Timer> =
-        Mutex::new(Timer::new("/workspace/xpuremoting/server.out".to_string()));
 }
 
 #[cfg(test)]

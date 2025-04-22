@@ -25,7 +25,7 @@ measure = { path = "measure" }
 network = { path = "network" }
 core_affinity = "0.8.1"
 env_logger = "0.9"
-lazy_static = "1.4.0"
+libc = "*"
 log = "0.4.0"
 prettyplease = "0.2"
 proc-macro2 = "1.0"

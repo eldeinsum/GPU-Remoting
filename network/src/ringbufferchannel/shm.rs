@@ -1,7 +1,6 @@
 use crate::ringbufferchannel::{BufferManager, RingBufferChannel, RingBufferManager};
-use crate::{CommChannelInner, CommChannelError};
+use crate::{CommChannelError, CommChannelInner, NetworkConfig};
 
-use errno::errno;
 use log::error;
 use std::ffi::CString;
 use std::io::Result as IOResult;
@@ -15,7 +14,6 @@ pub struct SHMChannel {
 }
 
 unsafe impl Send for SHMChannel {}
-unsafe impl Sync for SHMChannel {}
 
 impl SHMChannel {
     /// Create a new shared memory channel buffer manager for the server
@@ -29,8 +27,11 @@ impl SHMChannel {
         )
     }
 
-    pub fn new_server_with_id(shm_name: &str, index: i32, shm_len: usize) -> IOResult<Self> {
-        Self::new_server(&format!("{}_{}", shm_name, index), shm_len)
+    pub fn new_server_with_id(config: &NetworkConfig, id: i32) -> IOResult<(Self, Self)> {
+        Ok((
+            Self::new_server(&format!("{}_{}", config.ctos_channel_name, id), config.buf_size)?,
+            Self::new_server(&format!("{}_{}", config.stoc_channel_name, id), config.buf_size)?,
+        ))
     }
 
     pub fn new_client(shm_name: &str, shm_len: usize) -> IOResult<Self> {
@@ -42,8 +43,11 @@ impl SHMChannel {
         )
     }
 
-    pub fn new_client_with_id(shm_name: &str, index: i32, shm_len: usize) -> IOResult<Self> {
-        Self::new_client(&format!("{}_{}", shm_name, index), shm_len)
+    pub fn new_client_with_id(config: &NetworkConfig, id: i32) -> IOResult<(Self, Self)> {
+        Ok((
+            Self::new_client(&format!("{}_{}", config.ctos_channel_name, id), config.buf_size)?,
+            Self::new_client(&format!("{}_{}", config.stoc_channel_name, id), config.buf_size)?,
+        ))
     }
 
     fn new_inner(shm_name: &str, shm_len: usize, oflag: i32, sflag: i32) -> IOResult<Self> {
@@ -52,13 +56,13 @@ impl SHMChannel {
 
         if fd == -1 {
             error!("Error on shm_open for new_host");
-            return Err(std::io::Error::from_raw_os_error(errno().0));
+            return Err(std::io::Error::last_os_error());
         }
 
         if unsafe { libc::ftruncate(fd, shm_len as libc::off_t) } == -1 {
             error!("Error on ftruncate");
             unsafe { libc::shm_unlink(shm_name.as_ptr() as _) };
-            return Err(std::io::Error::from_raw_os_error(errno().0));
+            return Err(std::io::Error::last_os_error());
         }
 
         // map the shared memory to the process's address space
@@ -73,10 +77,10 @@ impl SHMChannel {
             )
         };
 
-        if shm_ptr == libc::MAP_FAILED {
+        if std::ptr::eq(shm_ptr, libc::MAP_FAILED) {
             error!("Error on mmap the SHM pointer");
             unsafe { libc::shm_unlink(shm_name.as_ptr() as _) };
-            return Err(std::io::Error::from_raw_os_error(errno().0));
+            return Err(std::io::Error::last_os_error());
         }
 
         Ok(Self {

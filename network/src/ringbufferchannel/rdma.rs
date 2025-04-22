@@ -1,14 +1,11 @@
 use crate::ringbufferchannel::{
     BufferManager, RingBufferChannel, RingBufferManager, HEAD_OFF, META_AREA, TAIL_OFF,
 };
-use crate::{CommChannelInner, CommChannelError};
+use crate::{CommChannelError, CommChannelInner, NetworkConfig};
 
-use lazy_static::lazy_static;
-use log::info;
-use std::io::Result as IOResult;
+use std::cell::Cell;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use std::ptr;
+use std::sync::Arc;
 
 use KRdmaKit::context::Context;
 use KRdmaKit::services_user::{
@@ -19,75 +16,87 @@ use KRdmaKit::{
     UDriver,
 };
 
-const BATCH_SIZE: usize = 1;
+/// Controls how often we send a signaled request.
+/// https://github.com/jcxue/RDMA-Tutorial/wiki#selective-signaling
+/// https://www.rdmamojo.com/2014/06/30/working-unsignaled-completions/#Gotchas_and_Pitfalls
+const SIGNAL_INTERVAL: u64 = 16;
+
+/// The default sq size is 128, see [`QueuePairBuilder::set_max_send_wr()`].
+/// We can't change it due to hardcoded logic in [`DefaultConnectionManagerHandler`].
+const MAX_SEND_WR: u64 = 128;
 
 pub struct RDMAChannel {
-    mr_ptr: *mut u8,
-    buf_len: usize,
-    mr: Arc<MemoryRegion>,
+    mr: MemoryRegion,
     qp: Arc<QueuePair>,
     rinfo: MRInfo,
-    pending_num: Arc<Mutex<usize>>,
-    last_tail: Arc<Mutex<usize>>,
-    tail_pos: Arc<Mutex<usize>>,
+    // FIXME: this should be tied to the qp, but currently the receiver does not use it
+    next_req_id: Cell<u64>,
+    last_poll: Cell<u64>,
+    last_tail: Cell<usize>,
 }
 
 unsafe impl Send for RDMAChannel {}
-unsafe impl Sync for RDMAChannel {}
 
 impl RDMAChannel {
-    pub fn new_server(name: &str, buf_len: usize, addr: SocketAddr) -> IOResult<Self> {
-        let (ctx, mr, mr_ptr) = Self::allocate_mr(buf_len);
-        let mut handler = DefaultConnectionManagerHandler::new(&ctx, 1);
-        handler.register_mr(vec![(name.to_string(), mr)]);
+    pub fn new_server(config: &NetworkConfig, id: i32) -> (Self, Self) {
+        let mut addr: SocketAddr = config.receiver_socket.parse().unwrap();
+        addr.set_port(addr.port() + id as u16);
+
+        let (ctx, mr, mr2) = Self::allocate_mr(&config.device_name, config.buf_size);
+        let mut handler = DefaultConnectionManagerHandler::new(&ctx, config.device_port);
+        handler.register_mr(vec![
+            (config.ctos_channel_name.clone(), mr),
+            (config.stoc_channel_name.clone(), mr2),
+        ]);
         let cm = ConnectionManagerServer::new(handler);
         let listener = cm.spawn_listener(addr);
 
         // Wait client side connection, then get qp.
-        let qp = loop {
-            if let Some(qp) = cm.handler().exp_get_qps().get(0) {
-                break qp.clone();
-            }
-        };
+        while cm.handler().registered_rc.lock().unwrap().is_empty() {
+            std::hint::spin_loop();
+        }
         // Wait to get client side mr info.
-        let rinfo = loop {
-            if let Some(value) = cm
-                .handler()
-                .exp_get_remote_mrs()
-                .lock()
-                .unwrap()
-                .inner()
-                .get(name)
-            {
-                break value.clone();
-            }
-        };
+        while cm.handler().remote_mr.lock().unwrap().inner().is_empty() {
+            std::hint::spin_loop();
+        }
 
         cm.stop_listening();
         let _ = listener.join();
 
-        let mut handler = Arc::try_unwrap(cm)
-            .unwrap_or_else(|_| panic!("Failed to unwrap cm"))
-            .into_handler();
-        let Some(mr) = handler.registered_mr.inner.remove(name) else {
-            panic!()
+        let mut handler = Arc::into_inner(cm).unwrap().into_handler();
+        let registered_mr = &mut handler.registered_mr.inner;
+        let remote_mr = Arc::into_inner(handler.remote_mr).unwrap().into_inner().unwrap();
+        let qp = {
+            let registered_rc =
+                Arc::into_inner(handler.registered_rc).unwrap().into_inner().unwrap();
+            assert_eq!(registered_rc.len(), 1);
+            registered_rc.into_values().next().unwrap()
         };
 
-        Ok(Self::new(mr_ptr, buf_len, mr.into(), qp, rinfo))
+        (
+            Self::new(
+                registered_mr.remove(config.ctos_channel_name.as_str()).unwrap(),
+                Arc::clone(&qp),
+                *remote_mr.inner().get(config.ctos_channel_name.as_str()).unwrap(),
+            ),
+            Self::new(
+                registered_mr.remove(config.stoc_channel_name.as_str()).unwrap(),
+                qp,
+                *remote_mr.inner().get(config.stoc_channel_name.as_str()).unwrap(),
+            ),
+        )
     }
 
-    pub fn new_client(
-        name: &str,
-        buf_len: usize,
-        addr: SocketAddr,
-        client_port: u8,
-    ) -> IOResult<Self> {
-        let (ctx, mr, mr_ptr) = Self::allocate_mr(buf_len);
+    pub fn new_client(config: &NetworkConfig, id: i32) -> (Self, Self) {
+        let mut addr: SocketAddr = config.receiver_socket.parse().unwrap();
+        addr.set_port(addr.port() + id as u16);
+
+        let (ctx, mr, mr2) = Self::allocate_mr(&config.device_name, config.buf_size);
         let mut builder = QueuePairBuilder::new(&ctx);
         builder
             .allow_remote_rw()
             .allow_remote_atomic()
-            .set_port_num(client_port);
+            .set_port_num(config.device_port);
         let qp = loop {
             let qp = builder
                 .clone()
@@ -109,155 +118,127 @@ impl RDMAChannel {
             }
         };
         match qp.status().expect("Query status failed!") {
-            QueuePairStatus::ReadyToSend => info!("QP bring up succeeded"),
+            QueuePairStatus::ReadyToSend => log::info!("[#{id}] QP bring up succeeded"),
             _ => eprintln!("Error : Bring up failed"),
         }
 
         let mr_infos = qp.query_mr_info().expect("Failed to query MR info");
-        let rinfo = *(mr_infos.inner().get(name).expect("Unregistered MR"));
 
         // Send client side mr info to server.
-        let mrs = vec![(name.to_string(), mr)];
+        let mrs = vec![
+            (config.ctos_channel_name.clone(), mr),
+            (config.stoc_channel_name.clone(), mr2),
+        ];
         let mut mr_wrapper: MRWrapper = Default::default();
         mr_wrapper.insert(mrs);
         let mr_info = mr_wrapper.to_mrinfos();
         let _ = qp.send_mr_info(mr_info).unwrap();
 
-        let Some(mr) = mr_wrapper.inner.remove(name) else {
-            panic!()
-        };
-
-        Ok(Self::new(mr_ptr, buf_len, mr.into(), qp, rinfo))
+        (
+            Self::new(
+                mr_wrapper.inner.remove(config.ctos_channel_name.as_str()).unwrap(),
+                Arc::clone(&qp),
+                *mr_infos.inner().get(config.ctos_channel_name.as_str()).unwrap(),
+            ),
+            Self::new(
+                mr_wrapper.inner.remove(config.stoc_channel_name.as_str()).unwrap(),
+                qp,
+                *mr_infos.inner().get(config.stoc_channel_name.as_str()).unwrap(),
+            ),
+        )
     }
 
     /// A simple loop queue pair poll to poll completion queue synchronously.
-    pub fn poll_till_completion(qp: &Arc<QueuePair>) -> i32 {
-        let mut completions = [Default::default()];
+    fn poll_batch(&self, wr_id: u64) {
+        let mut completions = [Default::default(); (MAX_SEND_WR / SIGNAL_INTERVAL) as usize];
         loop {
-            if let Ok(ret) = qp.poll_send_cq(&mut completions) {
-                if ret.len() > 0 {
-                    break;
+            match self.qp.poll_send_cq(&mut completions).unwrap() {
+                [] => std::hint::spin_loop(),
+                [.., last] => {
+                    let poll = last.wr_id;
+                    self.last_poll.set(poll);
+                    if poll >= wr_id {
+                        return;
+                    }
                 }
-            } else {
-                return -1;
             }
         }
-        return 0;
-    }
-
-    pub fn poll_batch(qp: &Arc<QueuePair>) -> i32 {
-        let mut completions = [Default::default(); BATCH_SIZE];
-        loop {
-            if let Ok(ret) = qp.poll_send_cq(&mut completions) {
-                if ret.len() > 0 {
-                    break;
-                }
-            } else {
-                return -1;
-            }
-        }
-        return 0;
-    }
-
-    #[inline]
-    pub fn get_pending_num(&self) -> usize {
-        *self.pending_num.lock().unwrap()
-    }
-
-    #[inline]
-    pub fn set_pending_num(&self, pending_num: usize) {
-        *self.pending_num.lock().unwrap() = pending_num;
     }
 
     #[inline]
     pub fn get_last_tail(&self) -> usize {
-        *self.last_tail.lock().unwrap()
+        self.last_tail.get()
     }
 
     #[inline]
     pub fn set_last_tail(&self, last_tail: usize) {
-        *self.last_tail.lock().unwrap() = last_tail;
+        self.last_tail.set(last_tail);
     }
 
-    fn allocate_mr(buf_len: usize) -> (Arc<Context>, MemoryRegion, *mut u8) {
+    fn allocate_mr(device: &str, buf_len: usize) -> (Arc<Context>, MemoryRegion, MemoryRegion) {
         let ctx = UDriver::create()
             .expect("failed to query device")
             .devices()
-            .into_iter()
-            .next()
+            .iter()
+            .find(|dev| dev.name() == device)
             .expect("no rdma device available")
             .open_context()
             .expect("failed to create RDMA context");
         let mr = MemoryRegion::new(ctx.clone(), buf_len).expect("Failed to allocate MR");
-        let mr_ptr = mr.get_virt_addr() as *mut u8;
-        (ctx, mr, mr_ptr)
+        let mr2 = MemoryRegion::new(ctx.clone(), buf_len).expect("Failed to allocate MR");
+        (ctx, mr, mr2)
     }
 
-    fn new(
-        mr_ptr: *mut u8,
-        buf_len: usize,
-        mr: Arc<MemoryRegion>,
-        qp: Arc<QueuePair>,
-        rinfo: MRInfo,
-    ) -> Self {
+    fn new(mr: MemoryRegion, qp: Arc<QueuePair>, rinfo: MRInfo) -> Self {
         Self {
-            mr_ptr,
-            buf_len,
             mr,
             qp,
             rinfo,
-            pending_num: Arc::new(Mutex::new(0)),
-            last_tail: Arc::new(Mutex::new(0)),
-            tail_pos: Arc::new(Mutex::new(1)),
+            next_req_id: Cell::new(0),
+            last_poll: Cell::new(0),
+            last_tail: Cell::new(0),
         }
     }
 }
 
 impl RDMAChannel {
     fn get_req_id(&self) -> u64 {
-        lazy_static! {
-            static ref REQ_ID: Mutex<u64> = Mutex::new(0);
-        }
-        *REQ_ID.lock().unwrap() += 1;
-        *REQ_ID.lock().unwrap()
+        let req_id = self.next_req_id.get();
+        self.next_req_id.set(req_id + 1);
+        req_id
     }
 
     fn read_remote(&self, offset: usize, len: usize) -> usize {
-        for _ in 0..self.get_pending_num() {
-            Self::poll_till_completion(&self.qp);
-        }
-        self.set_pending_num(0);
-
         let l: u64 = offset as u64;
         let r: u64 = l + len as u64;
-        let _ = self.qp.post_send_read(
+        let wr_id = self.get_req_id();
+        Result::unwrap(self.qp.post_send_read(
             &self.mr,
             l..r,
             true,
             self.rinfo.addr + l,
             self.rinfo.rkey,
-            self.get_req_id(),
-        );
-        Self::poll_till_completion(&self.qp);
+            wr_id,
+        ));
+        self.poll_batch(wr_id);
         len
     }
 
     fn write_remote(&self, offset: usize, len: usize) -> usize {
         let l: u64 = offset as u64;
         let r: u64 = l + len as u64;
-        let _ = self.qp.post_send_write(
+        let wr_id = self.get_req_id();
+        Result::unwrap(self.qp.post_send_write(
             &self.mr,
             l..r,
-            true,
+            wr_id % SIGNAL_INTERVAL == 0,
             self.rinfo.addr + l,
             self.rinfo.rkey,
-            self.get_req_id(),
-        );
+            wr_id,
+        ));
 
-        self.set_pending_num(self.get_pending_num() + 1);
-        if self.get_pending_num() == BATCH_SIZE {
-            Self::poll_batch(&self.qp);
-            self.set_pending_num(0);
+        if self.last_poll.get() + (MAX_SEND_WR - SIGNAL_INTERVAL) < wr_id {
+            self.poll_batch(self.last_poll.get());
         }
         len
     }
@@ -265,37 +246,31 @@ impl RDMAChannel {
     fn write_tail_remote(&self, tail: usize) {
         let len = std::mem::size_of::<usize>();
         let t: u64 = TAIL_OFF as u64;
-        let l = t + (*self.tail_pos.lock().unwrap() as u64 * len as u64);
-        let r: u64 = l + len as u64;
-        unsafe { ptr::write_volatile(self.get_ptr().add(l as usize) as *mut usize, tail) }
+        let wr_id = self.get_req_id();
 
-        let _ = self.qp.post_send_write(
+        Result::unwrap(self.qp.post_send_cas(
             &self.mr,
-            l..r,
-            true,
+            t + len as u64, // dump useless value next to tail
+            wr_id % SIGNAL_INTERVAL == 0,
             self.rinfo.addr + t,
             self.rinfo.rkey,
-            self.get_req_id(),
-        );
-        *self.tail_pos.lock().unwrap() += 1;
-        if *self.tail_pos.lock().unwrap() == 8 {
-            *self.tail_pos.lock().unwrap() = 1;
-        }
-        self.set_pending_num(self.get_pending_num() + 1);
-        if self.get_pending_num() == BATCH_SIZE {
-            Self::poll_batch(&self.qp);
-            self.set_pending_num(0);
+            wr_id,
+            self.get_last_tail() as u64,
+            tail as u64,
+        ));
+        if self.last_poll.get() + (MAX_SEND_WR - SIGNAL_INTERVAL) < wr_id {
+            self.poll_batch(self.last_poll.get());
         }
     }
 }
 
 impl BufferManager for RDMAChannel {
     fn get_ptr(&self) -> *mut u8 {
-        self.mr_ptr
+        self.mr.get_virt_addr() as _
     }
 
     fn get_len(&self) -> usize {
-        self.buf_len
+        self.mr.capacity()
     }
 }
 
@@ -315,10 +290,11 @@ impl CommChannelInner for RDMAChannel {
             self.write_remote(META_AREA, cur_tail);
         }
 
-        self.set_last_tail(cur_tail);
         self.write_tail_volatile(cur_tail);
         self.write_tail_remote(cur_tail);
+        self.set_last_tail(cur_tail);
 
+        // FIXME: this waits until all previous writes are completed
         while self.is_full() {
             self.read_remote(HEAD_OFF, std::mem::size_of::<usize>());
         }

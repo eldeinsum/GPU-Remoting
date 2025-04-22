@@ -1,35 +1,33 @@
-use std::sync::{Arc, Mutex};
+use std::cell::Cell;
 
+use super::types::NsTimestamp;
+use super::SHMChannel;
 use crate::{
-    CONFIG, CommChannelInner, CommChannelInnerIO, CommChannelError,
-    RawMemory, RawMemoryMut, Transportable
+    CommChannelError, CommChannelInner, CommChannelInnerIO, NetworkConfig, RawMemory, RawMemoryMut,
+    Transportable,
 };
-use super::types::*;
 
 pub struct EmulatorChannel {
-    manager: Box<dyn CommChannelInner>,
-    byte_cnt: Arc<Mutex<usize>>,
-    last_timestamp: Arc<Mutex<NsTimestamp>>,
+    manager: SHMChannel,
+    byte_cnt: Cell<usize>,
+    last_timestamp: Cell<NsTimestamp>,
     rtt: f64,
     bandwidth: f64,
-    start: Arc<Mutex<Option<u64>>>,
+    start: Cell<Option<u64>>,
     // begin: NsTimestamp,
 }
 
-unsafe impl Send for EmulatorChannel {}
-unsafe impl Sync for EmulatorChannel {}
-
 impl EmulatorChannel {
-    pub fn new(manager: Box<dyn CommChannelInner>) -> Self {
+    pub fn new(manager: SHMChannel, config: &NetworkConfig) -> Self {
         // let now = NsTimestamp::now();
         // log::info!("{}:{}", now.sec_timestamp, now.ns_timestamp);
         Self {
             manager,
-            byte_cnt: Arc::new(Mutex::new(0)),
-            last_timestamp: Arc::new(Mutex::new(NsTimestamp::new())),
-            rtt: CONFIG.rtt,
-            bandwidth: CONFIG.bandwidth,
-            start: Arc::new(Mutex::new(None)),
+            byte_cnt: Cell::new(0),
+            last_timestamp: Cell::new(NsTimestamp::new()),
+            rtt: config.rtt,
+            bandwidth: config.bandwidth,
+            start: Cell::new(None),
             // begin: now,
         }
     }
@@ -37,7 +35,7 @@ impl EmulatorChannel {
     fn calculate_latency(&self, current_bytes: usize) -> f64 {
         let data_size =
             current_bytes + std::mem::size_of::<NsTimestamp>() + std::mem::size_of::<i32>();
-        self.rtt * 1000000.0 / 2.0 + (data_size as f64 * 8.0 / self.bandwidth) * 1000000000.0 
+        self.rtt * 1000000.0 / 2.0 + (data_size as f64 * 8.0 / self.bandwidth) * 1000000000.0
     }
 
     pub fn calculate_ts(&self, current_bytes: usize) -> NsTimestamp {
@@ -58,32 +56,32 @@ impl EmulatorChannel {
 
     #[inline]
     pub fn get_byte_cnt(&self) -> usize {
-        *self.byte_cnt.lock().unwrap()
+        self.byte_cnt.get()
     }
 
     #[inline]
     pub fn set_byte_cnt(&self, byte_cnt: usize) {
-        *self.byte_cnt.lock().unwrap() = byte_cnt;
+        self.byte_cnt.set(byte_cnt);
     }
 
     #[inline]
     pub fn get_last_timestamp(&self) -> NsTimestamp {
-        *self.last_timestamp.lock().unwrap()
+        self.last_timestamp.get()
     }
 
     #[inline]
     pub fn set_last_timestamp(&self, last_timestamp: NsTimestamp) {
-        *self.last_timestamp.lock().unwrap() = last_timestamp;
+        self.last_timestamp.set(last_timestamp);
     }
 
     #[inline]
     pub fn get_start(&self) -> Option<u64> {
-        *self.start.lock().unwrap()
+        self.start.get()
     }
 
     #[inline]
     pub fn set_start(&self, start: Option<u64>) {
-        *self.start.lock().unwrap() = start;
+        self.start.set(start);
     }
 }
 
