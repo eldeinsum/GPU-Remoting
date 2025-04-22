@@ -133,7 +133,7 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     let load_module = |fatCubinHandle: &FatBinaryHandle| {
         // See our implementation of `__cudaRegisterFatBinary`
         let index = (*fatCubinHandle >> 4) - 1;
-        log::info!("registering fatbin #{index}");
+        log::debug!("registering fatbin #{index}");
         let image = runtime.lazy_fatbins[index];
         CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = true);
         let mut module = std::ptr::null_mut();
@@ -147,7 +147,7 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
 
     let (fatCubinHandle, deviceName) = *runtime.lazy_functions.get(&func).unwrap();
     let module = *runtime.loaded_modules.entry(fatCubinHandle).or_insert_with_key(load_module);
-    log::info!("registering function {:?}", unsafe { CStr::from_ptr(deviceName) });
+    log::debug!("registering function {:?}", unsafe { CStr::from_ptr(deviceName) });
     let mut cufunc = std::ptr::null_mut();
     assert_eq!(
         super::cuda_hijack::cuModuleGetFunction(&raw mut cufunc, module, deviceName),
@@ -166,7 +166,7 @@ pub extern "C" fn cudaLaunchKernel(
     sharedMem: usize,
     stream: cudaStream_t,
 ) -> cudaError_t {
-    log::debug!("[{}:{}] cudaLaunchKernel", std::file!(), std::line!());
+    log::debug!(target: "cudaLaunchKernel", "");
 
     let cufunc = get_cufunction(func);
 
@@ -193,11 +193,7 @@ pub extern "C" fn cudaHostAlloc(
     size: usize,
     flags: c_uint,
 ) -> cudaError_t {
-    log::debug!(
-        "[{}:{}] cudaHostAlloc",
-        std::file!(),
-        std::line!()
-    );
+    log::debug!(target: "cudaHostAlloc", "size = {size}, flags = {flags}");
     assert_eq!(flags, cudaHostAllocDefault);
     // TODO: handle pinned memory at server side in a better way
     // FIXME: some GPU kernels might write to pinned memory directly; currently CUDA will report illegal memory access
@@ -213,11 +209,7 @@ pub extern "C" fn cudaHostAlloc(
 pub extern "C" fn cudaGetErrorString(
     cudaError: cudaError_t,
 ) -> *const ::std::os::raw::c_char {
-    log::debug!(
-        "[{}:{}] cudaGetErrorString",
-        std::file!(),
-        std::line!()
-    );
+    log::debug!(target: "cudaGetErrorString", "{cudaError:?}");
     let ClientThread { channel_sender, channel_receiver, .. } = client;
     let proc_id = 151;
     let mut result:Vec<u8>  = Default::default();
@@ -300,7 +292,7 @@ extern "C" fn cudaFuncGetAttributes(
     _attr: *mut cudaFuncAttributes,
     _func: *const c_void,
 ) -> cudaError_t {
-    log::debug!("[{}:{}] cudaFuncGetAttributes", std::file!(), std::line!());
+    log::debug!(target: "cudaFuncGetAttributes", "");
     // HACK: implementation with cuFuncGetAttribute depends on CUDA version
     cudaError_t::cudaSuccess
 }
@@ -313,7 +305,7 @@ extern "C" fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     _dynamicSMemSize: usize,
     _flags: c_uint,
 ) -> cudaError_t {
-    log::debug!("[{}:{}] cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags", std::file!(), std::line!());
+    log::debug!(target: "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags", "");
     // HACK: only used in logging stats
     cudaError_t::cudaSuccess
 }

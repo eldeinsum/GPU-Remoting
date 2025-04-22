@@ -14,6 +14,19 @@ pub fn pack_kernel_args(
                 param.size() as usize,
             );
         }
+        match param.size() {
+            8 if arg_ptr.cast::<u64>().is_aligned() => {
+                let arg = unsafe { *arg_ptr.cast::<u64>() };
+                log::trace!(target: "cuLaunchKernel", "arg = {arg:#x}");
+            }
+            4 if arg_ptr.cast::<i32>().is_aligned() => {
+                let arg = unsafe { *arg_ptr.cast::<i32>() };
+                log::trace!(target: "cuLaunchKernel", "arg = {arg}");
+            }
+            size => log::trace!(target: "cuLaunchKernel", "arg<{size}> = {:?}", unsafe {
+                std::slice::from_raw_parts(arg_ptr.cast::<u8>(), param.size() as usize)
+            }),
+        }
     }
     result.into_boxed_slice()
 }

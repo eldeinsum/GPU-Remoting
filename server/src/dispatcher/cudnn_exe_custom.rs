@@ -6,7 +6,7 @@ pub fn cudnnGetErrorStringExe<C: CommChannel>(
     server: &mut ServerWorker<C>,
 ) {
     let ServerWorker { channel_sender, channel_receiver, .. } = server;
-    log::debug!("[{}:{}] cudnnGetErrorString", std::file!(), std::line!());
+    log::debug!(target: "cudnnGetErrorString", "");
     let mut status: cudnnStatus_t = Default::default();
     if let Err(e) = status.recv(channel_receiver) {
         error!("Error receiving status: {:?}", e);

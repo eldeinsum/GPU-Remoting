@@ -5,8 +5,6 @@ use std::ffi::*;
 use std::sync::OnceLock;
 use std::{env, mem};
 
-use log::info;
-
 // original dlsym
 extern "C" {
     fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
@@ -34,13 +32,13 @@ extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void {
     if name.contains("cpython") {
         return DLOPEN_ORIG(filename, flags);
     }
-    info!("[dlopen] {name} (flags: {flags:#x})");
-    if name.contains("libcuda") || name.contains("libnvrtc.so") || name.contains("libnvidia-ml") {
+    log::debug!(target: "dlopen", "{name} (flags: {flags:#x})");
+    if name.contains("libcuda") || name.contains("libnvrtc.so") || name.contains("libnvidia-ml") || name.contains("libnccl.so") {
         if cfg!(feature = "passthrough") {
             assert!(!DLOPEN_ORIG(filename, 0x101).is_null());
         }
         // if the library is libcuda, libnvrtc or libnvidia-ml, return a handle to the client
-        info!("[dlopen] replacing dlopen call to {} library with a handle to the client", name);
+        log::debug!(target: "dlopen", "replacing dlopen call to {} library with a handle to the client", name);
         static SELF_PATH: OnceLock<CString> = OnceLock::new();
         let self_path = SELF_PATH.get_or_init(|| {
             let mut result = env::var("LD_PRELOAD").unwrap().into_bytes();

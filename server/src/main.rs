@@ -1,7 +1,7 @@
 use server::*;
 
 fn main() {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     // core_affinity::set_for_current(0);
     let config = &*network::CONFIG;
     match config.comm_type.as_str() {

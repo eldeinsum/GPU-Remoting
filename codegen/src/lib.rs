@@ -92,6 +92,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let (proc_id, func, result, params) = (input.proc_id, input.func, input.result, input.params);
+    let func_str = func.to_string();
 
     let vars: Box<_> = params
         .iter()
@@ -104,6 +105,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
         .filter(|param| param.mode == ElementMode::Input)
         .map(|param| {
             let name = &param.name;
+            let name_str = name.to_string();
             let deref = match &param.pass_by {
                 PassBy::InputValue => Default::default(),
                 PassBy::SinglePtr => {
@@ -121,7 +123,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                         let #name = unsafe { std::slice::from_raw_parts(#name, #len_ident) };
                         match send_slice(#name, channel_sender) {
                             Ok(()) => {}
-                            Err(e) => panic!("failed to send {}: {}", stringify!(#name), e),
+                            Err(e) => panic!("failed to send {}: {}", #name_str, e),
                         }
                     };
                     return tokens;
@@ -129,19 +131,20 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                 PassBy::InputCStr => {
                     return quote_spanned! {name.span()=>
                         let #name = unsafe { std::ffi::CStr::from_ptr(#name) };
+                        log::trace!(target: #func_str, "[#{}] (input) {} = {:?}", client.id, #name_str, #name);
                         match send_slice(#name.to_bytes_with_nul(), channel_sender) {
                             Ok(()) => {}
-                            Err(e) => panic!("failed to send {}: {}", stringify!(#name), e),
+                            Err(e) => panic!("failed to send {}: {}", #name_str, e),
                         }
                     }
                 }
             };
             quote_spanned! {name.span()=>
                 #deref
-                log::trace!("(input) {} = {:?}", stringify!(#name), #name);
+                log::trace!(target: #func_str, "[#{}] (input) {} = {:?}", client.id, #name_str, #name);
                 match #name.send(channel_sender) {
                     Ok(()) => {}
-                    Err(e) => panic!("failed to send {}: {}", stringify!(#name), e),
+                    Err(e) => panic!("failed to send {}: {}", #name_str, e),
                 }
             }
         });
@@ -149,6 +152,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
     // receive vars
     let recv_statements = vars.iter().map(|var| {
         let name = &var.name;
+        let name_str = name.to_string();
         let deref = match &var.pass_by {
             PassBy::InputValue | PassBy::InputCStr => unreachable!(),
             PassBy::SinglePtr => quote! { let #name = unsafe { &mut *#name }; },
@@ -160,7 +164,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                     let #name = unsafe { std::slice::from_raw_parts_mut(#name, #len_ident) };
                     match recv_slice_to(#name, channel_receiver) {
                         Ok(()) => {}
-                        Err(e) => panic!("failed to send {}: {}", stringify!(#name), e),
+                        Err(e) => panic!("failed to send {}: {}", #name_str, e),
                     }
                 };
                 return tokens;
@@ -171,9 +175,9 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
             #deref
             match #name.recv(channel_receiver) {
                 Ok(()) => {}
-                Err(e) => panic!("failed to receive {}: {}", stringify!(#name), e),
+                Err(e) => panic!("failed to receive {}: {}", #name_str, e),
             }
-            log::trace!("(output) {} = {:?}", stringify!(#name), #name);
+            log::trace!(target: #func_str, "[#{}] (output) {} = {:?}", client.id, #name_str, #name);
         }
     });
 
@@ -197,6 +201,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let (shadow_desc_send, shadow_desc_return) = if input.is_create_shadow_desc {
         let name = &vars[0].name;
+        let name_str = name.to_string();
         let shadow_desc_send = quote_spanned! {name.span()=>
             if cfg!(feature = "shadow_desc") {
                 let resource_idx = client.resource_idx;
@@ -206,7 +211,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                 client.resource_idx += 1;
                 match resource_idx.send(channel_sender) {
                     Ok(()) => {}
-                    Err(e) => panic!("failed to send {}: {}", stringify!(#name), e),
+                    Err(e) => panic!("failed to send {}: {}", #name_str, e),
                 }
             }
         };
@@ -231,7 +236,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
         // #[use_thread_local(client = CLIENT_THREAD.with_borrow_mut)]
         pub extern "C" fn #func(#(#params),*) -> #result_ty {
         CLIENT_THREAD.with_borrow_mut(|client| {
-            log::debug!("[#{}] [{}:{}] {}", client.id, std::file!(), std::line!(), stringify!(#func));
+            log::debug!(target: #func_str, "[#{}]", client.id);
             let ClientThread { channel_sender, channel_receiver, .. } = client;
             let proc_id: i32 = #proc_id;
             let mut #result_name: #result_ty = Default::default();
@@ -264,10 +269,11 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                 Ok(()) => {}
                 Err(e) => panic!("failed to receive {}: {}", "timestamp", e),
             }
-            if #result_name != Default::default() {
+            if #result_name.is_error() {
                 log::error!(
-                    "{} returned error: {:?}\n{}",
-                    stringify!(#func),
+                    target: #func_str,
+                    "[#{}] returned error: {:?}\n{}",
+                    client.id,
                     #result_name,
                     std::backtrace::Backtrace::force_capture(),
                 );
@@ -316,6 +322,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let (func, result, params) = (input.func, input.result, input.params);
+    let func_str = func.to_string();
     let func_exe = format_ident!("{}Exe", func);
 
     // definition statements
@@ -352,9 +359,10 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         .filter(|param| param.mode == ElementMode::Output)
         .map(|param| {
             let name = &param.name;
+            let name_str = name.to_string();
             quote_spanned! {name.span()=>
                 let #name = unsafe { #name.assume_init() };
-                log::trace!("(output) {} = {:?}", stringify!(#name), #name);
+                log::trace!(target: #func_str, "[#{}] (output) {} = {:?}", server.id, #name_str, #name);
             }
         });
 
@@ -364,15 +372,16 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         .filter(|param| param.mode == ElementMode::Input)
         .map(|param| {
             let name = &param.name;
+            let name_str = name.to_string();
             let recv_single = |ty| {
                 quote_spanned! {name.span()=>
                     let mut #name = std::mem::MaybeUninit::<#ty>::uninit();
                     match #name.recv(channel_receiver) {
                         Ok(()) => {}
-                        Err(e) => panic!("failed to receive {}: {}", stringify!(#name), e),
+                        Err(e) => panic!("failed to receive {}: {}", #name_str, e),
                     }
                     let #name = unsafe { #name.assume_init() };
-                    log::trace!("(input) {} = {:?}", stringify!(#name), #name);
+                    log::trace!(target: #func_str, "[#{}] (input) {} = {:?}", server.id, #name_str, #name);
                 }
             };
             match &param.pass_by {
@@ -394,9 +403,9 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                     quote_spanned! {name.span()=>
                         let #name = match recv_slice::<#ty, _>(channel_receiver) {
                             Ok(slice) => slice,
-                            Err(e) => panic!("failed to receive {}: {}", stringify!(#name), e),
+                            Err(e) => panic!("failed to receive {}: {}", #name_str, e),
                         };
-                        log::trace!("(input) {} = {:p}", stringify!(#name), #name.as_ptr());
+                        log::trace!(target: #func_str, "[#{}] (input) {} = {:p}", server.id, #name_str, #name.as_ptr());
                         let #ptr_ident = #name.as_ptr();
                     }
                 }
@@ -407,8 +416,9 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                             Ok(slice) => {
                                 std::ffi::CString::from_vec_with_nul(slice.into_vec()).unwrap()
                             }
-                            Err(e) => panic!("failed to receive {}: {}", stringify!(#name), e),
+                            Err(e) => panic!("failed to receive {}: {}", #name_str, e),
                         };
+                        log::trace!(target: #func_str, "[#{}] (input) {} = {:?}", server.id, #name_str, #name);
                         let #ptr_ident = #name.as_ptr();
                     }
                 }
@@ -503,6 +513,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         .filter(|param| param.mode == ElementMode::Output)
         .map(|param| {
             let name = &param.name;
+            let name_str = name.to_string();
             let send = match &param.pass_by {
                 PassBy::InputValue | PassBy::InputCStr => unreachable!(),
                 PassBy::SinglePtr => quote! { #name.send(channel_sender) },
@@ -519,20 +530,21 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
             quote_spanned! {name.span()=>
                 match { #send } {
                     Ok(()) => {}
-                    Err(e) => panic!("failed to send {}: {}", stringify!(#name), e),
+                    Err(e) => panic!("failed to send {}: {}", #name_str, e),
                 }
             }
         });
 
     let (shadow_desc_recv, shadow_desc_return) = if input.is_create_shadow_desc {
         let name = &params[0].name;
+        let name_str = name.to_string();
         let shadow_desc_recv = quote_spanned! {name.span()=>
             #[cfg(feature = "shadow_desc")]
             let mut resource_idx = 0usize;
             #[cfg(feature = "shadow_desc")]
             match resource_idx.recv(channel_receiver) {
                 Ok(()) => {}
-                Err(e) => panic!("failed to receive {}: {}", stringify!(#name), e),
+                Err(e) => panic!("failed to receive {}: {}", #name_str, e),
             }
         };
         let shadow_desc_return = quote_spanned! {name.span()=>
@@ -563,7 +575,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
     let gen_fn = quote! {
         pub fn #func_exe<C: CommChannel>(#[cfg(feature = "phos")] proc_id: i32, server: &mut ServerWorker<C>) {
             let ServerWorker { channel_sender, channel_receiver, .. } = server;
-            log::debug!("[#{}] [{}:{}] {}", server.id, std::file!(), std::line!(), stringify!(#func));
+            log::debug!(target: #func_str, "[#{}]", server.id);
             #( #recv_statements )*
             #( #get_resource_statements )*
             #shadow_desc_recv
@@ -576,8 +588,8 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
             #exec_statement
             #( #assume_init )*
 
-            if #result_name != Default::default() {
-                log::error!("{} returned error: {:?}", stringify!(#func), #result_name);
+            if #result_name.is_error() {
+                log::error!(target: #func_str, "[#{}] returned error: {:?}", server.id, #result_name);
             }
 
             #shadow_desc_return

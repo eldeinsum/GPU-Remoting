@@ -103,7 +103,7 @@ pub fn cudaMemcpyExe<C: CommChannel>(#[cfg(feature = "phos")] _proc_id: i32, ser
 
 pub fn cudaGetErrorStringExe<C: CommChannel>(#[cfg(feature = "phos")] proc_id: i32, server: &mut ServerWorker<C>) {
     let ServerWorker { channel_sender, channel_receiver, .. } = server;
-    log::debug!("[{}:{}] cudaGetErrorString", std::file!(), std::line!());
+    log::debug!(target: "cudaGetErrorString", "");
     let mut error: cudaError_t = Default::default();
     error.recv(channel_receiver).unwrap();
     match channel_receiver.recv_ts() {

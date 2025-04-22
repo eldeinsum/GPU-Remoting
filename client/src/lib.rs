@@ -48,6 +48,15 @@ impl ClientThread {
     // In the client side, the sender's name is ctos_channel_name,
     // receiver's name is stoc_channel_name.
     fn new() -> Self {
+        log::info!("[{}:{}] client init", std::file!(), std::line!());
+        for (i, arg) in std::env::args().enumerate() {
+            log::info!("arg[{i}]: {arg}");
+        }
+        for (key, value) in std::env::vars() {
+            if key.starts_with("LD_") || key.starts_with("RUST_") {
+                log::info!("{key}: {value}");
+            }
+        }
         let config = &*network::CONFIG;
         let (id, channel_sender, channel_receiver) = match config.comm_type.as_str() {
             "shm" => {
@@ -184,14 +193,5 @@ impl RuntimeCache {
 #[small_ctor::ctor]
 unsafe fn init() {
 //     core_affinity::set_for_current(1);
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
-    log::info!("[{}:{}] client init", std::file!(), std::line!());
-    for (i, arg) in std::env::args().enumerate() {
-        log::info!("arg[{i}]: {arg}");
-    }
-    for (key, value) in std::env::vars() {
-        if key.starts_with("LD_") || key.starts_with("RUST_") {
-            log::info!("{key}: {value}");
-        }
-    }
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 }

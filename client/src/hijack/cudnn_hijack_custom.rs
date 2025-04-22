@@ -7,11 +7,7 @@ use std::os::raw::*;
 pub extern "C" fn cudnnGetErrorString(
     error_status: cudnnStatus_t,
 ) -> *const c_char {
-    log::debug!(
-        "[{}:{}] cudnnGetErrorString",
-        std::file!(),
-        std::line!()
-    );
+    log::debug!(target: "cudnnGetErrorString", "{error_status:?}");
     let ClientThread { channel_sender, channel_receiver, .. } = client;
     let proc_id = 1834;
     let mut result: Vec<u8> = Default::default();
