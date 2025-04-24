@@ -21,7 +21,6 @@ use network::{
 
 use log::{error, info};
 
-#[cfg(feature = "shadow_desc")]
 use std::collections::BTreeMap;
 
 struct ServerWorker<C> {
@@ -29,8 +28,9 @@ struct ServerWorker<C> {
     pub channel_sender: C,
     pub channel_receiver: C,
     pub modules: Vec<CUmodule>,
-    #[cfg(feature = "shadow_desc")]
     pub resources: BTreeMap<usize, usize>,
+    opt_async_api: bool,
+    opt_shadow_desc: bool,
     #[cfg(feature = "phos")]
     pub pos_cuda_ws: *mut std::ffi::c_void,
 }
@@ -57,7 +57,7 @@ fn create_buffer(config: &NetworkConfig, id: i32) -> (Channel, Channel) {
     match config.comm_type.as_str() {
         "shm" => {
             let (receiver, sender) = SHMChannel::new_server_with_id(config, id).unwrap();
-            if cfg!(feature = "emulator") {
+            if config.emulator {
                 return (
                     Channel::new(Box::new(EmulatorChannel::new(sender, config))),
                     Channel::new(Box::new(EmulatorChannel::new(receiver, config))),
@@ -120,8 +120,9 @@ pub fn launch_server(
         channel_sender,
         channel_receiver,
         modules: Default::default(),
-        #[cfg(feature = "shadow_desc")]
         resources: Default::default(),
+        opt_async_api: config.opt_async_api,
+        opt_shadow_desc: config.opt_shadow_desc,
         #[cfg(feature = "phos")]
         pos_cuda_ws: {
             info!("Starting PhOS server ...");

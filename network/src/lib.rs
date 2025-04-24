@@ -20,6 +20,10 @@ pub struct NetworkConfig {
     pub buf_size: usize,
     pub rtt: f64,
     pub bandwidth: f64,
+    pub emulator: bool,
+    pub opt_async_api: bool,
+    pub opt_shadow_desc: bool,
+    pub opt_local: bool,
 }
 
 

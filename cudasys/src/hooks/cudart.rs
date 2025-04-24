@@ -5,8 +5,7 @@ use std::os::raw::*;
 #[cuda_hook(proc_id = 120)]
 fn cudaGetDevice(device: *mut c_int) -> cudaError_t {
     'client_before_send: {
-        #[cfg(feature = "local")]
-        if let Some(val) = client.cuda_device {
+        if let (true, Some(val)) = (client.opt_local, client.cuda_device) {
             unsafe {
                 *device = val;
             }

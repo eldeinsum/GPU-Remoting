@@ -41,6 +41,9 @@ struct ClientThread {
     cuda_device: Option<std::ffi::c_int>,
     #[cfg(feature = "phos")]
     phos_agent: *mut std::ffi::c_void,
+    opt_async_api: bool,
+    opt_shadow_desc: bool,
+    opt_local: bool,
 }
 
 impl ClientThread {
@@ -69,7 +72,7 @@ impl ClientThread {
         let (channel_sender, channel_receiver) = match config.comm_type.as_str() {
             "shm" => {
                 let (sender, receiver) = SHMChannel::new_client_with_id(&config, id).unwrap();
-                if cfg!(feature = "emulator") {
+                if config.emulator {
                     (
                         Channel::new(Box::new(EmulatorChannel::new(sender, &config))),
                         Channel::new(Box::new(EmulatorChannel::new(receiver, &config))),
@@ -108,6 +111,9 @@ impl ClientThread {
             resource_idx: 0,
             is_cuda_launch_kernel: false,
             cuda_device: None,
+            opt_async_api: config.opt_async_api,
+            opt_shadow_desc: config.opt_shadow_desc,
+            opt_local: config.opt_local,
             #[cfg(feature = "phos")]
             phos_agent: unsafe { phos::pos_create_agent() },
         }

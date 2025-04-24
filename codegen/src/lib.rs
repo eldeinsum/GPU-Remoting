@@ -191,7 +191,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let async_api_return = if input.is_async_api {
         quote! {
-            if cfg!(feature = "async_api") {
+            if client.opt_async_api {
                 return #result_name;
             }
         }
@@ -203,7 +203,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
         let name = &vars[0].name;
         let name_str = name.to_string();
         let shadow_desc_send = quote_spanned! {name.span()=>
-            if cfg!(feature = "shadow_desc") {
+            if client.opt_shadow_desc {
                 let resource_idx = client.resource_idx;
                 unsafe {
                     *#name = resource_idx as _;
@@ -216,7 +216,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         };
         let shadow_desc_return = quote! {
-            if cfg!(feature = "shadow_desc") {
+            if client.opt_shadow_desc {
                 return #result_name;
             }
         };
@@ -440,13 +440,19 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
             if is_destroy {
                 assert_eq!(params.len(), 1);
                 quote! {
-                    #[cfg(feature = "shadow_desc")]
-                    let #name = server.resources.remove(&(#name as usize)).unwrap() as #ty;
+                    let #name = if server.opt_shadow_desc {
+                        server.resources.remove(&(#name as usize)).unwrap() as #ty
+                    } else {
+                        #name
+                    };
                 }
             } else {
                 quote! {
-                    #[cfg(feature = "shadow_desc")]
-                    let #name = *server.resources.get(&(#name as usize)).unwrap() as #ty;
+                    let #name = if server.opt_shadow_desc {
+                        *server.resources.get(&(#name as usize)).unwrap() as #ty
+                    } else {
+                        #name
+                    };
                 }
             }
         });
@@ -539,18 +545,17 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         let name = &params[0].name;
         let name_str = name.to_string();
         let shadow_desc_recv = quote_spanned! {name.span()=>
-            #[cfg(feature = "shadow_desc")]
             let mut resource_idx = 0usize;
-            #[cfg(feature = "shadow_desc")]
-            match resource_idx.recv(channel_receiver) {
-                Ok(()) => {}
-                Err(e) => panic!("failed to receive {}: {}", #name_str, e),
+            if server.opt_shadow_desc {
+                match resource_idx.recv(channel_receiver) {
+                    Ok(()) => {}
+                    Err(e) => panic!("failed to receive {}: {}", #name_str, e),
+                }
             }
         };
         let shadow_desc_return = quote_spanned! {name.span()=>
-            #[cfg(feature = "shadow_desc")]
-            server.resources.insert(resource_idx, #name as usize);
-            if cfg!(feature = "shadow_desc") {
+            if server.opt_shadow_desc {
+                server.resources.insert(resource_idx, #name as usize);
                 return;
             }
         };
@@ -561,7 +566,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let async_api_return = if input.is_async_api {
         quote! {
-            if cfg!(feature = "async_api") {
+            if server.opt_async_api {
                 return;
             }
         }

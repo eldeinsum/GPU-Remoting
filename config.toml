@@ -18,5 +18,11 @@ buf_size = 4000000000
 
 # network configuration
 # bandwidth is in bps, rtt is in ms 
+emulator = false
 rtt = 0.0
 bandwidth = 77491947438.08
+
+# optimizations
+opt_async_api = false
+opt_shadow_desc = false
+opt_local = false

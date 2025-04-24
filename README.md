@@ -59,7 +59,7 @@ Since `cargo` will use cwd as running root folder, you should use absolute path 
 
 The network emulator is a component used to simulate system performance under different network conditions. When enabled, it calculates network latency and make the message receiver busy-wait, thus simulating the network overhead caused by RTT and bandwidth. Real-world tests have shown that the emulator's performance deviates from the actual conditions by no more than 5%. You can configure the `rtt` and `bandwidth` settings in `config.toml`.
 
-This feature is only available when using shared memory. To enable the emulator, you can simply add `emulator` to the default features in `client/Cargo.toml` and `server/Cargo.toml`.
+This feature is only available when using shared memory. To enable the emulator, you can simply set `emulator` to `true` in `config.toml`.
 
 ## Test
 
