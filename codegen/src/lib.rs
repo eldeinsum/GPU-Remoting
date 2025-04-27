@@ -189,7 +189,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
     let result_name = &result.name;
     let result_ty = &result.ty;
 
-    let async_api_return = if input.is_async_api {
+    let async_api_return = if let Some(true) = input.is_async_api {
         quote! {
             if client.opt_async_api {
                 return #result_name;
@@ -564,7 +564,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         Default::default()
     };
 
-    let async_api_return = if input.is_async_api {
+    let async_api_return = if let Some(true) = input.is_async_api {
         quote! {
             if server.opt_async_api {
                 return;

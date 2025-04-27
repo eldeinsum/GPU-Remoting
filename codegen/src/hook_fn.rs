@@ -15,7 +15,7 @@ use crate::utils::{
 
 pub struct HookFn {
     pub proc_id: LitInt,
-    pub is_async_api: bool,
+    pub is_async_api: Option<bool>,
     pub is_create_shadow_desc: bool,
     pub func: Ident,
     pub result: Element,
@@ -33,7 +33,7 @@ impl HookFn {
         HookAttrs { proc_id, is_async_api, .. }: HookAttrs,
         HookFnItem { sig, injections }: HookFnItem,
     ) -> Result<Self> {
-        if is_async_api {
+        if let Some(true) = is_async_api {
             check_async_api(&sig.output, &injections)?;
         }
 
@@ -95,10 +95,9 @@ impl HookFn {
     pub fn into_plain_fn(self) -> TokenStream {
         let mut sig = self.sig;
 
-        if !self.is_async_api
+        if self.is_async_api.is_none()
             && check_async_api(&sig.output, &self.injections).is_ok()
             && self.params.iter().all(|x| x.mode == ElementMode::Input)
-            && !self.func.to_string().contains("Error")
         {
             sig.ident.span().unwrap().note("this function can be `async_api`").emit();
         }
@@ -116,9 +115,7 @@ impl HookFn {
 }
 
 fn check_async_api(output: &ReturnType, injections: &HookInjections) -> Result<()> {
-    if let Some(stmt) =
-        injections.client_after_recv.first().or(injections.server_after_send.first())
-    {
+    if let Some(stmt) = injections.stmt_after_async_api_return() {
         return Err(Error::new_spanned(stmt, "`async_api` cannot have `after` injections"));
     }
     match output {
@@ -129,7 +126,7 @@ fn check_async_api(output: &ReturnType, injections: &HookInjections) -> Result<(
     }
 }
 
-fn parse_param(arg: &FnArg, is_async_api: bool) -> Result<Element> {
+fn parse_param(arg: &FnArg, is_async_api: Option<bool>) -> Result<Element> {
     let FnArg::Typed(arg) = arg else { panic!() };
 
     // Get param name
@@ -164,11 +161,8 @@ fn parse_param(arg: &FnArg, is_async_api: bool) -> Result<Element> {
         (ElementMode::Input, PassBy::InputValue)
     };
 
-    if mode == ElementMode::Output && is_async_api {
-        return Err(Error::new_spanned(
-            arg,
-            "output parameter is not allowed for async_api",
-        ));
+    if let (ElementMode::Output, Some(true)) = (&mode, is_async_api) {
+        return Err(Error::new_spanned(arg, "output parameter is not allowed for async_api"));
     }
 
     let mut ty = ty.clone();

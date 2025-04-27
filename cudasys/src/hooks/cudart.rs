@@ -33,13 +33,13 @@ fn cudaSetDevice(device: c_int) -> cudaError_t {
 #[cuda_hook(proc_id = 121)]
 fn cudaGetDeviceCount(count: *mut c_int) -> cudaError_t;
 
-#[cuda_hook(proc_id = 152)]
+#[cuda_hook(proc_id = 152, async_api = false)]
 fn cudaGetLastError() -> cudaError_t;
 
-#[cuda_hook(proc_id = 153)]
+#[cuda_hook(proc_id = 153, async_api = false)]
 fn cudaPeekAtLastError() -> cudaError_t;
 
-#[cuda_hook(proc_id = 178)]
+#[cuda_hook(proc_id = 178, async_api = false)]
 fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 265)]
@@ -186,7 +186,7 @@ fn cudaEventCreateWithFlags(event: *mut cudaEvent_t, flags: c_uint) -> cudaError
 #[cuda_hook(proc_id = 205)]
 fn cudaEventRecord(event: cudaEvent_t, stream: cudaStream_t) -> cudaError_t;
 
-#[cuda_hook(proc_id = 180)]
+#[cuda_hook(proc_id = 180, async_api = false)]
 fn cudaStreamWaitEvent(stream: cudaStream_t, event: cudaEvent_t, flags: c_uint) -> cudaError_t;
 
 #[cuda_hook(proc_id = 202)]
@@ -217,10 +217,10 @@ fn cudaIpcOpenMemHandle(
     flags: c_uint,
 ) -> cudaError_t;
 
-#[cuda_hook(proc_id = 204)]
+#[cuda_hook(proc_id = 204, async_api = false)]
 fn cudaEventQuery(event: cudaEvent_t) -> cudaError_t;
 
-#[cuda_hook(proc_id = 119)]
+#[cuda_hook(proc_id = 119, async_api = false)]
 fn cudaDeviceSynchronize() -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
@@ -229,11 +229,11 @@ fn cudaFuncSetAttribute(func: *const c_void, attr: cudaFuncAttribute, value: c_i
 #[cuda_hook(proc_id = 203)]
 fn cudaEventElapsedTime(ms: *mut f32, start: cudaEvent_t, end: cudaEvent_t) -> cudaError_t;
 
-#[cuda_hook(proc_id = 412)]
+#[cuda_hook(proc_id = 412, async_api = false)]
 fn cudaDeviceEnablePeerAccess(peerDevice: c_int, flags: c_uint) -> cudaError_t;
 
 #[cuda_hook(proc_id = 297, async_api)]
 fn cudaMemset(#[device] devPtr: *mut c_void, value: c_int, count: usize) -> cudaError_t;
 
-#[cuda_hook(proc_id = 114)]
+#[cuda_hook(proc_id = 114, async_api = false)]
 fn cudaDeviceReset() -> cudaError_t;

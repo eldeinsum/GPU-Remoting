@@ -2,16 +2,16 @@ use crate::types::nvml::*;
 use codegen::cuda_hook;
 use std::os::raw::*;
 
-#[cuda_hook(proc_id = 991000)]
+#[cuda_hook(proc_id = 991000, async_api = false)]
 fn nvmlInit_v2() -> nvmlReturn_t;
 
 #[cuda_hook(proc_id = 991001)]
 fn nvmlDeviceGetCount_v2(deviceCount: *mut c_uint) -> nvmlReturn_t;
 
-#[cuda_hook(proc_id = 991002)]
+#[cuda_hook(proc_id = 991002, async_api = false)]
 fn nvmlInitWithFlags(flags: c_uint) -> nvmlReturn_t;
 
-#[cuda_hook(proc_id = 991003)]
+#[cuda_hook(proc_id = 991003, async_api = false)]
 fn nvmlShutdown() -> nvmlReturn_t;
 
 #[cuda_hook(proc_id = 991004)]

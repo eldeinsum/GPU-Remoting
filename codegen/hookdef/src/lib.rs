@@ -8,13 +8,13 @@ use syn::meta::{self, ParseNestedMeta};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::spanned::Spanned;
 use syn::{
-    Attribute, Block, Error, Expr, ExprBlock, FnArg, LitInt, Meta, Result, Signature, Stmt, Token,
-    Type,
+    Attribute, Block, Error, Expr, ExprBlock, FnArg, LitBool, LitInt, Meta, Result, Signature,
+    Stmt, Token, Type,
 };
 
 pub struct HookAttrs {
     pub proc_id: LitInt,
-    pub is_async_api: bool,
+    pub is_async_api: Option<bool>,
     pub min_cuda_version: u8,
     pub max_cuda_version: u8,
 }
@@ -26,21 +26,19 @@ impl HookAttrs {
         let span = args.span();
         let mut raw = RawAttrs::default();
         Parser::parse2(meta::parser(|meta| raw.parse(meta)), args)?;
-        raw.validate()
-            .ok_or_else(|| Error::new(span, Self::ERROR))
+        raw.validate().ok_or_else(|| Error::new(span, Self::ERROR))
     }
 
     pub fn from_attr(attr: &Attribute) -> Result<Self> {
         let mut raw = RawAttrs::default();
         attr.parse_nested_meta(|meta| raw.parse(meta))?;
-        raw.validate()
-            .ok_or_else(|| Error::new_spanned(attr, Self::ERROR))
+        raw.validate().ok_or_else(|| Error::new_spanned(attr, Self::ERROR))
     }
 }
 
 struct RawAttrs {
     proc_id: Option<LitInt>,
-    is_async_api: bool,
+    is_async_api: Option<bool>,
     min_cuda_version: u8,
     max_cuda_version: u8,
 }
@@ -49,7 +47,7 @@ impl Default for RawAttrs {
     fn default() -> Self {
         Self {
             proc_id: None,
-            is_async_api: false,
+            is_async_api: None,
             min_cuda_version: u8::MIN,
             max_cuda_version: u8::MAX,
         }
@@ -60,7 +58,16 @@ impl RawAttrs {
     fn parse(&mut self, meta: ParseNestedMeta<'_>) -> Result<()> {
         match meta.path.require_ident()?.to_string().as_str() {
             "proc_id" => self.proc_id = Some(meta.value()?.parse()?),
-            "async_api" => self.is_async_api = true,
+            "async_api" => {
+                if meta.value().is_err() {
+                    self.is_async_api = Some(true);
+                    return Ok(());
+                }
+                match meta.input.parse::<LitBool>()?.value {
+                    true => return Err(meta.error("` = true` must be omitted")),
+                    false => self.is_async_api = Some(false),
+                }
+            }
             "min_cuda_version" => {
                 self.min_cuda_version = meta.value()?.parse::<LitInt>()?.base10_parse()?
             }
@@ -127,6 +134,14 @@ pub struct HookInjections {
     pub server_extra_recv: Vec<Stmt>,
     pub server_execution: Vec<Stmt>,
     pub server_after_send: Vec<Stmt>,
+}
+
+impl HookInjections {
+    pub fn stmt_after_async_api_return(&self) -> Option<&Stmt> {
+        [&self.client_after_recv, &self.server_after_send]
+            .iter()
+            .find_map(|s| s.first())
+    }
 }
 
 impl Parse for HookFnItem {
@@ -219,10 +234,7 @@ pub fn check_max_attributes(attrs: &[Attribute], max: usize) -> Result<()> {
     } else {
         let mut tokens = TokenStream::new();
         tokens.append_all(&attrs[max..]);
-        Err(Error::new_spanned(
-            tokens,
-            format!("too many attributes, expected {max}"),
-        ))
+        Err(Error::new_spanned(tokens, format!("too many attributes, expected {max}")))
     }
 }
 

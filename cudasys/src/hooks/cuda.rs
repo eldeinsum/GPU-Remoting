@@ -91,7 +91,7 @@ fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_ch
 #[cuda_hook(proc_id = 640)]
 fn cuDriverGetVersion(driverVersion: *mut c_int) -> CUresult;
 
-#[cuda_hook(proc_id = 630)]
+#[cuda_hook(proc_id = 630, async_api = false)]
 fn cuInit(Flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 684)]
@@ -122,5 +122,5 @@ fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     flags: c_uint,
 ) -> CUresult;
 
-#[cuda_hook(proc_id = 912)]
+#[cuda_hook(proc_id = 912, async_api = false)]
 fn cuFuncSetAttribute(hfunc: CUfunction, attrib: CUfunction_attribute, value: c_int) -> CUresult;
