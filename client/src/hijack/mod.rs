@@ -1,11 +1,11 @@
 #![expect(non_snake_case)]
 
 mod cuda_hijack;
-mod cuda_hijack_custom;
 mod cuda_hijack_utils;
 mod cuda_unimplement;
 mod cudart_hijack;
 mod cudart_hijack_custom;
+mod cudart_register;
 mod cudart_unimplement;
 mod nvml_hijack;
 mod nvml_unimplement;
