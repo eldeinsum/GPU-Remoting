@@ -330,3 +330,94 @@ fn cudaMemset(#[device] devPtr: *mut c_void, value: c_int, count: usize) -> cuda
 
 #[cuda_hook(proc_id = 114, async_api = false)]
 fn cudaDeviceReset() -> cudaError_t;
+
+#[cuda_hook(proc_id = 163, async_api = false)]
+fn cudaStreamBeginCapture(stream: cudaStream_t, mode: cudaStreamCaptureMode) -> cudaError_t;
+
+#[cuda_hook(proc_id = 169)]
+fn cudaStreamEndCapture(stream: cudaStream_t, pGraph: *mut cudaGraph_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 172)]
+fn cudaStreamGetCaptureInfo_v2(
+    stream: cudaStream_t,
+    captureStatus_out: *mut cudaStreamCaptureStatus,
+    id_out: *mut c_ulonglong,
+    #[skip] graph_out: *mut cudaGraph_t,
+    #[skip] dependencies_out: *mut *const cudaGraphNode_t,
+    #[skip] numDependencies_out: *mut usize,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(!id_out.is_null());
+        assert!(graph_out.is_null());
+        assert!(dependencies_out.is_null());
+        assert!(numDependencies_out.is_null());
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudaStreamGetCaptureInfo_v2(
+                stream,
+                captureStatus_out__ptr,
+                id_out__ptr,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+    }
+}
+
+// We use hooks to implement the inout parameter `mode` for now.
+#[cuda_hook(proc_id = 181)]
+fn cudaThreadExchangeStreamCaptureMode(mode: *mut cudaStreamCaptureMode) -> cudaError_t {
+    'client_extra_send: {
+        unsafe { *mode }.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut mode_in = cudaStreamCaptureMode::cudaStreamCaptureModeGlobal;
+        mode_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        mode.write(mode_in);
+        let result = unsafe { cudaThreadExchangeStreamCaptureMode(mode__ptr) };
+    }
+}
+
+#[cuda_hook(proc_id = 510)]
+fn cudaDriverGetVersion(driverVersion: *mut c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 538, async_api = false)]
+fn cudaGraphDestroy(graph: cudaGraph_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 545, async_api = false)]
+fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 563)]
+fn cudaGraphGetNodes(
+    graph: cudaGraph_t,
+    #[skip] nodes: *mut cudaGraphNode_t,
+    numNodes: *mut usize,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(nodes.is_null());
+    }
+    'server_execution: {
+        let result = unsafe { cudaGraphGetNodes(graph, std::ptr::null_mut(), numNodes__ptr) };
+    }
+}
+
+#[cuda_hook(proc_id = 567, min_cuda_version = 12)]
+fn cudaGraphInstantiate(
+    pGraphExec: *mut cudaGraphExec_t,
+    graph: cudaGraph_t,
+    flags: c_ulonglong,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 999567, min_cuda_version = 12)]
+fn cudaGraphInstantiateWithFlags(
+    pGraphExec: *mut cudaGraphExec_t,
+    graph: cudaGraph_t,
+    flags: c_ulonglong,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 573, async_api)]
+fn cudaGraphLaunch(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;
