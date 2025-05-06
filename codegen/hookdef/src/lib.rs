@@ -17,6 +17,7 @@ pub struct HookAttrs {
     pub is_async_api: Option<bool>,
     pub min_cuda_version: u8,
     pub max_cuda_version: u8,
+    pub parent: Option<Ident>,
 }
 
 impl HookAttrs {
@@ -41,6 +42,7 @@ struct RawAttrs {
     is_async_api: Option<bool>,
     min_cuda_version: u8,
     max_cuda_version: u8,
+    parent: Option<Ident>,
 }
 
 impl Default for RawAttrs {
@@ -50,6 +52,7 @@ impl Default for RawAttrs {
             is_async_api: None,
             min_cuda_version: u8::MIN,
             max_cuda_version: u8::MAX,
+            parent: None,
         }
     }
 }
@@ -74,6 +77,7 @@ impl RawAttrs {
             "max_cuda_version" => {
                 self.max_cuda_version = meta.value()?.parse::<LitInt>()?.base10_parse()?
             }
+            "parent" => self.parent = Some(meta.value()?.parse()?),
             _ => return Err(meta.error("unsupported property")),
         }
         Ok(())
@@ -85,6 +89,7 @@ impl RawAttrs {
             is_async_api: self.is_async_api,
             min_cuda_version: self.min_cuda_version,
             max_cuda_version: self.max_cuda_version,
+            parent: self.parent,
         })
     }
 }

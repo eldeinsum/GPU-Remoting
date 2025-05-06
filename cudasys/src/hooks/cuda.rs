@@ -1,5 +1,5 @@
 use crate::types::cuda::*;
-use codegen::cuda_hook;
+use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
 
 #[cuda_hook(proc_id = 670)]
@@ -50,8 +50,15 @@ fn cuLaunchKernel(
     }
 }
 
-#[cuda_hook(proc_id = 701)]
-fn cuModuleLoadData(module: *mut CUmodule, #[host(len = len)] image: *const c_void) -> CUresult {
+#[cuda_custom_hook] // calls the internal API below
+fn cuModuleLoadData(module: *mut CUmodule, image: *const c_void) -> CUresult;
+
+#[cuda_hook(proc_id = 701, parent = cuModuleLoadData)]
+fn cuModuleLoadDataInternal(
+    module: *mut CUmodule,
+    #[host(len = len)] image: *const c_void,
+    #[skip] is_runtime: bool,
+) -> CUresult {
     'client_before_send: {
         let len = if FatBinaryHeader::is_fat_binary(image) {
             let header: &FatBinaryHeader = unsafe { &*image.cast() };
@@ -61,7 +68,7 @@ fn cuModuleLoadData(module: *mut CUmodule, #[host(len = len)] image: *const c_vo
         };
     }
     'client_after_recv: {
-        let image = if client.is_cuda_launch_kernel {
+        let image = if is_runtime {
             std::borrow::Cow::Borrowed(image)
         } else {
             std::borrow::Cow::Owned(image.to_vec())

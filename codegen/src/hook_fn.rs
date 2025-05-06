@@ -16,6 +16,7 @@ use crate::utils::{
 pub struct HookFn {
     pub proc_id: LitInt,
     pub is_async_api: Option<bool>,
+    pub parent: Option<Ident>,
     pub is_create_shadow_desc: bool,
     pub func: Ident,
     pub result: Element,
@@ -30,7 +31,7 @@ impl HookFn {
     }
 
     fn new(
-        HookAttrs { proc_id, is_async_api, .. }: HookAttrs,
+        HookAttrs { proc_id, is_async_api, parent, .. }: HookAttrs,
         HookFnItem { sig, injections }: HookFnItem,
     ) -> Result<Self> {
         if let Some(true) = is_async_api {
@@ -54,15 +55,6 @@ impl HookFn {
             .map(|arg| parse_param(arg, is_async_api))
             .collect::<Result<Box<_>>>()?;
 
-        if let Some(param) = params.iter().find(|param| param.mode == ElementMode::Skip) {
-            if injections.server_execution.is_empty() {
-                return Err(Error::new_spanned(
-                    &param.name,
-                    "custom execution required when skipping parameter",
-                ));
-            }
-        }
-
         fn is_create_shadow_desc(func: &Ident, params: &[Element]) -> bool {
             if params.len() != 1 {
                 return false;
@@ -83,6 +75,7 @@ impl HookFn {
         Ok(Self {
             proc_id,
             is_async_api,
+            parent,
             is_create_shadow_desc: is_create_shadow_desc(&sig.ident, &params),
             func: sig.ident.clone(),
             result,
@@ -149,16 +142,17 @@ fn parse_param(arg: &FnArg, is_async_api: Option<bool>) -> Result<Element> {
         } else if is_const_cstr(ptr) {
             (ElementMode::Input, PassBy::InputCStr)
         } else if ptr.const_token.is_some() || is_void_ptr(ptr) {
-            return Err(Error::new_spanned(
-                arg,
-                "expected #[device] or #[host(...)]",
-            ));
+            return Err(Error::new_spanned(arg, "expected #[device] or #[host(...)]"));
         } else {
             (ElementMode::Output, PassBy::SinglePtr)
         }
     } else {
-        check_max_attributes(&arg.attrs, 0)?;
-        (ElementMode::Input, PassBy::InputValue)
+        check_max_attributes(&arg.attrs, 1)?;
+        if let Some(attr) = arg.attrs.first() {
+            parse_skip_attr(attr)?
+        } else {
+            (ElementMode::Input, PassBy::InputValue)
+        }
     };
 
     if let (ElementMode::Output, Some(true)) = (&mode, is_async_api) {
@@ -233,10 +227,7 @@ fn parse_param_attr(attr: &Attribute, ptr: &TypePtr) -> Result<(ElementMode, Pas
         } else if !is_void_ptr {
             PassBy::SinglePtr
         } else {
-            return Err(Error::new_spanned(
-                attr,
-                "len property is required for void pointer",
-            ));
+            return Err(Error::new_spanned(attr, "len property is required for void pointer"));
         };
 
         Ok((mode, pass_by))
@@ -245,9 +236,14 @@ fn parse_param_attr(attr: &Attribute, ptr: &TypePtr) -> Result<(ElementMode, Pas
     } else if location == "skip" && matches!(attr.meta, Meta::Path(_)) {
         Ok((ElementMode::Skip, PassBy::InputValue))
     } else {
-        Err(Error::new_spanned(
-            attr,
-            "expected #[device] or #[host(...)]",
-        ))
+        Err(Error::new_spanned(attr, "expected #[device] or #[host(...)]"))
+    }
+}
+
+fn parse_skip_attr(attr: &Attribute) -> Result<(ElementMode, PassBy)> {
+    if attr.path().require_ident()? == "skip" && matches!(attr.meta, Meta::Path(_)) {
+        Ok((ElementMode::Skip, PassBy::InputValue))
+    } else {
+        Err(Error::new_spanned(attr, "expected #[skip]"))
     }
 }

@@ -1,6 +1,7 @@
 #![expect(non_snake_case)]
 
 mod cuda_hijack;
+mod cuda_hijack_custom;
 mod cuda_hijack_utils;
 mod cuda_unimplement;
 mod cudart_hijack;

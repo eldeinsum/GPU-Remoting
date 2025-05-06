@@ -36,8 +36,6 @@ struct ClientThread {
     channel_sender: Channel,
     channel_receiver: Channel,
     resource_idx: usize,
-    /// Used in `cuModuleLoadData` to judge if the image is a static fatbin.
-    is_cuda_launch_kernel: bool,
     cuda_device: Option<std::ffi::c_int>,
     #[cfg(feature = "phos")]
     phos_agent: *mut std::ffi::c_void,
@@ -109,7 +107,6 @@ impl ClientThread {
             channel_sender,
             channel_receiver,
             resource_idx: 0,
-            is_cuda_launch_kernel: false,
             cuda_device: None,
             opt_async_api: config.opt_async_api,
             opt_shadow_desc: config.opt_shadow_desc,

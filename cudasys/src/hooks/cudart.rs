@@ -45,7 +45,7 @@ fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t;
 #[cuda_hook(proc_id = 265)]
 fn cudaMalloc(devPtr: *mut *mut c_void, size: usize) -> cudaError_t;
 
-#[cuda_custom_hook(proc_id = 278)]
+#[cuda_custom_hook] // calls one of the following internal APIs
 fn cudaMemcpy(
     dst: *mut c_void,
     src: *const c_void,
@@ -53,7 +53,46 @@ fn cudaMemcpy(
     kind: cudaMemcpyKind,
 ) -> cudaError_t;
 
-#[cuda_custom_hook] // calls cudaMemcpy (wrong implementation)
+#[cuda_hook(proc_id = 320, async_api, parent = cudaMemcpy)]
+fn cudaMemcpyHtod(
+    #[device] dst: *mut c_void,
+    #[host(len = count)] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    'server_extra_recv: {
+        #[cfg(feature = "phos")]
+        compile_error!("PhOS argument is probably broken");
+    }
+}
+
+#[cuda_hook(proc_id = 321, parent = cudaMemcpy)]
+fn cudaMemcpyDtoh(
+    #[host(output, len = count)] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    'server_extra_recv: {
+        #[cfg(feature = "phos")]
+        compile_error!("PhOS argument is probably broken");
+    }
+}
+
+#[cuda_hook(proc_id = 322, async_api, parent = cudaMemcpy)]
+fn cudaMemcpyDtod(
+    #[device] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    'server_extra_recv: {
+        #[cfg(feature = "phos")]
+        compile_error!("PhOS argument is probably broken");
+    }
+}
+
+#[cuda_custom_hook] // calls one of the following internal APIs
 fn cudaMemcpyAsync(
     dst: *mut c_void,
     src: *const c_void,
@@ -61,6 +100,60 @@ fn cudaMemcpyAsync(
     kind: cudaMemcpyKind,
     stream: cudaStream_t,
 ) -> cudaError_t;
+
+#[cuda_hook(proc_id = 323, async_api, parent = cudaMemcpyAsync)]
+fn cudaMemcpyAsyncHtod(
+    #[device] dst: *mut c_void,
+    #[host(len = count)] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'server_extra_recv: {
+        #[cfg(feature = "phos")]
+        compile_error!("PhOS argument is probably broken");
+    }
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cudaStreamSynchronize(stream), Default::default());
+            cudaMemcpy(dst, src__ptr.cast(), count, kind)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 324, parent = cudaMemcpyAsync)]
+fn cudaMemcpyAsyncDtoh(
+    #[host(output, len = count)] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'server_extra_recv: {
+        #[cfg(feature = "phos")]
+        compile_error!("PhOS argument is probably broken");
+    }
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cudaStreamSynchronize(stream), Default::default());
+            cudaMemcpy(dst__ptr.cast(), src, count, kind)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 325, async_api, parent = cudaMemcpyAsync)]
+fn cudaMemcpyAsyncDtod(
+    #[device] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'server_extra_recv: {
+        #[cfg(feature = "phos")]
+        compile_error!("PhOS argument is probably broken");
+    }
+}
 
 #[cuda_hook(proc_id = 253, async_api)]
 fn cudaFree(#[device] devPtr: *mut c_void) -> cudaError_t;

@@ -2,7 +2,7 @@
 
 use codegen::cuda_hook_exe;
 use log::error;
-use network::type_impl::{recv_slice, send_slice, MemPtr};
+use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 
 #[cfg(feature = "phos")]

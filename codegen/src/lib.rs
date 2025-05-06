@@ -229,12 +229,16 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
     let client_extra_send = input.injections.client_extra_send.iter();
     let client_after_recv = input.injections.client_after_recv.iter();
 
+    let modifiers = match input.parent {
+        Some(_) => quote!(pub),
+        None => quote!(#[no_mangle] pub extern "C"),
+    };
+
     let gen_fn = quote! {
-        #[no_mangle]
         // manually expanded the following macro to work around rust-analyzer bug
         // otherwise `Expand macro recursively at caret` is bugged
         // #[use_thread_local(client = CLIENT_THREAD.with_borrow_mut)]
-        pub extern "C" fn #func(#(#params),*) -> #result_ty {
+        #modifiers fn #func(#(#params),*) -> #result_ty {
         CLIENT_THREAD.with_borrow_mut(|client| {
             log::debug!(target: #func_str, "[#{}]", client.id);
             let ClientThread { channel_sender, channel_receiver, .. } = client;
@@ -465,6 +469,10 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
         tokens
     } else {
         let result_ty = &result.ty;
+        let params: Box<_> = params
+            .iter()
+            .filter(|param| matches!(param.mode, ElementMode::Input | ElementMode::Output))
+            .collect();
         let exec_args = params.iter().map(|param| {
             let name = &param.name;
             let arg = if let PassBy::InputValue = param.pass_by {
@@ -500,6 +508,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                 ],
             }
         });
+        let func = input.parent.as_ref().unwrap_or(&func);
         quote! {
             #[cfg(not(feature = "phos"))]
             let #result_name: #result_ty = unsafe { #func(#(#exec_args),*) };

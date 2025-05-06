@@ -204,11 +204,10 @@ fn convert_hooks(
                 output.push(Item::Type(item));
             }
             Item::Fn(mut func) => {
-                let binding = bindings.remove(&func.sig.ident.to_string());
                 if check_sig_replace_attr(
                     &mut func.attrs,
                     &func.sig,
-                    binding,
+                    bindings,
                     target_attr,
                     cuda_version,
                     &mut output,
@@ -219,11 +218,10 @@ fn convert_hooks(
             }
             Item::Verbatim(tokens) => {
                 let mut func: HookDef = syn::parse2(tokens).unwrap();
-                let binding = bindings.remove(&func.sig.ident.to_string());
                 if check_sig_replace_attr(
                     &mut func.attrs,
                     &func.sig,
-                    binding,
+                    bindings,
                     target_attr,
                     cuda_version,
                     &mut output,
@@ -257,7 +255,7 @@ fn convert_hooks(
 fn check_sig_replace_attr(
     attrs: &mut [Attribute],
     sig: &Signature,
-    binding: Option<Signature>,
+    bindings: &mut BTreeMap<String, Signature>,
     target_attr: &str,
     cuda_version: u8,
     output: &mut Vec<Item>,
@@ -277,6 +275,7 @@ fn check_sig_replace_attr(
     match attr.path().segments.last().unwrap().ident.to_string().as_str() {
         "cuda_hook" => {}
         "cuda_custom_hook" => {
+            bindings.remove(&sig.ident.to_string());
             match CustomHookAttrs::from_attr(attr) {
                 Ok(attrs) => {
                     if let Some(proc_id) = attrs.proc_id {
@@ -300,6 +299,7 @@ fn check_sig_replace_attr(
             return true;
         }
     }
+    let is_internal;
     match HookAttrs::from_attr(attr) {
         Ok(attrs) => {
             if cuda_version < attrs.min_cuda_version || attrs.max_cuda_version < cuda_version {
@@ -314,6 +314,7 @@ fn check_sig_replace_attr(
                 name: sig.ident.to_string(),
                 is_custom: false,
             });
+            is_internal = attrs.parent.is_some();
         }
         Err(err) => {
             output.push(Item::Macro(syn::parse2(err.to_compile_error()).unwrap()));
@@ -327,7 +328,11 @@ fn check_sig_replace_attr(
         _ => unreachable!(),
     }
 
-    let Some(mut binding) = binding else {
+    if is_internal {
+        return true;
+    }
+
+    let Some(mut binding) = bindings.remove(&sig.ident.to_string()) else {
         output.push(Item::Macro(parse_quote! {
             compile_error!("binding not found for the function below");
         }));

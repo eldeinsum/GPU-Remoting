@@ -18,14 +18,7 @@ pub fn cudnnGetErrorStringExe<C: CommChannel>(
     #[cfg(not(feature = "phos"))]
     let result = unsafe { cudnnGetErrorString(status) };
     #[cfg(feature = "phos")]
-    let result = call_pos_process(
-        server.pos_cuda_ws,
-        proc_id,
-        0u64,
-        &[
-            &raw const status as usize, size_of_val(&status),
-        ],
-    ) as *const i8;
+    panic!("PhOS returns an i32 which cannot be converted to a pointer");
     // transfer to Vec<u8>
     let result = unsafe { std::ffi::CStr::from_ptr(result).to_bytes().to_vec() };
     if let Err(e) = result.send(channel_sender) {

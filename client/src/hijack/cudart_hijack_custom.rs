@@ -5,103 +5,57 @@ use std::cell::RefCell;
 use std::ffi::*;
 
 #[no_mangle]
-#[use_thread_local(client = CLIENT_THREAD.with_borrow_mut)]
 pub extern "C" fn cudaMemcpy(
-    dst: MemPtr,
-    src: MemPtr,
+    dst: *mut c_void,
+    src: *const c_void,
     count: usize,
     kind: cudaMemcpyKind,
 ) -> cudaError_t {
-    log::debug!("[{}:{}] cudaMemcpy", std::file!(), std::line!());
-
-    assert_ne!(kind, cudaMemcpyKind::cudaMemcpyDefault, "cudaMemcpyDefault is not supported yet");
-
-    let ClientThread { channel_sender, channel_receiver, .. } = client;
-
-    if cudaMemcpyKind::cudaMemcpyHostToHost == kind {
-        unsafe {
+    log::debug!(target: "cudaMemcpy", "kind = {kind:?}");
+    match kind {
+        cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
             std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
+            return cudaError_t::cudaSuccess;
+        },
+        cudaMemcpyKind::cudaMemcpyHostToDevice => {
+            super::cudart_hijack::cudaMemcpyHtod(dst, src.cast(), count, kind)
         }
-        return cudaError_t::cudaSuccess;
-    }
-
-    let proc_id = 278;
-    let mut result: cudaError_t = Default::default();
-    match proc_id.send(channel_sender) {
-        Ok(()) => {}
-        Err(e) => panic!("failed to send proc_id: {:?}", e),
-    }
-    match dst.send(channel_sender) {
-        Ok(()) => {}
-        Err(e) => panic!("failed to send dst: {:?}", e),
-    }
-    match src.send(channel_sender) {
-        Ok(()) => {}
-        Err(e) => panic!("failed to send src: {:?}", e),
-    }
-    match count.send(channel_sender) {
-        Ok(()) => {}
-        Err(e) => panic!("failed to send count: {:?}", e),
-    }
-    match kind.send(channel_sender) {
-        Ok(()) => {}
-        Err(e) => panic!("failed to send kind: {:?}", e),
-    }
-
-    if cudaMemcpyKind::cudaMemcpyHostToDevice == kind {
-        // transport [src; count] to device
-        let data = unsafe { std::slice::from_raw_parts(src as *const u8, count) };
-        match data.send(channel_sender) {
-            Ok(()) => {}
-            Err(e) => panic!("failed to send data: {:?}", e),
+        cudaMemcpyKind::cudaMemcpyDeviceToHost => {
+            super::cudart_hijack::cudaMemcpyDtoh(dst.cast(), src, count, kind)
         }
-    }
-
-    match channel_sender.flush_out() {
-        Ok(()) => {}
-        Err(e) => panic!("failed to send: {:?}", e),
-    }
-
-    if cudaMemcpyKind::cudaMemcpyDeviceToHost == kind {
-        // receive [dst; count] from device
-        let data = unsafe { std::slice::from_raw_parts_mut(dst as *mut u8, count) };
-        match data.recv(channel_receiver) {
-            Ok(()) => {}
-            Err(e) => panic!("failed to receive data: {:?}", e),
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
+            super::cudart_hijack::cudaMemcpyDtod(dst, src, count, kind)
         }
-        #[cfg(feature = "async_api")]
-        match channel_receiver.recv_ts() {
-            Ok(()) => {}
-            Err(e) => panic!("failed to receive timestamp: {:?}", e),
-        }
-    }
-
-    if cfg!(feature = "async_api") {
-        return cudaError_t::cudaSuccess;
-    } else {
-        match result.recv(channel_receiver) {
-            Ok(()) => {}
-            Err(e) => panic!("failed to receive result: {:?}", e),
-        }
-        match channel_receiver.recv_ts() {
-            Ok(()) => {}
-            Err(e) => panic!("failed to receive timestamp: {:?}", e),
-        }
-        return result;
+        cudaMemcpyKind::cudaMemcpyDefault => todo!("cudaMemcpyDefault is not supported yet"),
     }
 }
 
-// TODO: maybe we should understand the semantic diff of cudaMemcpyAsync&cudaMemcpy
 #[no_mangle]
 pub extern "C" fn cudaMemcpyAsync(
-    dst: MemPtr,
-    src: MemPtr,
+    dst: *mut c_void,
+    src: *const c_void,
     count: usize,
     kind: cudaMemcpyKind,
-    _stream: cudaStream_t,
+    stream: cudaStream_t,
 ) -> cudaError_t {
-    log::debug!("[{}:{}] cudaMemcpyAsync", std::file!(), std::line!());
-    cudaMemcpy(dst, src, count, kind)
+    log::debug!(target: "cudaMemcpyAsync", "kind = {kind:?}");
+    match kind {
+        cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
+            super::cudart_hijack::cudaStreamSynchronize(stream);
+            std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
+            return cudaError_t::cudaSuccess;
+        },
+        cudaMemcpyKind::cudaMemcpyHostToDevice => {
+            super::cudart_hijack::cudaMemcpyAsyncHtod(dst, src.cast(), count, kind, stream)
+        }
+        cudaMemcpyKind::cudaMemcpyDeviceToHost => {
+            super::cudart_hijack::cudaMemcpyAsyncDtoh(dst.cast(), src, count, kind, stream)
+        }
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
+            super::cudart_hijack::cudaMemcpyAsyncDtod(dst, src, count, kind, stream)
+        }
+        cudaMemcpyKind::cudaMemcpyDefault => todo!("cudaMemcpyDefault is not supported yet"),
+    }
 }
 
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
@@ -135,13 +89,11 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
         let index = (*fatCubinHandle >> 4) - 1;
         log::debug!("registering fatbin #{index}");
         let image = runtime.lazy_fatbins[index];
-        CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = true);
         let mut module = std::ptr::null_mut();
         assert_eq!(
-            super::cuda_hijack::cuModuleLoadData(&raw mut module, image.cast()),
+            super::cuda_hijack::cuModuleLoadDataInternal(&raw mut module, image.cast(), true),
             Default::default(),
         );
-        CLIENT_THREAD.with_borrow_mut(|client| client.is_cuda_launch_kernel = false);
         module
     };
 
