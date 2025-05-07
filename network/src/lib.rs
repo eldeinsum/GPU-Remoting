@@ -4,6 +4,7 @@ use std::boxed::Box;
 use std::fmt;
 
 pub mod ringbufferchannel;
+pub mod tcp;
 pub mod type_impl;
 
 pub use ringbufferchannel::types::NsTimestamp;

@@ -5,7 +5,7 @@
 use network::ringbufferchannel::RDMAChannel;
 
 use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
-use network::{Channel, CommChannel, Transportable};
+use network::{tcp, Channel, CommChannel, Transportable};
 
 #[cfg(not(feature = "passthrough"))]
 mod hijack;
@@ -78,6 +78,10 @@ impl ClientThread {
                 } else {
                     (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
                 }
+            }
+            "tcp" => {
+                let (sender, receiver) = tcp::new_client(&config, id).unwrap();
+                (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
             }
             #[cfg(feature = "rdma")]
             "rdma" => {

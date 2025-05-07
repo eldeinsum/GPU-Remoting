@@ -14,10 +14,8 @@ use dispatcher::dispatch;
 #[cfg(feature = "rdma")]
 use network::ringbufferchannel::RDMAChannel;
 
-use network::{
-    ringbufferchannel::{EmulatorChannel, SHMChannel},
-    Channel, CommChannel, CommChannelError, Transportable, NetworkConfig,
-};
+use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
+use network::{tcp, Channel, CommChannel, CommChannelError, NetworkConfig, Transportable};
 
 use log::{error, info};
 
@@ -50,13 +48,18 @@ impl<C> Drop for ServerWorker<C> {
     }
 }
 
-fn create_buffer(config: &NetworkConfig, id: i32) -> (Channel, Channel) {
+fn create_buffer(
+    config: &NetworkConfig,
+    id: i32,
+    barrier: Option<std::sync::Arc<std::sync::Barrier>>,
+) -> (Channel, Channel) {
     // Use features when compiling to decide what arm(s) will be supported.
     // In the server side, the sender's name is stoc_channel_name,
     // receiver's name is ctos_channel_name.
     match config.comm_type.as_str() {
         "shm" => {
             let (receiver, sender) = SHMChannel::new_server_with_id(config, id).unwrap();
+            barrier.unwrap().wait();
             if config.emulator {
                 return (
                     Channel::new(Box::new(EmulatorChannel::new(sender, config))),
@@ -65,8 +68,13 @@ fn create_buffer(config: &NetworkConfig, id: i32) -> (Channel, Channel) {
             }
             (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
         }
+        "tcp" => {
+            let (receiver, sender) = tcp::new_server(config, id, &barrier.unwrap()).unwrap();
+            (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+        }
         #[cfg(feature = "rdma")]
         "rdma" => {
+            assert!(barrier.is_none());
             let (receiver, sender) = RDMAChannel::new_server(config, id);
             (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
         }
@@ -89,7 +97,7 @@ pub fn launch_server(
     barrier: Option<std::sync::Arc<std::sync::Barrier>>,
     is_main_thread: bool,
 ) {
-    let (channel_sender, channel_receiver) = create_buffer(config, id);
+    let (channel_sender, channel_receiver) = create_buffer(config, id, barrier);
     info!(
         "[{}:{}] {} buffer created",
         std::file!(),
@@ -131,8 +139,6 @@ pub fn launch_server(
             pos_cuda_ws
         },
     };
-
-    barrier.map(|b| b.wait());
 
     loop {
         if let Ok(proc_id) = receive_request(&mut server.channel_receiver) {

@@ -16,6 +16,7 @@ fn main() {
         "shm" => {
             log::info!("Using shared memory channel")
         }
+        "tcp" => log::info!("Using TCP channel"),
         #[cfg(feature = "rdma")]
         "rdma" => log::info!("Using RDMA channel"),
         _ => panic!("Unsupported communication type in config"),
@@ -79,7 +80,7 @@ fn server_process(config: NetworkConfig, mut rx: io::PipeReader, mut tx: io::Pip
         let id = i32::from_ne_bytes(buf);
         let child_config = Arc::clone(&config);
         let (barrier, child_barrier) = match config.comm_type.as_str() {
-            "shm" => {
+            "shm" | "tcp" => {
                 let barrier = Arc::new(Barrier::new(2));
                 let child_barrier = Arc::clone(&barrier);
                 (Some(barrier), Some(child_barrier))
