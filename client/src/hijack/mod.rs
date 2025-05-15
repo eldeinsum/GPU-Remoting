@@ -15,14 +15,15 @@ mod cudnn_hijack_custom;
 mod cudnn_unimplement;
 mod cublas_hijack;
 mod cublas_unimplement;
+mod cublasLt_hijack;
 mod cublasLt_unimplement;
 mod nvrtc_hijack;
 mod nvrtc_unimplement;
 mod nccl_hijack;
 mod nccl_unimplement;
 
+#[expect(unused_imports)]
 use codegen::{cuda_hook_hijack, use_thread_local};
-use log::error;
 use network::type_impl::{recv_slice_to, send_slice, MemPtr};
 use network::{CommChannel, Transportable};
 

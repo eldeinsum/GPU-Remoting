@@ -16,11 +16,10 @@ use crate::phos::call_pos_process;
 mod cuda_exe;
 mod cuda_exe_utils;
 mod cudart_exe;
-mod cudart_exe_custom;
 mod nvml_exe;
-mod cudnn_exe_custom;
 mod cudnn_exe;
 mod cublas_exe;
+mod cublasLt_exe;
 mod nvrtc_exe;
 mod nccl_exe;
 

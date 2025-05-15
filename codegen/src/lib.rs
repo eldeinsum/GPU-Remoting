@@ -120,6 +120,8 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                     let mut tokens = define_usize_from(&len_ident, len);
                     let span = name.span();
                     quote_each_token_spanned! {tokens span
+                        assert!(!#name.is_null());
+                        log::trace!(target: #func_str, "[#{}] (input) {} = {:p}", client.id, #name_str, #name);
                         let #name = unsafe { std::slice::from_raw_parts(#name, #len_ident) };
                         match send_slice(#name, channel_sender) {
                             Ok(()) => {}
@@ -155,12 +157,16 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
         let name_str = name.to_string();
         let deref = match &var.pass_by {
             PassBy::InputValue | PassBy::InputCStr => unreachable!(),
-            PassBy::SinglePtr => quote! { let #name = unsafe { &mut *#name }; },
+            PassBy::SinglePtr => quote! {
+                assert!(!#name.is_null());
+                let #name = unsafe { &mut *#name };
+            },
             PassBy::ArrayPtr { len, .. } => {
                 let len_ident = format_ident!("{}_len", name);
                 let mut tokens = define_usize_from(&len_ident, len);
                 let span = name.span();
                 quote_each_token_spanned! {tokens span
+                    assert!(!#name.is_null());
                     let #name = unsafe { std::slice::from_raw_parts_mut(#name, #len_ident) };
                     match recv_slice_to(#name, channel_receiver) {
                         Ok(()) => {}
@@ -396,7 +402,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                     let span = name.span();
                     let ptr_ident = param.get_exe_ptr_ident();
                     quote_each_token_spanned! {tokens span
-                        let #ptr_ident = &raw const #name;
+                        let #ptr_ident = (&raw const #name).cast_mut();
                     }
                     tokens
                 }
@@ -410,7 +416,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                             Err(e) => panic!("failed to receive {}: {}", #name_str, e),
                         };
                         log::trace!(target: #func_str, "[#{}] (input) {} = {:p}", server.id, #name_str, #name.as_ptr());
-                        let #ptr_ident = #name.as_ptr();
+                        let #ptr_ident = #name.as_ptr().cast_mut();
                     }
                 }
                 PassBy::InputCStr => {
@@ -584,6 +590,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let server_extra_recv = input.injections.server_extra_recv.iter();
+    let server_before_execution = input.injections.server_before_execution.iter();
     let server_after_send = input.injections.server_after_send.iter();
 
     let gen_fn = quote! {
@@ -599,6 +606,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                 Err(e) => panic!("failed to receive {}: {:?}", "timestamp", e),
             }
             #( #def_statements )*
+            #( #server_before_execution )*
             #exec_statement
             #( #assume_init )*
 

@@ -37,6 +37,7 @@ struct ClientThread {
     channel_receiver: Channel,
     resource_idx: usize,
     cuda_device: Option<std::ffi::c_int>,
+    cuda_device_init: bool,
     #[cfg(feature = "phos")]
     phos_agent: *mut std::ffi::c_void,
     opt_async_api: bool,
@@ -112,6 +113,7 @@ impl ClientThread {
             channel_receiver,
             resource_idx: 0,
             cuda_device: None,
+            cuda_device_init: false,
             opt_async_api: config.opt_async_api,
             opt_shadow_desc: config.opt_shadow_desc,
             opt_local: config.opt_local,

@@ -241,7 +241,7 @@ fn cudaMemsetAsync(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
-#[cuda_custom_hook(proc_id = 151)]
+#[cuda_custom_hook] // local
 fn cudaGetErrorString(error: cudaError_t) -> *const c_char;
 
 #[cuda_hook(proc_id = 274)]
@@ -342,27 +342,15 @@ fn cudaStreamGetCaptureInfo_v2(
     stream: cudaStream_t,
     captureStatus_out: *mut cudaStreamCaptureStatus,
     id_out: *mut c_ulonglong,
-    #[skip] graph_out: *mut cudaGraph_t,
-    #[skip] dependencies_out: *mut *const cudaGraphNode_t,
-    #[skip] numDependencies_out: *mut usize,
+    #[device] graph_out: *mut cudaGraph_t, // null
+    #[device] dependencies_out: *mut *const cudaGraphNode_t, // null
+    #[device] numDependencies_out: *mut usize, // null
 ) -> cudaError_t {
     'client_before_send: {
         assert!(!id_out.is_null());
         assert!(graph_out.is_null());
         assert!(dependencies_out.is_null());
         assert!(numDependencies_out.is_null());
-    }
-    'server_execution: {
-        let result = unsafe {
-            cudaStreamGetCaptureInfo_v2(
-                stream,
-                captureStatus_out__ptr,
-                id_out__ptr,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
     }
 }
 
@@ -376,9 +364,8 @@ fn cudaThreadExchangeStreamCaptureMode(mode: *mut cudaStreamCaptureMode) -> cuda
         let mut mode_in = cudaStreamCaptureMode::cudaStreamCaptureModeGlobal;
         mode_in.recv(channel_receiver).unwrap();
     }
-    'server_execution: {
+    'server_before_execution: {
         mode.write(mode_in);
-        let result = unsafe { cudaThreadExchangeStreamCaptureMode(mode__ptr) };
     }
 }
 
@@ -394,14 +381,11 @@ fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
 #[cuda_hook(proc_id = 563)]
 fn cudaGraphGetNodes(
     graph: cudaGraph_t,
-    #[skip] nodes: *mut cudaGraphNode_t,
+    #[device] nodes: *mut cudaGraphNode_t, // null
     numNodes: *mut usize,
 ) -> cudaError_t {
     'client_before_send: {
         assert!(nodes.is_null());
-    }
-    'server_execution: {
-        let result = unsafe { cudaGraphGetNodes(graph, std::ptr::null_mut(), numNodes__ptr) };
     }
 }
 
