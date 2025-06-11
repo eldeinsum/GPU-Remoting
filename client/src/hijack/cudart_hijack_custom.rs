@@ -231,39 +231,7 @@ extern "C" fn cudaFuncGetAttributes(
 ) -> cudaError_t {
     log::debug!(target: "cudaFuncGetAttributes", "");
     let func = get_cufunction(func as HostPtr);
-    let attr = unsafe {
-        attr.write_bytes(0u8, 1);
-        &mut *attr
-    };
-    // HACK: implementation with cuFuncGetAttribute depends on CUDA version
-    macro_rules! get_attributes {
-        ($func:ident -> $struct:ident $($field:ident: $attr:ident,)+) => {
-            $(
-                let mut i = 0;
-                assert_eq!(
-                    super::cuda_hijack::cuFuncGetAttribute(
-                        &raw mut i,
-                        cudasys::cuda::CUfunction_attribute::$attr,
-                        $func,
-                    ),
-                    Default::default(),
-                );
-                $struct.$field = i as _;
-            )+
-        }
-    }
-    get_attributes! { func -> attr
-        sharedSizeBytes: CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-        constSizeBytes: CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES,
-        localSizeBytes: CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES,
-        maxThreadsPerBlock: CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
-        numRegs: CU_FUNC_ATTRIBUTE_NUM_REGS,
-        ptxVersion: CU_FUNC_ATTRIBUTE_PTX_VERSION,
-        binaryVersion: CU_FUNC_ATTRIBUTE_BINARY_VERSION,
-        cacheModeCA: CU_FUNC_ATTRIBUTE_CACHE_MODE_CA,
-        maxDynamicSharedSizeBytes: CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-    }
-    cudaError_t::cudaSuccess
+    super::cudart_hijack::cudaFuncGetAttributesInternal(attr, func)
 }
 
 #[no_mangle]

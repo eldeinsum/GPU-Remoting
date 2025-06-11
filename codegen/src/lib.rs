@@ -6,7 +6,7 @@ use quote::{format_ident, quote, quote_each_token_spanned, quote_spanned, TokenS
 use syn::{parse_macro_input, Type};
 
 mod utils;
-use utils::{define_usize_from, is_shadow_desc_type, ElementMode, PassBy};
+use utils::{define_usize_from, is_shadow_desc_type, Element, ElementMode, PassBy};
 
 mod hook_fn;
 use hook_fn::HookFn;
@@ -248,6 +248,10 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
         CLIENT_THREAD.with_borrow_mut(|client| {
             log::debug!(target: #func_str, "[#{}]", client.id);
             let ClientThread { channel_sender, channel_receiver, .. } = client;
+
+            #[cfg(feature = "phos")]
+            client.phos_agent.block_until_ready(channel_sender);
+
             let proc_id: i32 = #proc_id;
             let mut #result_name: #result_ty = Default::default();
 
@@ -289,6 +293,10 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
                 );
             }
             #( #client_after_recv )*
+
+            #[cfg(feature = "phos")]
+            client.phos_agent.block_until_ready(channel_sender);
+
             return #result_name;
         })
         }
@@ -469,11 +477,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // execution statement
     let result_name = &result.name;
-    let exec_statement = if !input.injections.server_execution.is_empty() {
-        let mut tokens = proc_macro2::TokenStream::new();
-        tokens.append_all(&input.injections.server_execution);
-        tokens
-    } else {
+    let (exec_statement, phos_fn) = {
         let result_ty = &result.ty;
         let params: Box<_> = params
             .iter()
@@ -492,40 +496,48 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
                 quote!(#arg)
             }
         });
-        let pos_args = params.iter().map(|param| {
-            let name = &param.name;
-            let ptr_ident = param.get_exe_ptr_ident();
-            match param.pass_by {
-                PassBy::InputValue => quote_spanned![name.span()=>
-                    &raw const #name as usize,
-                    size_of_val(&#name),
-                ],
-                PassBy::SinglePtr => quote_spanned![name.span()=>
-                    #ptr_ident as usize,
-                    size_of_val(&#name),
-                ],
-                PassBy::ArrayPtr { .. } => quote_spanned![name.span()=>
-                    #ptr_ident as usize,
-                    size_of_val(#name.as_ref()),
-                ],
-                PassBy::InputCStr => quote_spanned![name.span()=>
-                    #ptr_ident as usize,
-                    #name.as_bytes_with_nul().len(),
-                ],
-            }
+        let phos_exec_args = exec_args.clone();
+        let phos_process_args = params.iter().map(|Element { name, .. }| {
+            quote_spanned![name.span()=>
+                &raw const #name as usize,
+                size_of_val(&#name),
+            ]
         });
+        let proc_id = &input.proc_id;
+        let phos_func_name = format_ident!("phos_{}", func);
+        let phos_params = params.iter().map(|Element { name, ty, .. }| quote! { #name: #ty });
+        let phos_fn = quote! {
+            #[cfg(feature = "phos")]
+            fn #phos_func_name(
+                pos_cuda_ws: &crate::phos::POSWorkspace_CUDA,
+                #(#phos_params),*
+            ) -> #result_ty {
+                #result_ty::from_i32(pos_cuda_ws.pos_process(
+                    #proc_id,
+                    0u64,
+                    &[#(#phos_process_args)*],
+                )).expect("Illegal result ID")
+            }
+        };
         let func = input.parent.as_ref().unwrap_or(&func);
-        quote! {
+        let exec_statement = quote! {
             #[cfg(not(feature = "phos"))]
             let #result_name: #result_ty = unsafe { #func(#(#exec_args),*) };
             #[cfg(feature = "phos")]
-            let #result_name = #result_ty::from_i32(call_pos_process(
-                server.pos_cuda_ws,
-                proc_id,
-                0u64,
-                &[#(#pos_args)*],
-            )).expect("Illegal result ID");
-        }
+            let #result_name: #result_ty = #phos_func_name(
+                &server.pos_cuda_ws,
+                #(#phos_exec_args),*
+            );
+        };
+        (exec_statement, phos_fn)
+    };
+
+    let exec_statement = if !input.injections.server_execution.is_empty() {
+        let mut tokens = proc_macro2::TokenStream::new();
+        tokens.append_all(&input.injections.server_execution);
+        tokens
+    } else {
+        exec_statement
     };
 
     // send result
@@ -594,7 +606,7 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
     let server_after_send = input.injections.server_after_send.iter();
 
     let gen_fn = quote! {
-        pub fn #func_exe<C: CommChannel>(#[cfg(feature = "phos")] proc_id: i32, server: &mut ServerWorker<C>) {
+        pub fn #func_exe<C: CommChannel>(server: &mut ServerWorker<C>) {
             let ServerWorker { channel_sender, channel_receiver, .. } = server;
             log::debug!(target: #func_str, "[#{}]", server.id);
             #( #recv_statements )*
@@ -627,6 +639,8 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
             }
             #( #server_after_send )*
         }
+
+        #phos_fn
     };
 
     gen_fn.into()

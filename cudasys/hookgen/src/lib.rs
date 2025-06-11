@@ -201,6 +201,12 @@ fn convert_hooks(
             }
             Item::Type(mut item) => {
                 item.attrs.clear();
+                if let Type::Path(ty) = item.ty.as_mut() {
+                    let ident = &mut ty.path.segments[0].ident;
+                    if ident == "crate" {
+                        *ident = Ident::new("cudasys", ident.span());
+                    }
+                }
                 output.push(Item::Type(item));
             }
             Item::Fn(mut func) => {
