@@ -5,6 +5,12 @@ use std::os::raw::*;
 /// FIXME: void pointer hacking
 type HackedAssumeDouble = f64;
 
+#[cuda_hook(proc_id = 1500)]
+fn cublasLtCreate(lightHandle: *mut cublasLtHandle_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1501)]
+fn cublasLtDestroy(lightHandle: cublasLtHandle_t) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1511)]
 fn cublasLtMatmul(
     lightHandle: cublasLtHandle_t,

@@ -116,3 +116,46 @@ fn cublasSetWorkspace_v2(
     #[device] workspace: *mut c_void,
     workspaceSizeInBytes: usize,
 ) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1111)]
+fn cublasSetMatrix(
+    rows: c_int,
+    cols: c_int,
+    elemSize: c_int,
+    #[host(len = rows * cols * elemSize)] A: *const c_void,
+    lda: c_int,
+    #[device] B: *mut c_void,
+    ldb: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1115, async_api)]
+fn cublasSetMatrixAsync(
+    rows: c_int,
+    cols: c_int,
+    elemSize: c_int,
+    #[host(len = rows * cols * elemSize)] A: *const c_void,
+    lda: c_int,
+    #[device] B: *mut c_void,
+    ldb: c_int,
+    stream: cudaStream_t,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1112)]
+fn cublasGetMatrix(
+    rows: c_int,
+    cols: c_int,
+    elemSize: c_int,
+    #[device] A: *const c_void,
+    lda: c_int,
+    #[host(output, len = rows * cols * elemSize)] B: *mut c_void,
+    ldb: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1182)]
+fn cublasSscal_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[host] alpha: *const f32, // FIXME: safe until we support cublasSetPointerMode()
+    #[device] x: *mut f32,
+    incx: c_int,
+) -> cublasStatus_t;
