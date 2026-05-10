@@ -218,8 +218,28 @@ fn cuPointerGetAttribute(
 #[cuda_hook(proc_id = 900201)]
 fn cuMemAlloc_v2(dptr: *mut CUdeviceptr, bytesize: usize) -> CUresult;
 
+#[cuda_hook(proc_id = 900401)]
+fn cuMemAllocAsync(dptr: *mut CUdeviceptr, bytesize: usize, hStream: CUstream) -> CUresult;
+
 #[cuda_hook(proc_id = 900202, async_api = false)]
 fn cuMemFree_v2(dptr: CUdeviceptr) -> CUresult;
+
+#[cuda_hook(proc_id = 900402, async_api = false)]
+fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900403)]
+fn cuMemGetInfo_v2(free: *mut usize, total: *mut usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900404, async_api)]
+fn cuMemcpy(dst: CUdeviceptr, src: CUdeviceptr, ByteCount: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900405, async_api)]
+fn cuMemcpyAsync(
+    dst: CUdeviceptr,
+    src: CUdeviceptr,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900203, async_api)]
 fn cuMemcpyHtoD_v2(
@@ -238,17 +258,73 @@ fn cuMemcpyDtoH_v2(
 #[cuda_hook(proc_id = 900205, async_api)]
 fn cuMemcpyDtoD_v2(dstDevice: CUdeviceptr, srcDevice: CUdeviceptr, ByteCount: usize) -> CUresult;
 
+#[cuda_hook(proc_id = 900406, async_api)]
+fn cuMemcpyDtoDAsync_v2(
+    dstDevice: CUdeviceptr,
+    srcDevice: CUdeviceptr,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900407)]
+fn cuMemcpyDtoHAsync_v2(
+    #[host(output, len = ByteCount)] dstHost: *mut c_void,
+    srcDevice: CUdeviceptr,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult {
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cuStreamSynchronize(hStream), Default::default());
+            cuMemcpyDtoH_v2(dstHost__ptr.cast(), srcDevice, ByteCount)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900408)]
+fn cuMemcpyHtoDAsync_v2(
+    dstDevice: CUdeviceptr,
+    #[host(len = ByteCount)] srcHost: *const c_void,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult {
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cuStreamSynchronize(hStream), Default::default());
+            cuMemcpyHtoD_v2(dstDevice, srcHost__ptr.cast(), ByteCount)
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 900206, async_api)]
 fn cuMemsetD8_v2(dstDevice: CUdeviceptr, uc: c_uchar, N: usize) -> CUresult;
 
 #[cuda_hook(proc_id = 900207, async_api)]
 fn cuMemsetD32_v2(dstDevice: CUdeviceptr, ui: c_uint, N: usize) -> CUresult;
 
+#[cuda_hook(proc_id = 900409, async_api)]
+fn cuMemsetD8Async(dstDevice: CUdeviceptr, uc: c_uchar, N: usize, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900410, async_api)]
+fn cuMemsetD32Async(dstDevice: CUdeviceptr, ui: c_uint, N: usize, hStream: CUstream) -> CUresult;
+
 #[cuda_hook(proc_id = 900208)]
 fn cuStreamCreate(phStream: *mut CUstream, Flags: c_uint) -> CUresult;
 
+#[cuda_hook(proc_id = 900411)]
+fn cuStreamCreateWithPriority(phStream: *mut CUstream, flags: c_uint, priority: c_int) -> CUresult;
+
 #[cuda_hook(proc_id = 900209, async_api = false)]
 fn cuStreamDestroy_v2(hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900412)]
+fn cuStreamGetFlags(hStream: CUstream, flags: *mut c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900413)]
+fn cuStreamGetPriority(hStream: CUstream, priority: *mut c_int) -> CUresult;
+
+#[cuda_hook(proc_id = 900414, async_api = false)]
+fn cuStreamQuery(hStream: CUstream) -> CUresult;
 
 #[cuda_hook(proc_id = 900210, async_api = false)]
 fn cuStreamSynchronize(hStream: CUstream) -> CUresult;
@@ -258,6 +334,9 @@ fn cuEventCreate(phEvent: *mut CUevent, Flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 900212, async_api)]
 fn cuEventRecord(hEvent: CUevent, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900400, async_api)]
+fn cuEventRecordWithFlags(hEvent: CUevent, hStream: CUstream, flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 900213, async_api = false)]
 fn cuEventSynchronize(hEvent: CUevent) -> CUresult;

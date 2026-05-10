@@ -181,6 +181,48 @@ pub extern "C" fn cudaMemcpy2D(
     cudaError_t::cudaSuccess
 }
 
+#[no_mangle]
+pub extern "C" fn cudaMemcpy2DAsync(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(
+        target: "cudaMemcpy2DAsync",
+        "width = {width}, height = {height}, kind = {kind:?}",
+    );
+
+    if height == 0 || width == 0 {
+        return cudaError_t::cudaSuccess;
+    }
+
+    if dst.is_null() || src.is_null() || width > dpitch || width > spitch {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    for row in 0..height {
+        let Some(dst_offset) = row.checked_mul(dpitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let Some(src_offset) = row.checked_mul(spitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let row_dst = unsafe { (dst as *mut u8).add(dst_offset).cast() };
+        let row_src = unsafe { (src as *const u8).add(src_offset).cast() };
+        let result = cudaMemcpyAsync(row_dst, row_src, width, kind, stream);
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    cudaError_t::cudaSuccess
+}
+
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     if !CLIENT_THREAD.with_borrow(|client| client.cuda_device_init) {
         // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#initialization
@@ -338,6 +380,13 @@ pub extern "C" fn cudaGetErrorString(cudaError: cudaError_t) -> *const ::std::os
     let result = format!("{cudaError:?} ({})", cudaError as u32);
     let result = CString::new(result).unwrap();
     result.into_raw() // leaking the string as the program is about to fail anyway
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetErrorName(cudaError: cudaError_t) -> *const ::std::os::raw::c_char {
+    log::debug!(target: "cudaGetErrorName", "{cudaError:?}");
+    let result = CString::new(format!("{cudaError:?}")).unwrap();
+    result.into_raw()
 }
 
 struct CallConfiguration {

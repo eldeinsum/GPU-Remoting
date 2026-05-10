@@ -83,11 +83,26 @@ fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t;
 #[cuda_hook(proc_id = 900100)]
 fn cudaStreamCreate(pStream: *mut cudaStream_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900422)]
+fn cudaStreamCreateWithFlags(pStream: *mut cudaStream_t, flags: c_uint) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900101, async_api = false)]
 fn cudaStreamDestroy(stream: cudaStream_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900423)]
+fn cudaStreamGetFlags(hStream: cudaStream_t, flags: *mut c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900424)]
+fn cudaStreamGetPriority(hStream: cudaStream_t, priority: *mut c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900425, async_api = false)]
+fn cudaStreamQuery(stream: cudaStream_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 265)]
 fn cudaMalloc(devPtr: *mut *mut c_void, size: usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900420)]
+fn cudaMallocAsync(devPtr: *mut *mut c_void, size: usize, hStream: cudaStream_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900102)]
 fn cudaMallocPitch(
@@ -192,8 +207,23 @@ fn cudaMemcpy2D(
     kind: cudaMemcpyKind,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // calls cudaMemcpyAsync row by row
+fn cudaMemcpy2DAsync(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 253, async_api)]
 fn cudaFree(#[device] devPtr: *mut c_void) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900421, async_api = false)]
+fn cudaFreeAsync(#[device] devPtr: *mut c_void, hStream: cudaStream_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 175)]
 fn cudaStreamIsCapturing(
@@ -298,6 +328,9 @@ fn cudaMemsetAsync(
 #[cuda_custom_hook] // local
 fn cudaGetErrorString(error: cudaError_t) -> *const c_char;
 
+#[cuda_custom_hook] // local
+fn cudaGetErrorName(error: cudaError_t) -> *const c_char;
+
 #[cuda_hook(proc_id = 274)]
 fn cudaMemGetInfo(free: *mut usize, total: *mut usize) -> cudaError_t;
 
@@ -332,6 +365,10 @@ fn cudaEventCreate(event: *mut cudaEvent_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 205)]
 fn cudaEventRecord(event: cudaEvent_t, stream: cudaStream_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900426)]
+fn cudaEventRecordWithFlags(event: cudaEvent_t, stream: cudaStream_t, flags: c_uint)
+    -> cudaError_t;
 
 #[cuda_hook(proc_id = 900104, async_api = false)]
 fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t;
@@ -387,6 +424,9 @@ fn cudaMemset(#[device] devPtr: *mut c_void, value: c_int, count: usize) -> cuda
 
 #[cuda_hook(proc_id = 114, async_api = false)]
 fn cudaDeviceReset() -> cudaError_t;
+
+#[cuda_hook(proc_id = 900427, async_api = false)]
+fn cudaCtxResetPersistingL2Cache() -> cudaError_t;
 
 #[cuda_hook(proc_id = 163, async_api = false)]
 fn cudaStreamBeginCapture(stream: cudaStream_t, mode: cudaStreamCaptureMode) -> cudaError_t;
