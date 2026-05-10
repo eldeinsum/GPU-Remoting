@@ -37,6 +37,10 @@ pub fn new_client(config: &NetworkConfig, id: i32) -> Result<(TcpSender, TcpRece
 pub struct TcpSender(RefCell<BufWriter<TcpStream>>);
 pub struct TcpReceiver(RefCell<BufReader<TcpStream>>);
 
+fn invalid_direction() -> Result<usize, CommChannelError> {
+    Err(CommChannelError::InvalidOperation)
+}
+
 impl CommChannel for TcpSender {
     fn flush_out(&self) -> Result<(), CommChannelError> {
         match self.0.borrow_mut().flush() {
@@ -61,36 +65,36 @@ impl CommChannelInnerIO for TcpSender {
         }
     }
 
-    fn try_put_bytes(&self, _src: &RawMemory) -> Result<usize, CommChannelError> {
-        unimplemented!()
+    fn try_put_bytes(&self, src: &RawMemory) -> Result<usize, CommChannelError> {
+        self.put_bytes(src)
     }
 
     fn get_bytes(&self, _dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
-        unimplemented!()
+        invalid_direction()
     }
 
     fn try_get_bytes(&self, _dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
-        unimplemented!()
+        invalid_direction()
     }
 
     fn safe_try_get_bytes(&self, _dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
-        unimplemented!()
+        invalid_direction()
     }
 }
 
 impl CommChannel for TcpReceiver {
     fn flush_out(&self) -> Result<(), CommChannelError> {
-        unimplemented!()
+        Ok(())
     }
 }
 
 impl CommChannelInnerIO for TcpReceiver {
     fn put_bytes(&self, _src: &RawMemory) -> Result<usize, CommChannelError> {
-        unimplemented!()
+        invalid_direction()
     }
 
     fn try_put_bytes(&self, _src: &RawMemory) -> Result<usize, CommChannelError> {
-        unimplemented!()
+        invalid_direction()
     }
 
     fn get_bytes(&self, dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
@@ -104,11 +108,11 @@ impl CommChannelInnerIO for TcpReceiver {
         }
     }
 
-    fn try_get_bytes(&self, _dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
-        unimplemented!()
+    fn try_get_bytes(&self, dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
+        self.get_bytes(dst)
     }
 
-    fn safe_try_get_bytes(&self, _dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
-        unimplemented!()
+    fn safe_try_get_bytes(&self, dst: &mut RawMemoryMut) -> Result<usize, CommChannelError> {
+        self.get_bytes(dst)
     }
 }
