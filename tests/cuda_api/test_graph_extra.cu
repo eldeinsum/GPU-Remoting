@@ -418,6 +418,18 @@ int main()
     }
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(alloc_graph));
+
+    unsigned long long graph_mem_value = 0;
+    CHECK_CUDA(cudaDeviceGetGraphMemAttribute(
+        0, cudaGraphMemAttrUsedMemCurrent, &graph_mem_value));
+    CHECK_CUDA(cudaDeviceGetGraphMemAttribute(
+        0, cudaGraphMemAttrReservedMemCurrent, &graph_mem_value));
+    graph_mem_value = 0;
+    CHECK_CUDA(cudaDeviceSetGraphMemAttribute(
+        0, cudaGraphMemAttrUsedMemHigh, &graph_mem_value));
+    CHECK_CUDA(cudaDeviceSetGraphMemAttribute(
+        0, cudaGraphMemAttrReservedMemHigh, &graph_mem_value));
+    CHECK_CUDA(cudaDeviceGraphMemTrim(0));
     CHECK_CUDA(cudaFree(copy_dst));
     CHECK_CUDA(cudaFree(copy_src));
 

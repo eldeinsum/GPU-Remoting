@@ -772,6 +772,23 @@ fn cudaMallocFromPoolAsync(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900562, async_api = false)]
+fn cudaDeviceGraphMemTrim(device: c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900563)]
+fn cudaDeviceGetGraphMemAttribute(
+    device: c_int,
+    attr: cudaGraphMemAttributeType,
+    #[host(output, len = attr.data_size())] value: *mut c_void,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900564)]
+fn cudaDeviceSetGraphMemAttribute(
+    device: c_int,
+    attr: cudaGraphMemAttributeType,
+    #[host(input, len = attr.data_size())] value: *mut c_void,
+) -> cudaError_t;
+
 #[cuda_custom_hook] // local
 fn __cudaPushCallConfiguration(
     gridDim: dim3,

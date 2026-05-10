@@ -130,6 +130,12 @@ pub mod cudart {
             }
         }
     }
+
+    impl cudaGraphMemAttributeType {
+        pub fn data_size(&self) -> usize {
+            size_of::<u64>()
+        }
+    }
 }
 
 pub mod nvml {
