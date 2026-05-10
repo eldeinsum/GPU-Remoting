@@ -37,16 +37,15 @@ pub fn find_cuda() -> (Vec<PathBuf>, Vec<PathBuf>) {
             valid_paths.push(lib.clone());
             valid_paths.push(lib.join("stubs"));
         }
-        let base = base.join("targets/x86_64-linux");
-        let header = base.join("include/cuda.h");
-        if header.is_file() {
-            valid_paths.push(base.join("lib"));
-            valid_paths.push(base.join("lib/stubs"));
+        let lib = base.join("lib/x86_64-linux-gnu");
+        if lib.is_dir() {
+            valid_paths.push(lib);
         }
-        // cudnn
-        let cudnn_lib = base.join("include/x86_64-linux-gnu");
-        if cudnn_lib.is_dir() {
-            valid_paths.push(cudnn_lib);
+        let target = base.join("targets/x86_64-linux");
+        let header = target.join("include/cuda.h");
+        if header.is_file() {
+            valid_paths.push(target.join("lib"));
+            valid_paths.push(target.join("lib/stubs"));
         }
     }
     eprintln!("Found CUDA paths: {:?}", valid_paths);
@@ -90,15 +89,19 @@ fn split(content: &str, types_file: &Path, funcs_file: &Path) {
 
     // Write the types and functions to separate files.
     if let Some(parent) = types_file.parent() {
-        std::fs::create_dir_all(parent).unwrap_or_else(|e| panic!("Failed to create directory {parent:?}: {e}"));
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("Failed to create directory {parent:?}: {e}"));
     }
-    let mut types_file = File::create(types_file).unwrap_or_else(|e| panic!("Failed to create file {types_file:?}: {e}"));
+    let mut types_file = File::create(types_file)
+        .unwrap_or_else(|e| panic!("Failed to create file {types_file:?}: {e}"));
     writeln!(types_file, "{}", types).expect("Failed to write types");
 
     if let Some(parent) = funcs_file.parent() {
-        std::fs::create_dir_all(parent).unwrap_or_else(|e| panic!("Failed to create directory {parent:?}: {e}"));
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("Failed to create directory {parent:?}: {e}"));
     }
-    let mut funcs_file = File::create(funcs_file).unwrap_or_else(|e| panic!("Failed to create file {funcs_file:?}: {e}"));
+    let mut funcs_file = File::create(funcs_file)
+        .unwrap_or_else(|e| panic!("Failed to create file {funcs_file:?}: {e}"));
 
     for f in funcs {
         write!(funcs_file, "{f}").expect("Failed to write function");
@@ -119,11 +122,18 @@ fn bind_gen(
     // find the library header path
     let mut header_path = None;
     for path in paths {
-        let mut header = path.clone();
-        header.push("include");
-        header.push(library_header);
-        if header.is_file() {
-            header_path = Some(header);
+        for include_dir in [
+            path.join("include"),
+            path.join("include/x86_64-linux-gnu"),
+            path.clone(),
+        ] {
+            let header = include_dir.join(library_header);
+            if header.is_file() {
+                header_path = Some(header);
+                break;
+            }
+        }
+        if header_path.is_some() {
             break;
         }
     }
@@ -163,7 +173,15 @@ fn bind_gen(
 
     // Add include paths
     for path in paths {
-        bindings = bindings.clang_arg(format!("-I{}/include", path.to_str().unwrap()));
+        for include_dir in [
+            path.join("include"),
+            path.join("include/x86_64-linux-gnu"),
+            path.clone(),
+        ] {
+            if include_dir.is_dir() {
+                bindings = bindings.clang_arg(format!("-I{}", include_dir.display()));
+            }
+        }
     }
 
     let bindings = bindings

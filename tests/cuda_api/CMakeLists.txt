@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
-project(remoting_test LANGUAGES CXX CUDA)
+project(gpu_remoting_test LANGUAGES CXX CUDA)
 
 # Find CUDA
 set(CUDA_USE_STATIC_CUDA_RUNTIME OFF CACHE INTERNAL "")
@@ -22,6 +22,8 @@ foreach(source IN LISTS sources)
     # Link against the CUDA libraries
     target_link_libraries(${source_name} PRIVATE ${CUDA_LIBRARIES} ${CUDA_CUDART_LIBRARY})
     target_link_libraries(${source_name} PRIVATE cuda)
+    target_link_libraries(${source_name} PRIVATE cublas)
+    target_link_libraries(${source_name} PRIVATE cublasLt)
     target_link_libraries(${source_name} PRIVATE cudnn)
     target_link_libraries(${source_name} PRIVATE nvidia-ml)
     # Specify C++11 as the standard for the host compiler

@@ -5,20 +5,17 @@ use log::error;
 use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 
-#[cfg(feature = "phos")]
-use cudasys::FromPrimitive as _;
-
 use crate::ServerWorker;
 
+mod cublasLt_exe;
+mod cublas_exe;
 mod cuda_exe;
 mod cuda_exe_utils;
 mod cudart_exe;
-mod nvml_exe;
 mod cudnn_exe;
-mod cublas_exe;
-mod cublasLt_exe;
-mod nvrtc_exe;
 mod nccl_exe;
+mod nvml_exe;
+mod nvrtc_exe;
 
 include!("mod_exe.rs");
 

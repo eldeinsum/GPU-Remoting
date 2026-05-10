@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+gpucr_home="${GPUCR_HOME:-"$repo_root/../GPU-CR"}"
+client="${GPUCR_CLIENT:-"$gpucr_home/build-nvidia/gpucr-client"}"
+if [[ ! -x "$client" ]]; then
+    client="$gpucr_home/rust/target/release/gpucr-client"
+fi
+if [[ ! -x "$client" ]]; then
+    echo "gpucr-client not found. Set GPUCR_HOME or GPUCR_CLIENT." >&2
+    exit 2
+fi
+
+command="${1:-}"
+pid="${2:-}"
+path="${3:-}"
+
+case "$command" in
+    checkpoint|ckpt)
+        if [[ -z "$pid" ]]; then
+            echo "usage: scripts/gpu-remoting-checkpoint checkpoint <server-pid> [checkpoint-path]" >&2
+            exit 2
+        fi
+        if [[ -n "$path" ]]; then
+            exec "$client" checkpoint "$pid" "$path"
+        fi
+        exec "$client" checkpoint "$pid"
+        ;;
+    restore)
+        if [[ -z "$pid" ]]; then
+            echo "usage: scripts/gpu-remoting-checkpoint restore <server-pid>" >&2
+            exit 2
+        fi
+        exec "$client" restore "$pid"
+        ;;
+    *)
+        echo "usage: scripts/gpu-remoting-checkpoint <checkpoint|restore> <server-pid> [checkpoint-path]" >&2
+        exit 2
+        ;;
+esac

@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "gpu-remoting-server"
 version.workspace = true
 edition.workspace = true
 
@@ -24,10 +24,9 @@ hookgen = { workspace = true }
 [features]
 # default = ["rdma"]
 rdma = ["network/rdma"]
-phos = []
 
 [[bin]]
-name = "server"
+name = "gpu-remoting-server"
 path = "src/main.rs"
 
 [lints]

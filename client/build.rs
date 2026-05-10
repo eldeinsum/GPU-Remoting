@@ -1,13 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    #[cfg(feature = "phos")]
-    {
-        let libpos_path =
-            env::var("LIBPOS_PATH").expect("Cannot get libpos path. Please set LIBPOS_PATH");
-        println!("cargo:rustc-link-search=native={libpos_path}");
-    }
-
     create_cuda_symlinks();
 
     #[cfg(not(feature = "passthrough"))]
@@ -21,37 +14,41 @@ fn main() {
     );
 
     #[cfg(feature = "passthrough")]
-    hookgen::generate_passthrough("../cudasys/src/bindings/funcs", "./src/passthrough", |sig| {
-        let name = sig.ident.to_string();
-        if name.starts_with("cuGetProcAddress") {
-            return None;
-        }
-        let c_name = std::ffi::CString::new(name.into_bytes()).unwrap();
-        let name = c_name.to_str().unwrap();
-        let inputs: Vec<_> = sig
-            .inputs
-            .iter()
-            .map(|arg| match arg {
-                syn::FnArg::Typed(arg) => arg,
-                _ => panic!("unexpected argument type"),
-            })
-            .collect();
-        let params = inputs.iter().map(|arg| arg.ty.as_ref());
-        let output = &sig.output;
-        let args = inputs.iter().map(|arg| arg.pat.as_ref());
-        Some(syn::parse_quote!({
-            #[thread_local]
-            static __F: std::cell::OnceCell<extern "C" fn(#(#params),*) #output> =
-                std::cell::OnceCell::new();
-            let __f = __F.get_or_init(|| unsafe {
-                std::mem::transmute(crate::dl::dlsym_next(#c_name))
-            });
-            super::begin(#name);
-            let __result = __f(#(#args),*);
-            super::end(#name);
-            __result
-        }))
-    });
+    hookgen::generate_passthrough(
+        "../cudasys/src/bindings/funcs",
+        "./src/passthrough",
+        |sig| {
+            let name = sig.ident.to_string();
+            if name.starts_with("cuGetProcAddress") {
+                return None;
+            }
+            let c_name = std::ffi::CString::new(name.into_bytes()).unwrap();
+            let name = c_name.to_str().unwrap();
+            let inputs: Vec<_> = sig
+                .inputs
+                .iter()
+                .map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => arg,
+                    _ => panic!("unexpected argument type"),
+                })
+                .collect();
+            let params = inputs.iter().map(|arg| arg.ty.as_ref());
+            let output = &sig.output;
+            let args = inputs.iter().map(|arg| arg.pat.as_ref());
+            Some(syn::parse_quote!({
+                #[thread_local]
+                static __F: std::cell::OnceCell<extern "C" fn(#(#params),*) #output> =
+                    std::cell::OnceCell::new();
+                let __f = __F.get_or_init(|| unsafe {
+                    std::mem::transmute(crate::dl::dlsym_next(#c_name))
+                });
+                super::begin(#name);
+                let __result = __f(#(#args),*);
+                super::end(#name);
+                __result
+            }))
+        },
+    );
 
     println!("cargo:rerun-if-changed=build.rs");
 }
@@ -95,6 +92,6 @@ fn create_cuda_symlinks() {
         "libnvrtc.so.11.3",
     ] {
         symlink_dir.set_file_name(lib);
-        let _ = std::os::unix::fs::symlink("../libclient.so", &symlink_dir);
+        let _ = std::os::unix::fs::symlink("../libgpu_remoting_client.so", &symlink_dir);
     }
 }

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+profile="debug"
+cargo_args=()
+
+if [[ "${1:-}" == "--release" ]]; then
+    profile="release"
+    cargo_args+=(--release)
+    shift
+fi
+if [[ "$#" -eq 0 ]]; then
+    echo "usage: scripts/gpu-remoting-client [--release] <command> [args...]" >&2
+    exit 2
+fi
+
+export CARGO_INCREMENTAL=0
+cargo build "${cargo_args[@]}" -p gpu-remoting-client
+
+target_dir="$repo_root/target/$profile"
+client_lib="$target_dir/libgpu_remoting_client.so"
+export LD_LIBRARY_PATH="$target_dir/cuda-symlinks:$target_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_PRELOAD="$client_lib${LD_PRELOAD:+:$LD_PRELOAD}"
+
+exec "$@"

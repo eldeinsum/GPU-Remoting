@@ -65,10 +65,10 @@ for model in "${models[@]}"; do
         sed -i "s/^bandwidth = .*/bandwidth = $bandwidth/" ${config_path}
 
         echo "Stopping old server instance if any..."
-        pkill server || true
+        pkill -f gpu-remoting-server || true
 
         echo "Start server"
-        RUST_LOG=warn cargo run --release ${OPT_FLAG} server >/dev/null 2>&1 &
+        RUST_LOG=warn cargo run --release ${OPT_FLAG} --bin gpu-remoting-server >/dev/null 2>&1 &
         sleep 2
 
         echo "Running: RUST_LOG=warn run.sh train/${model}/train.py"
@@ -85,5 +85,5 @@ for model in "${models[@]}"; do
         echo "done ---"
     done
 done
-pkill server
+pkill -f gpu-remoting-server
 echo "All operations completed."

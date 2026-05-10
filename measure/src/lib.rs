@@ -82,14 +82,12 @@ mod tests {
 
     #[test]
     fn clock_test() {
-        let mut timer = Timer::new();
-
-        timer.start(MEASURE_TOTAL);
+        let start = rdtscp();
         let mut _sum: u64 = 0;
         for i in 0..10000 {
             _sum += i;
         }
-        timer.stop(MEASURE_TOTAL);
-        assert!(timer.get_time(MEASURE_TOTAL) > 0.0);
+        let stop = rdtscp();
+        assert!(clock2ns(stop - start) > 0.0);
     }
 }

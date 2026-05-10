@@ -1,4 +1,4 @@
-# XPURemoting Network Emulator
+# GPU-Remoting Network Emulator
 
 # Overview
 

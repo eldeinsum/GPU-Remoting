@@ -99,15 +99,9 @@ fn cudaMemcpyAsyncHtod(
 ) -> cudaError_t {
     'server_execution: {
         // FIXME: can't async because server deallocates memory after calling
-        #[cfg(not(feature = "phos"))]
         let result = unsafe {
             assert_eq!(cudaStreamSynchronize(stream), Default::default());
             cudaMemcpy(dst, src__ptr.cast(), count, kind)
-        };
-        #[cfg(feature = "phos")]
-        let result = {
-            assert_eq!(phos_cudaStreamSynchronize(&server.pos_cuda_ws, stream), Default::default());
-            phos_cudaMemcpyHtod(&server.pos_cuda_ws, dst, src__ptr.cast(), count, kind)
         };
     }
 }
@@ -122,15 +116,9 @@ fn cudaMemcpyAsyncDtoh(
 ) -> cudaError_t {
     'server_execution: {
         // FIXME: can't async because server can't send data back async
-        #[cfg(not(feature = "phos"))]
         let result = unsafe {
             assert_eq!(cudaStreamSynchronize(stream), Default::default());
             cudaMemcpy(dst__ptr.cast(), src, count, kind)
-        };
-        #[cfg(feature = "phos")]
-        let result = {
-            assert_eq!(phos_cudaStreamSynchronize(&server.pos_cuda_ws, stream), Default::default());
-            phos_cudaMemcpyDtoh(&server.pos_cuda_ws, dst__ptr.cast(), src, count, kind)
         };
     }
 }
@@ -153,10 +141,7 @@ fn cudaStreamIsCapturing(
     pCaptureStatus: *mut cudaStreamCaptureStatus,
 ) -> cudaError_t;
 
-// This function is hidden and superseded by `cudaGetDeviceProperties_v2` in CUDA 12.
-// The change is that `cudaDeviceProp` grew bigger. We don't hook it in CUDA 12
-// to prevent reading or writing past the end of allocated memory when sending or receiving data.
-#[cuda_hook(proc_id = 123, max_cuda_version = 11)]
+#[cuda_hook(proc_id = 123)]
 fn cudaGetDeviceProperties(prop: *mut cudaDeviceProp, device: c_int) -> cudaError_t;
 
 #[cuda_hook(proc_id = 400)]
@@ -175,10 +160,7 @@ fn cudaFuncGetAttributes(attr: *mut cudaFuncAttributes, func: *const c_void) -> 
 fn cudaFuncGetAttributesInternal(attr: *mut cudaFuncAttributes, func: CUfunction) -> cudaError_t {
     'server_execution: {
         unsafe { attr__ptr.write_bytes(0u8, 1) };
-        #[cfg(not(feature = "phos"))]
         let result = super::cuda_exe_utils::cu_func_get_attributes(attr__ptr, func);
-        #[cfg(feature = "phos")]
-        let result = phos_cudaFuncGetAttributesInternal(&server.pos_cuda_ws, attr__ptr, func);
     }
 }
 
@@ -263,9 +245,6 @@ fn __cudaPopCallConfiguration(
     stream: *mut c_void,
 ) -> cudaError_t;
 
-#[cuda_hook(proc_id = 999123, min_cuda_version = 12)]
-fn cudaGetDeviceProperties_v2(prop: *mut cudaDeviceProp, device: c_int) -> cudaError_t;
-
 #[cuda_hook(proc_id = 167)]
 fn cudaStreamCreateWithPriority(
     pStream: *mut cudaStream_t,
@@ -338,18 +317,20 @@ fn cudaStreamBeginCapture(stream: cudaStream_t, mode: cudaStreamCaptureMode) -> 
 fn cudaStreamEndCapture(stream: cudaStream_t, pGraph: *mut cudaGraph_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 172)]
-fn cudaStreamGetCaptureInfo_v2(
+fn cudaStreamGetCaptureInfo(
     stream: cudaStream_t,
     captureStatus_out: *mut cudaStreamCaptureStatus,
     id_out: *mut c_ulonglong,
     #[device] graph_out: *mut cudaGraph_t, // null
     #[device] dependencies_out: *mut *const cudaGraphNode_t, // null
+    #[device] edgeData_out: *mut *const cudaGraphEdgeData, // null
     #[device] numDependencies_out: *mut usize, // null
 ) -> cudaError_t {
     'client_before_send: {
         assert!(!id_out.is_null());
         assert!(graph_out.is_null());
         assert!(dependencies_out.is_null());
+        assert!(edgeData_out.is_null());
         assert!(numDependencies_out.is_null());
     }
 }

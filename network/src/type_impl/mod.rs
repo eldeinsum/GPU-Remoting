@@ -154,7 +154,7 @@ mod tests {
     /// Test [u8] Transportable impl
     #[test]
     fn test_u8_array_io() {
-        let mut channel = Channel::new(Box::new(LocalChannel::new(10 + META_AREA)));
+        let mut channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
         let a = [1u8, 2, 3, 4, 5];
         let mut b = [0u8; 5];
         a.send(&mut channel).unwrap();

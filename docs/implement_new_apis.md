@@ -16,7 +16,7 @@ There are two ways of implementations: default and custom.
 
 Default implementation is a fallback used when the custom implementation is not provided, and it can handle simple cases. Custom implementation is user-defined or to handle complex cases. If default is enough in your case, add a `#[cuda_hook(...)]` declaration. Otherwise, add a `#[cuda_custom_hook]` declaration. This will prevent system creating unimplemented placeholder and use implemented one instead.
 
-Mapping of `proc_id` can be found at https://github.com/SJTU-IPADS/PhoenixOS/tree/main/autogen/autogen_cuda/supported/11.3.
+The original `proc_id` catalog came from the upstream CUDA API list used by PhoenixOS-Remoting. Keep new IDs stable once they are added because generated client and server code both depend on them.
 
 You can read the next section to check if the API can be supported by default implementation.
 

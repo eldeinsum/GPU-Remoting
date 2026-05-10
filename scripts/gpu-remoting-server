@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+profile="debug"
+cargo_args=()
+
+if [[ "${1:-}" == "--release" ]]; then
+    profile="release"
+    cargo_args+=(--release)
+    shift
+fi
+
+gpucr_home="${GPUCR_HOME:-"$repo_root/../GPU-CR"}"
+runtime="${GPUCR_RUNTIME:-"$gpucr_home/build-nvidia/gpucr-nvidia.so"}"
+if [[ ! -f "$runtime" ]]; then
+    runtime="$gpucr_home/rust/target/release/libgpucr_preload.so"
+fi
+if [[ ! -f "$runtime" ]]; then
+    echo "GPU-CR runtime not found. Set GPUCR_HOME or GPUCR_RUNTIME." >&2
+    exit 2
+fi
+
+export CARGO_INCREMENTAL=0
+cargo build "${cargo_args[@]}" --bin gpu-remoting-server
+bin="$repo_root/target/$profile/gpu-remoting-server"
+
+export LD_PRELOAD="$runtime${LD_PRELOAD:+:$LD_PRELOAD}"
+exec "$bin" "$@"

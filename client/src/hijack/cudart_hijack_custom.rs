@@ -61,8 +61,10 @@ pub extern "C" fn cudaMemcpyAsync(
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     if !CLIENT_THREAD.with_borrow(|client| client.cuda_device_init) {
         // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#initialization
-        #[cfg(not(feature = "phos"))]
-        assert_eq!(super::cudart_hijack::cudaFree(std::ptr::null_mut()), Default::default());
+        assert_eq!(
+            super::cudart_hijack::cudaFree(std::ptr::null_mut()),
+            Default::default()
+        );
         CLIENT_THREAD.with_borrow_mut(|client| client.cuda_device_init = true);
     }
 
@@ -87,7 +89,10 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
         );
 
         let mut device = 0;
-        assert_eq!(super::cudart_hijack::cudaGetDevice(&mut device), Default::default());
+        assert_eq!(
+            super::cudart_hijack::cudaGetDevice(&mut device),
+            Default::default()
+        );
         runtime.cuda_device = Some(device);
     }
 
@@ -105,8 +110,13 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     };
 
     let (fatCubinHandle, deviceName) = *runtime.lazy_functions.get(&func).unwrap();
-    let module = *runtime.loaded_modules.entry(fatCubinHandle).or_insert_with_key(load_module);
-    log::debug!("registering function {:?}", unsafe { CStr::from_ptr(deviceName) });
+    let module = *runtime
+        .loaded_modules
+        .entry(fatCubinHandle)
+        .or_insert_with_key(load_module);
+    log::debug!("registering function {:?}", unsafe {
+        CStr::from_ptr(deviceName)
+    });
     let mut cufunc = std::ptr::null_mut();
     assert_eq!(
         super::cuda_hijack::cuModuleGetFunction(&raw mut cufunc, module, deviceName),
@@ -164,9 +174,7 @@ pub extern "C" fn cudaHostAlloc(
 }
 
 #[no_mangle]
-pub extern "C" fn cudaGetErrorString(
-    cudaError: cudaError_t,
-) -> *const ::std::os::raw::c_char {
+pub extern "C" fn cudaGetErrorString(cudaError: cudaError_t) -> *const ::std::os::raw::c_char {
     log::debug!(target: "cudaGetErrorString", "{cudaError:?}");
     let result = format!("{cudaError:?} ({})", cudaError as u32);
     let result = CString::new(result).unwrap();

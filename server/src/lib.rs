@@ -1,9 +1,4 @@
-#![feature(maybe_uninit_slice)]
-
 mod dispatcher;
-
-#[cfg(feature = "phos")]
-mod phos;
 
 use cudasys::{
     cuda::CUmodule,
@@ -29,13 +24,10 @@ struct ServerWorker<C> {
     pub resources: BTreeMap<usize, usize>,
     opt_async_api: bool,
     opt_shadow_desc: bool,
-    #[cfg(feature = "phos")]
-    pub pos_cuda_ws: phos::POSWorkspace_CUDA,
 }
 
 impl<C> Drop for ServerWorker<C> {
     fn drop(&mut self) {
-        #[cfg(not(feature = "phos"))]
         for module in &self.modules {
             unsafe {
                 cudasys::cuda::cuModuleUnload(*module);
@@ -62,17 +54,26 @@ fn create_buffer(
                     Channel::new(Box::new(EmulatorChannel::new(receiver, config))),
                 );
             }
-            (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+            (
+                Channel::new(Box::new(sender)),
+                Channel::new(Box::new(receiver)),
+            )
         }
         "tcp" => {
             let (receiver, sender) = tcp::new_server(config, id, &barrier.unwrap()).unwrap();
-            (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+            (
+                Channel::new(Box::new(sender)),
+                Channel::new(Box::new(receiver)),
+            )
         }
         #[cfg(feature = "rdma")]
         "rdma" => {
             assert!(barrier.is_none());
             let (receiver, sender) = RDMAChannel::new_server(config, id);
-            (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+            (
+                Channel::new(Box::new(sender)),
+                Channel::new(Box::new(receiver)),
+            )
         }
         &_ => panic!("Unsupported communication type in config"),
     }
@@ -93,10 +94,6 @@ pub fn launch_server(
     barrier: Option<std::sync::Arc<std::sync::Barrier>>,
     is_main_thread: bool,
 ) {
-    // PhOS workspace must be created before client initialization barrier
-    #[cfg(feature = "phos")]
-    let pos_cuda_ws = phos::POSWorkspace_CUDA::new();
-
     let (channel_sender, channel_receiver) = create_buffer(config, id, barrier);
     info!(
         "[{}:{}] {} buffer created",
@@ -131,21 +128,12 @@ pub fn launch_server(
         resources: Default::default(),
         opt_async_api: config.opt_async_api,
         opt_shadow_desc: config.opt_shadow_desc,
-        #[cfg(feature = "phos")]
-        pos_cuda_ws,
     };
 
     loop {
         if let Ok(proc_id) = receive_request(&mut server.channel_receiver) {
             if proc_id == -1 {
                 break;
-            }
-            #[cfg(feature = "phos")]
-            if proc_id == -2 {
-                let mut uuid = 0u64;
-                uuid.recv(&mut server.channel_receiver).unwrap();
-                server.pos_cuda_ws.stop(uuid);
-                continue;
             }
             dispatch(proc_id, &mut server);
         } else {
@@ -158,7 +146,12 @@ pub fn launch_server(
         }
     }
 
-    info!("[{}:{}] server #{} terminated", std::file!(), std::line!(), server.id);
+    info!(
+        "[{}:{}] server #{} terminated",
+        std::file!(),
+        std::line!(),
+        server.id
+    );
 
     if is_main_thread {
         std::process::exit(0);

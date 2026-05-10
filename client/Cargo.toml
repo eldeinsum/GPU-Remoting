@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "gpu-remoting-client"
 version.workspace = true
 edition.workspace = true
 
@@ -32,7 +32,6 @@ crate-type = ["cdylib"]
 # default = ["rdma"]
 rdma = ["network/rdma"]
 passthrough = ["dep:syn"]
-phos = []
 
 [lints]
 workspace = true

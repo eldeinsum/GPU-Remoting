@@ -15,8 +15,8 @@ Minor tips: to check the expanded macros, we can use the following:
 ```bash
 cargo +nightly install cargo-expand
 
-cargo expand -p client hijack::cudnn_hijack::cudnnCreate
-cargo expand -p server --lib dispatcher::cudnn_exe::cudnnCreateExe
+cargo expand -p gpu-remoting-client hijack::cudnn_hijack::cudnnCreate
+cargo expand -p gpu-remoting-server --lib dispatcher::cudnn_exe::cudnnCreateExe
 ```
 
 or use the [rust-analyzer: Expand macro recursively at caret](https://rust-analyzer.github.io/manual.html#expand-macro-recursively) action.

@@ -17,9 +17,6 @@ use elf::{FatBinaryHeader, KernelParamInfo};
 
 mod dl;
 
-#[cfg(feature = "phos")]
-mod phos;
-
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -38,8 +35,6 @@ struct ClientThread {
     resource_idx: usize,
     cuda_device: Option<std::ffi::c_int>,
     cuda_device_init: bool,
-    #[cfg(feature = "phos")]
-    phos_agent: phos::POSAgent,
     opt_async_api: bool,
     opt_shadow_desc: bool,
     opt_local: bool,
@@ -67,7 +62,11 @@ impl ClientThread {
             stream.read_exact(&mut buf).unwrap();
             i32::from_be_bytes(buf)
         };
-        log::info!("[#{id}] PID = {}, {:?}", std::process::id(), std::thread::current().id());
+        log::info!(
+            "[#{id}] PID = {}, {:?}",
+            std::process::id(),
+            std::thread::current().id()
+        );
         let (channel_sender, channel_receiver) = match config.comm_type.as_str() {
             "shm" => {
                 let (sender, receiver) = SHMChannel::new_client_with_id(&config, id).unwrap();
@@ -77,17 +76,26 @@ impl ClientThread {
                         Channel::new(Box::new(EmulatorChannel::new(receiver, &config))),
                     )
                 } else {
-                    (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+                    (
+                        Channel::new(Box::new(sender)),
+                        Channel::new(Box::new(receiver)),
+                    )
                 }
             }
             "tcp" => {
                 let (sender, receiver) = tcp::new_client(&config, id).unwrap();
-                (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+                (
+                    Channel::new(Box::new(sender)),
+                    Channel::new(Box::new(receiver)),
+                )
             }
             #[cfg(feature = "rdma")]
             "rdma" => {
                 let (sender, receiver) = RDMAChannel::new_client(&config, id);
-                (Channel::new(Box::new(sender)), Channel::new(Box::new(receiver)))
+                (
+                    Channel::new(Box::new(sender)),
+                    Channel::new(Box::new(receiver)),
+                )
             }
             &_ => panic!("Unsupported communication type in config"),
         };
@@ -117,17 +125,12 @@ impl ClientThread {
             opt_async_api: config.opt_async_api,
             opt_shadow_desc: config.opt_shadow_desc,
             opt_local: config.opt_local,
-            #[cfg(feature = "phos")]
-            phos_agent: phos::POSAgent::new(),
         }
     }
 }
 
 impl Drop for ClientThread {
     fn drop(&mut self) {
-        #[cfg(feature = "phos")]
-        self.phos_agent.drop();
-
         let proc_id = -1;
         proc_id.send(&self.channel_sender).unwrap();
         self.channel_sender.flush_out().unwrap();
@@ -195,6 +198,6 @@ impl RuntimeCache {
 
 #[small_ctor::ctor]
 unsafe fn init() {
-//     core_affinity::set_for_current(1);
+    //     core_affinity::set_for_current(1);
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 }

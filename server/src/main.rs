@@ -5,8 +5,8 @@ use std::sync::{Arc, Barrier};
 use std::time::Duration;
 use std::{ptr, thread};
 
+use gpu_remoting_server::*;
 use network::NetworkConfig;
-use server::*;
 
 fn main() {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
@@ -31,7 +31,9 @@ fn daemon(config: &NetworkConfig) -> (io::PipeReader, io::PipeWriter) {
 
     let listener = TcpListener::bind(&config.daemon_socket).unwrap();
     let listener = socket2::Socket::from(listener);
-    listener.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    listener
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
     let mut id: i32 = 0;
     loop {
         let finished = reap_children();

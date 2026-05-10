@@ -1,79 +1,111 @@
-# XPURemoting
+# GPU-Remoting
 
-This is a virtualization framework for CUDA API.  The developer can easily add customization to the execution CUDA API, e.g., execute it as an RPC at a remote machine. 
+GPU-Remoting is a CUDA API remoting runtime. Applications load a client shared library with `LD_PRELOAD`; CUDA calls are marshalled through the network layer and executed by a GPU-side server process.
 
-## Minimal demo
+This fork removes the PhoenixOS/libpos integration path and targets GPU-CR for NVIDIA checkpoint and restore. The default execution path uses CUDA directly on the remoting server, and GPU-CR is applied by running the server under the GPU-CR NVIDIA runtime.
 
-Consits of 4 parts:
+## Components
 
-- `server`
-- `client`
-- `network`
-- `codegen`
-
-## Getting started
-
-- How to add customization to a CUDA API:  [implement_new_apis.md](docs/implement_new_apis.md) 
-
-
+- `gpu-remoting-server`: GPU-side CUDA API execution server.
+- `gpu-remoting-client`: preload library used by applications.
+- `network`: shared memory, TCP, and optional RDMA transports.
+- `codegen` and `cudasys`: CUDA binding and hook generation.
 
 ## Requirements
 
-See [environment](environment/README.md).
+- Linux
+- CUDA Toolkit and NVIDIA driver
+- Rust nightly, pinned by `rust-toolchain.toml`
+- GPU-CR built with the NVIDIA runtime
+
+GPU-CR expected layout:
+
+```bash
+cd ~/Projects/GPU-CR
+cmake -S . -B build-nvidia -DGPU_VENDOR=NVIDIA -DGPUCR_BUILD_CPP=OFF -DGPUCR_BUILD_RUST=ON -DGPUCR_RUST_RELEASE=ON
+cmake --build build-nvidia -j$(nproc)
+```
 
 ## Build
 
-```shell
-cd /path/to/xpuremoting && cargo build
+```bash
+cd ~/Projects/GPU-Remoting
+cargo build --workspace
 ```
 
-You should specify `default` feature in both `client/server`'s Cargo.toml to decide which communication methods will be compiled. For example, if you want to use RDMA communication method, you should add `"rdma"` into the `default` feature in `client/Cargo.toml` and `server/Cargo.toml`. 
+For release builds:
+
+```bash
+cargo build --workspace --release
+```
 
 ## Config
 
-You can use `config.toml` file to config communication type, buffer size, RDMA server listener socket and so on.
+Copy `config.example.toml` to `config.toml`, then set `NETWORK_CONFIG` to its absolute path when running outside the repository root.
 
-Since `cargo` will use cwd as running root folder, you should use absolute path for config file. The default path will be `/workspace/config.toml`. If you want a specific path, you can use the environment variable `NETWORK_CONFIG` to customize it. For example: `NETWORK_CONFIG=/workspace/config.toml cargo run server`.
+The default transport is shared memory:
 
-### Emulator
-
-The network emulator is a component used to simulate system performance under different network conditions. When enabled, it calculates network latency and make the message receiver busy-wait, thus simulating the network overhead caused by RTT and bandwidth. Real-world tests have shown that the emulator's performance deviates from the actual conditions by no more than 5%. You can configure the `rtt` and `bandwidth` settings in `config.toml`.
-
-This feature is only available when using shared memory. To enable the emulator, you can simply set `emulator` to `true` in `config.toml`.
-
-## Test
-
-### Unit test
-
-```shell
-cargo test
+```toml
+comm_type = "shm"
 ```
 
-### Integration test
+## Running
 
-Launch two terminals, one for server and the other for client.
+Start the GPU-side server under GPU-CR:
 
-- server side:
-
-```shell
-cargo run [--features rdma] server
+```bash
+GPUCR_HOME=~/Projects/GPU-CR \
+NETWORK_CONFIG=$PWD/config.toml \
+scripts/gpu-remoting-server --release
 ```
 
-You should use `features` to decide what communication methods will be compiled. SHM is always compiled.
+Run a CUDA application through the client preload library:
 
-- client side:
-
-```shell
-cd tests/cuda_api
-mkdir -p build && cd build
-cmake .. && make
-cd ..
-find -type f -executable -name "test_*" -exec ./startclient_debug.sh {} \;
+```bash
+NETWORK_CONFIG=$PWD/config.toml \
+scripts/gpu-remoting-client --release ./path/to/cuda_app
 ```
 
-P.S. Can use `RUST_LOG` environment to control the log level (default=debug).
+Checkpoint and restore the remoting server process:
 
+```bash
+scripts/gpu-remoting-checkpoint checkpoint <server-pid>
+scripts/gpu-remoting-checkpoint restore <server-pid>
+```
 
-### Application test
+`GPUCR_RUNTIME` and `GPUCR_CLIENT` can be set to override the default GPU-CR runtime and client paths.
 
-Please refer to [application-guild](./tests/apps/README.md) to run applicatons
+## Tests
+
+Build the CUDA API tests:
+
+```bash
+cmake -S tests/cuda_api -B tests/cuda_api/build
+cmake --build tests/cuda_api/build -j$(nproc)
+```
+
+Run the server in one terminal:
+
+```bash
+NETWORK_CONFIG=$PWD/config.toml scripts/gpu-remoting-server
+```
+
+Run tests through the client in another terminal:
+
+```bash
+for test in tests/cuda_api/build/test_*; do
+    NETWORK_CONFIG=$PWD/config.toml scripts/gpu-remoting-client --release "$test"
+done
+```
+
+## Development
+
+New CUDA APIs are declared in `cudasys/src/hooks/*.rs`. The build scripts regenerate client hijacks and server dispatchers from those declarations.
+
+See [docs/implement_new_apis.md](docs/implement_new_apis.md).
+
+## Attribution
+
+GPU-Remoting is based on PhoenixOS-Remoting by SJTU-IPADS: https://github.com/SJTU-IPADS/PhoenixOS-Remoting
+
+GPU-CR integration targets the NVIDIA runtime in this fork: https://github.com/eldeinsum/GPU-CR
