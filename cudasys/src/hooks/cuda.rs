@@ -326,6 +326,21 @@ fn cuStreamGetPriority(hStream: CUstream, priority: *mut c_int) -> CUresult;
 #[cuda_hook(proc_id = 900414, async_api = false)]
 fn cuStreamQuery(hStream: CUstream) -> CUresult;
 
+#[cuda_hook(proc_id = 900415)]
+fn cuStreamGetDevice(hStream: CUstream, device: *mut CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900416)]
+fn cuStreamGetId(hStream: CUstream, streamId: *mut c_ulonglong) -> CUresult;
+
+#[cuda_hook(proc_id = 900417)]
+fn cuStreamGetCtx(hStream: CUstream, pctx: *mut CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900418, async_api = false)]
+fn cuStreamWaitEvent(hStream: CUstream, hEvent: CUevent, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900432)]
+fn cuStreamCopyAttributes(dst: CUstream, src: CUstream) -> CUresult;
+
 #[cuda_hook(proc_id = 900210, async_api = false)]
 fn cuStreamSynchronize(hStream: CUstream) -> CUresult;
 
@@ -341,8 +356,14 @@ fn cuEventRecordWithFlags(hEvent: CUevent, hStream: CUstream, flags: c_uint) -> 
 #[cuda_hook(proc_id = 900213, async_api = false)]
 fn cuEventSynchronize(hEvent: CUevent) -> CUresult;
 
+#[cuda_hook(proc_id = 900419, async_api = false)]
+fn cuEventQuery(hEvent: CUevent) -> CUresult;
+
 #[cuda_hook(proc_id = 900214, async_api = false)]
 fn cuEventDestroy_v2(hEvent: CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900428)]
+fn cuEventElapsedTime_v2(pMilliseconds: *mut f32, hStart: CUevent, hEnd: CUevent) -> CUresult;
 
 #[cuda_hook(proc_id = 1002)]
 fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(

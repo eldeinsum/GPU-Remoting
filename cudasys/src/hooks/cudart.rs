@@ -95,6 +95,15 @@ fn cudaStreamGetFlags(hStream: cudaStream_t, flags: *mut c_uint) -> cudaError_t;
 #[cuda_hook(proc_id = 900424)]
 fn cudaStreamGetPriority(hStream: cudaStream_t, priority: *mut c_int) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900429)]
+fn cudaStreamGetId(hStream: cudaStream_t, streamId: *mut c_ulonglong) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900430)]
+fn cudaStreamGetDevice(hStream: cudaStream_t, device: *mut c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900431)]
+fn cudaStreamCopyAttributes(dst: cudaStream_t, src: cudaStream_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900425, async_api = false)]
 fn cudaStreamQuery(stream: cudaStream_t) -> cudaError_t;
 
