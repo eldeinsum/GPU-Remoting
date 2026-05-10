@@ -358,6 +358,136 @@ fn cudaMemcpyFromArrayDtod(
     kind: cudaMemcpyKind,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudaMemcpyToArrayAsync(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900477, parent = cudaMemcpyToArrayAsync)]
+fn cudaMemcpyToArrayAsyncHtod(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    #[host(len = count)] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cudaStreamSynchronize(stream), Default::default());
+            cudaMemcpyToArray(dst, wOffset, hOffset, src__ptr.cast(), count, kind)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900478, async_api, parent = cudaMemcpyToArrayAsync)]
+fn cudaMemcpyToArrayAsyncDtod(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudaMemcpyFromArrayAsync(
+    dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900479, parent = cudaMemcpyFromArrayAsync)]
+fn cudaMemcpyFromArrayAsyncDtoh(
+    #[host(output, len = count)] dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cudaStreamSynchronize(stream), Default::default());
+            cudaMemcpyFromArray(dst__ptr.cast(), src, wOffset, hOffset, count, kind)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900480, async_api, parent = cudaMemcpyFromArrayAsync)]
+fn cudaMemcpyFromArrayAsyncDtod(
+    #[device] dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpyToArray row by row
+fn cudaMemcpy2DToArray(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpyFromArray row by row
+fn cudaMemcpy2DFromArray(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpyToArrayAsync row by row
+fn cudaMemcpy2DToArrayAsync(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpyFromArrayAsync row by row
+fn cudaMemcpy2DFromArrayAsync(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 253, async_api)]
 fn cudaFree(#[device] devPtr: *mut c_void) -> cudaError_t;
 

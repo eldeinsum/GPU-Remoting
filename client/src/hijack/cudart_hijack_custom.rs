@@ -52,6 +52,30 @@ fn resolve_memcpy_kind(
     }
 }
 
+fn resolve_to_array_kind(src: *const c_void, kind: cudaMemcpyKind) -> cudaMemcpyKind {
+    if kind != cudaMemcpyKind::cudaMemcpyDefault {
+        return kind;
+    }
+
+    if is_device_pointer(src) {
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice
+    } else {
+        cudaMemcpyKind::cudaMemcpyHostToDevice
+    }
+}
+
+fn resolve_from_array_kind(dst: *mut c_void, kind: cudaMemcpyKind) -> cudaMemcpyKind {
+    if kind != cudaMemcpyKind::cudaMemcpyDefault {
+        return kind;
+    }
+
+    if is_device_pointer(dst.cast_const()) {
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice
+    } else {
+        cudaMemcpyKind::cudaMemcpyDeviceToHost
+    }
+}
+
 fn allocate_host(ptr_out: *mut *mut c_void, size: usize) -> cudaError_t {
     if ptr_out.is_null() {
         return cudaError_t::cudaErrorInvalidValue;
@@ -237,15 +261,7 @@ pub extern "C" fn cudaMemcpyToArray(
         return cudaError_t::cudaErrorInvalidValue;
     }
 
-    let kind = if kind == cudaMemcpyKind::cudaMemcpyDefault {
-        if is_device_pointer(src) {
-            cudaMemcpyKind::cudaMemcpyDeviceToDevice
-        } else {
-            cudaMemcpyKind::cudaMemcpyHostToDevice
-        }
-    } else {
-        kind
-    };
+    let kind = resolve_to_array_kind(src, kind);
 
     match kind {
         cudaMemcpyKind::cudaMemcpyHostToDevice => super::cudart_hijack::cudaMemcpyToArrayHtod(
@@ -277,15 +293,7 @@ pub extern "C" fn cudaMemcpyFromArray(
         return cudaError_t::cudaErrorInvalidValue;
     }
 
-    let kind = if kind == cudaMemcpyKind::cudaMemcpyDefault {
-        if is_device_pointer(dst.cast_const()) {
-            cudaMemcpyKind::cudaMemcpyDeviceToDevice
-        } else {
-            cudaMemcpyKind::cudaMemcpyDeviceToHost
-        }
-    } else {
-        kind
-    };
+    let kind = resolve_from_array_kind(dst, kind);
 
     match kind {
         cudaMemcpyKind::cudaMemcpyDeviceToHost => super::cudart_hijack::cudaMemcpyFromArrayDtoh(
@@ -301,6 +309,242 @@ pub extern "C" fn cudaMemcpyFromArray(
         }
         _ => cudaError_t::cudaErrorInvalidValue,
     }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyToArrayAsync(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyToArrayAsync", "count = {count}, kind = {kind:?}");
+    if count > 0 && (dst.is_null() || src.is_null()) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let kind = resolve_to_array_kind(src, kind);
+    match kind {
+        cudaMemcpyKind::cudaMemcpyHostToDevice => super::cudart_hijack::cudaMemcpyToArrayAsyncHtod(
+            dst,
+            wOffset,
+            hOffset,
+            src.cast::<u8>(),
+            count,
+            kind,
+            stream,
+        ),
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
+            super::cudart_hijack::cudaMemcpyToArrayAsyncDtod(
+                dst, wOffset, hOffset, src, count, kind, stream,
+            )
+        }
+        _ => cudaError_t::cudaErrorInvalidValue,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyFromArrayAsync(
+    dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyFromArrayAsync", "count = {count}, kind = {kind:?}");
+    if count > 0 && (dst.is_null() || src.is_null()) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let kind = resolve_from_array_kind(dst, kind);
+    match kind {
+        cudaMemcpyKind::cudaMemcpyDeviceToHost => {
+            super::cudart_hijack::cudaMemcpyFromArrayAsyncDtoh(
+                dst.cast::<u8>(),
+                src,
+                wOffset,
+                hOffset,
+                count,
+                kind,
+                stream,
+            )
+        }
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
+            super::cudart_hijack::cudaMemcpyFromArrayAsyncDtod(
+                dst, src, wOffset, hOffset, count, kind, stream,
+            )
+        }
+        _ => cudaError_t::cudaErrorInvalidValue,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpy2DToArray(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(
+        target: "cudaMemcpy2DToArray",
+        "width = {width}, height = {height}, kind = {kind:?}",
+    );
+
+    if height == 0 || width == 0 {
+        return cudaError_t::cudaSuccess;
+    }
+    if dst.is_null() || src.is_null() || width > spitch {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    for row in 0..height {
+        let Some(src_offset) = row.checked_mul(spitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let Some(row_h_offset) = hOffset.checked_add(row) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let row_src = unsafe { (src as *const u8).add(src_offset).cast() };
+        let result = cudaMemcpyToArray(dst, wOffset, row_h_offset, row_src, width, kind);
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpy2DFromArray(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(
+        target: "cudaMemcpy2DFromArray",
+        "width = {width}, height = {height}, kind = {kind:?}",
+    );
+
+    if height == 0 || width == 0 {
+        return cudaError_t::cudaSuccess;
+    }
+    if dst.is_null() || src.is_null() || width > dpitch {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    for row in 0..height {
+        let Some(dst_offset) = row.checked_mul(dpitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let Some(row_h_offset) = hOffset.checked_add(row) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let row_dst = unsafe { (dst as *mut u8).add(dst_offset).cast() };
+        let result = cudaMemcpyFromArray(row_dst, src, wOffset, row_h_offset, width, kind);
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpy2DToArrayAsync(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(
+        target: "cudaMemcpy2DToArrayAsync",
+        "width = {width}, height = {height}, kind = {kind:?}",
+    );
+
+    if height == 0 || width == 0 {
+        return cudaError_t::cudaSuccess;
+    }
+    if dst.is_null() || src.is_null() || width > spitch {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    for row in 0..height {
+        let Some(src_offset) = row.checked_mul(spitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let Some(row_h_offset) = hOffset.checked_add(row) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let row_src = unsafe { (src as *const u8).add(src_offset).cast() };
+        let result =
+            cudaMemcpyToArrayAsync(dst, wOffset, row_h_offset, row_src, width, kind, stream);
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpy2DFromArrayAsync(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(
+        target: "cudaMemcpy2DFromArrayAsync",
+        "width = {width}, height = {height}, kind = {kind:?}",
+    );
+
+    if height == 0 || width == 0 {
+        return cudaError_t::cudaSuccess;
+    }
+    if dst.is_null() || src.is_null() || width > dpitch {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    for row in 0..height {
+        let Some(dst_offset) = row.checked_mul(dpitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let Some(row_h_offset) = hOffset.checked_add(row) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let row_dst = unsafe { (dst as *mut u8).add(dst_offset).cast() };
+        let result =
+            cudaMemcpyFromArrayAsync(row_dst, src, wOffset, row_h_offset, width, kind, stream);
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    cudaError_t::cudaSuccess
 }
 
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {

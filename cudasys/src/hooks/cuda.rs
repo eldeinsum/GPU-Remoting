@@ -385,6 +385,22 @@ fn cuMemcpyAtoH_v2(
     ByteCount: usize,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900475)]
+fn cuMemcpyAtoHAsync_v2(
+    #[host(output, len = ByteCount)] dstHost: *mut c_void,
+    srcArray: CUarray,
+    srcOffset: usize,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult {
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cuStreamSynchronize(hStream), Default::default());
+            cuMemcpyAtoH_v2(dstHost__ptr.cast(), srcArray, srcOffset, ByteCount)
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 900467, async_api)]
 fn cuMemcpyHtoA_v2(
     dstArray: CUarray,
@@ -392,6 +408,22 @@ fn cuMemcpyHtoA_v2(
     #[host(len = ByteCount)] srcHost: *const c_void,
     ByteCount: usize,
 ) -> CUresult;
+
+#[cuda_hook(proc_id = 900476)]
+fn cuMemcpyHtoAAsync_v2(
+    dstArray: CUarray,
+    dstOffset: usize,
+    #[host(len = ByteCount)] srcHost: *const c_void,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult {
+    'server_execution: {
+        let result = unsafe {
+            assert_eq!(cuStreamSynchronize(hStream), Default::default());
+            cuMemcpyHtoA_v2(dstArray, dstOffset, srcHost__ptr.cast(), ByteCount)
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 900406, async_api)]
 fn cuMemcpyDtoDAsync_v2(
