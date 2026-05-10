@@ -459,6 +459,66 @@ fn cudaMemcpy3DPeerAsync(
     }
 }
 
+#[cuda_hook(proc_id = 900576, async_api)]
+fn cudaMemcpy3DBatchAsync(
+    numOps: usize,
+    #[host(input, len = numOps)] opList: *mut cudaMemcpy3DBatchOp,
+    flags: c_ulonglong,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(numOps > 0);
+        assert!(!opList.is_null());
+        assert_eq!(flags, 0);
+        let ops = unsafe { std::slice::from_raw_parts(opList, numOps) };
+        for op in ops {
+            assert_eq!(
+                op.src.type_,
+                cudaMemcpy3DOperandType::cudaMemcpyOperandTypePointer
+            );
+            assert_eq!(
+                op.dst.type_,
+                cudaMemcpy3DOperandType::cudaMemcpyOperandTypePointer
+            );
+            let src = unsafe { op.src.op.ptr };
+            let dst = unsafe { op.dst.op.ptr };
+            assert!(!src.ptr.is_null());
+            assert!(!dst.ptr.is_null());
+            assert!(op.extent.width > 0);
+            assert!(op.extent.height > 0);
+            assert!(op.extent.depth > 0);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900577, async_api)]
+fn cudaMemcpy3DWithAttributesAsync(
+    #[host(input, len = 1)] op: *mut cudaMemcpy3DBatchOp,
+    flags: c_ulonglong,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(!op.is_null());
+        assert_eq!(flags, 0);
+        let op_ref = unsafe { &*op };
+        assert_eq!(
+            op_ref.src.type_,
+            cudaMemcpy3DOperandType::cudaMemcpyOperandTypePointer
+        );
+        assert_eq!(
+            op_ref.dst.type_,
+            cudaMemcpy3DOperandType::cudaMemcpyOperandTypePointer
+        );
+        let src = unsafe { op_ref.src.op.ptr };
+        let dst = unsafe { op_ref.dst.op.ptr };
+        assert!(!src.ptr.is_null());
+        assert!(!dst.ptr.is_null());
+        assert!(op_ref.extent.width > 0);
+        assert!(op_ref.extent.height > 0);
+        assert!(op_ref.extent.depth > 0);
+    }
+}
+
 #[cuda_custom_hook] // calls one of the following internal APIs
 fn cudaMemcpyToArray(
     dst: cudaArray_t,
