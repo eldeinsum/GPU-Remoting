@@ -15,6 +15,17 @@ if [[ "$#" -eq 0 ]]; then
     exit 2
 fi
 
+if [[ -z "${NETWORK_CONFIG:-}" ]]; then
+    if [[ -f "$repo_root/config.toml" ]]; then
+        export NETWORK_CONFIG="$repo_root/config.toml"
+    elif [[ -f "$repo_root/config.example.toml" ]]; then
+        export NETWORK_CONFIG="$repo_root/config.example.toml"
+    else
+        echo "network config not found. Set NETWORK_CONFIG." >&2
+        exit 2
+    fi
+fi
+
 export CARGO_INCREMENTAL=0
 cargo build "${cargo_args[@]}" -p client
 

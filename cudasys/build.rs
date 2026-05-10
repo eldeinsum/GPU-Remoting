@@ -24,10 +24,8 @@ pub fn find_cuda() -> (Vec<PathBuf>, Vec<PathBuf>) {
     candidates.push(PathBuf::from("/opt/cuda"));
     candidates.push(PathBuf::from("/usr/local/cuda"));
     candidates.push(PathBuf::from("/usr"));
-    for e in glob("/usr/local/cuda-*").unwrap() {
-        if let Ok(path) = e {
-            candidates.push(path)
-        }
+    for path in glob("/usr/local/cuda-*").unwrap().flatten() {
+        candidates.push(path);
     }
 
     let mut valid_paths = vec![];

@@ -23,5 +23,5 @@ pub fn deallocate(ptr: NonNull<u8>, size: usize, cache_line_size: usize) {
 
 pub fn is_cache_line_aligned<T>(ptr: *const T) -> bool {
     let alignment = 64; // Typical cache line size in bytes
-    (ptr as usize) % alignment == 0
+    (ptr as usize).is_multiple_of(alignment)
 }

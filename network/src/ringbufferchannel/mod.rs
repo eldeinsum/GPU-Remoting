@@ -1,8 +1,5 @@
 // pub mod channel;
-use crate::{
-    CommChannelInner, CommChannelError, CommChannelInnerIO,
-    RawMemory, RawMemoryMut
-};
+use crate::{CommChannelError, CommChannelInner, CommChannelInnerIO, RawMemory, RawMemoryMut};
 use std::ptr::{self, NonNull};
 
 pub mod test;
@@ -124,6 +121,10 @@ pub trait RingBufferManager: BufferManager {
 }
 
 pub trait RingBufferChannel: RingBufferManager {
+    /// # Safety
+    ///
+    /// `dst` must be valid for `len` bytes, and `offset..offset + len` must
+    /// be within the ring buffer allocation.
     unsafe fn read_at(&self, offset: usize, dst: *mut u8, len: usize) -> usize {
         unsafe {
             std::ptr::copy_nonoverlapping(self.get_ptr().add(offset), dst, len);
@@ -131,6 +132,10 @@ pub trait RingBufferChannel: RingBufferManager {
         len
     }
 
+    /// # Safety
+    ///
+    /// `src` must be valid for `len` bytes, and `offset..offset + len` must
+    /// be within the ring buffer allocation.
     unsafe fn write_at(&self, offset: usize, src: *const u8, len: usize) -> usize {
         unsafe {
             std::ptr::copy_nonoverlapping(src, self.get_ptr().add(offset), len);

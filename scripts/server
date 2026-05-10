@@ -11,6 +11,17 @@ if [[ "${1:-}" == "--release" ]]; then
     shift
 fi
 
+if [[ -z "${NETWORK_CONFIG:-}" ]]; then
+    if [[ -f "$repo_root/config.toml" ]]; then
+        export NETWORK_CONFIG="$repo_root/config.toml"
+    elif [[ -f "$repo_root/config.example.toml" ]]; then
+        export NETWORK_CONFIG="$repo_root/config.example.toml"
+    else
+        echo "network config not found. Set NETWORK_CONFIG." >&2
+        exit 2
+    fi
+fi
+
 gpucr_home="${GPUCR_HOME:-"$repo_root/../GPU-CR"}"
 runtime="${GPUCR_RUNTIME:-"$gpucr_home/build-nvidia/gpucr-nvidia.so"}"
 if [[ ! -f "$runtime" ]]; then

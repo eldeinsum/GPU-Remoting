@@ -1,7 +1,9 @@
-use serde::Deserialize;
-use std::error::Error;
 use std::boxed::Box;
+use std::error::Error;
 use std::fmt;
+use std::path::PathBuf;
+
+use serde::Deserialize;
 
 pub mod ringbufferchannel;
 pub mod tcp;
@@ -27,16 +29,27 @@ pub struct NetworkConfig {
     pub opt_local: bool,
 }
 
-
 impl NetworkConfig {
     pub fn read_from_file() -> Self {
-        // Use environment variable to set config file's path.
-        let path = match std::env::var("NETWORK_CONFIG") {
-            Ok(val) => val,
-            Err(_) => concat!(env!("CARGO_MANIFEST_DIR"), "/../config.toml").to_owned(),
-        };
-        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {}: {}", path, e));
-        toml::from_str(&content).expect("Failed to parse config.toml")
+        let path = config_path();
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
+        toml::from_str(&content)
+            .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e))
+    }
+}
+
+fn config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("NETWORK_CONFIG") {
+        return PathBuf::from(path);
+    }
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let config = root.join("config.toml");
+    if config.exists() {
+        config
+    } else {
+        root.join("config.example.toml")
     }
 }
 
@@ -171,13 +184,11 @@ pub struct Channel {
 
 impl Channel {
     pub fn new(inner: Box<dyn CommChannelInner>) -> Self {
-        Self {
-            inner,
-        }
+        Self { inner }
     }
 
-    fn get_inner(&self) -> &Box<dyn CommChannelInner> {
-        &self.inner
+    fn get_inner(&self) -> &dyn CommChannelInner {
+        self.inner.as_ref()
     }
 }
 

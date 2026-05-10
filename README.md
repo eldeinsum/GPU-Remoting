@@ -41,7 +41,7 @@ cargo build --workspace --release
 
 ## Config
 
-Copy `config.example.toml` to `config.toml`, then set `NETWORK_CONFIG` to its absolute path when running outside the repository root.
+Copy `config.example.toml` to `config.toml` to customize the default settings. Set `NETWORK_CONFIG` to override the config path.
 
 The default transport is shared memory:
 
@@ -55,14 +55,12 @@ Start the GPU-side server under GPU-CR:
 
 ```bash
 GPUCR_HOME=~/Projects/GPU-CR \
-NETWORK_CONFIG=$PWD/config.toml \
 scripts/server --release
 ```
 
 Run a CUDA application through the client preload library:
 
 ```bash
-NETWORK_CONFIG=$PWD/config.toml \
 scripts/client --release ./path/to/cuda_app
 ```
 
@@ -87,14 +85,14 @@ cmake --build tests/cuda_api/build -j$(nproc)
 Run the server in one terminal:
 
 ```bash
-NETWORK_CONFIG=$PWD/config.toml scripts/server
+scripts/server
 ```
 
 Run tests through the client in another terminal:
 
 ```bash
 for test in tests/cuda_api/build/test_*; do
-    NETWORK_CONFIG=$PWD/config.toml scripts/client --release "$test"
+    scripts/client --release "$test"
 done
 ```
 
