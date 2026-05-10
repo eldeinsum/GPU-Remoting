@@ -159,6 +159,51 @@ fn cublasLtMatmulAlgoGetHeuristic(
     returnAlgoCount: *mut c_int,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1533)]
+fn cublasLtMatmulAlgoGetIds(
+    lightHandle: cublasLtHandle_t,
+    computeType: cublasComputeType_t,
+    scaleType: cudaDataType_t,
+    Atype: cudaDataType_t,
+    Btype: cudaDataType_t,
+    Ctype: cudaDataType_t,
+    Dtype: cudaDataType_t,
+    requestedAlgoCount: c_int,
+    #[host(output, len = requestedAlgoCount)] algoIdsArray: *mut c_int,
+    returnAlgoCount: *mut c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1534)]
+fn cublasLtMatmulAlgoInit(
+    lightHandle: cublasLtHandle_t,
+    computeType: cublasComputeType_t,
+    scaleType: cudaDataType_t,
+    Atype: cudaDataType_t,
+    Btype: cudaDataType_t,
+    Ctype: cudaDataType_t,
+    Dtype: cudaDataType_t,
+    algoId: c_int,
+    algo: *mut cublasLtMatmulAlgo_t,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1536)]
+fn cublasLtMatmulAlgoCapGetAttribute(
+    #[host] algo: *const cublasLtMatmulAlgo_t,
+    attr: cublasLtMatmulAlgoCapAttributes_t,
+    #[host(output, len = sizeInBytes)] buf: *mut c_void,
+    sizeInBytes: usize,
+    sizeWritten: *mut usize,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1537)]
+fn cublasLtMatmulAlgoConfigGetAttribute(
+    #[host] algo: *const cublasLtMatmulAlgo_t,
+    attr: cublasLtMatmulAlgoConfigAttributes_t,
+    #[host(output, len = sizeInBytes)] buf: *mut c_void,
+    sizeInBytes: usize,
+    sizeWritten: *mut usize,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1519)]
 fn cublasLtMatmulDescCreate(
     matmulDesc: *mut cublasLtMatmulDesc_t,
