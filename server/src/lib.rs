@@ -15,6 +15,8 @@ use network::{tcp, Channel, CommChannel, CommChannelError, NetworkConfig, Transp
 use log::{error, info};
 
 use std::collections::BTreeMap;
+use std::io;
+use std::sync::{Arc, Barrier};
 
 struct ServerWorker<C> {
     pub id: i32,
@@ -39,43 +41,53 @@ impl<C> Drop for ServerWorker<C> {
 fn create_buffer(
     config: &NetworkConfig,
     id: i32,
-    barrier: Option<std::sync::Arc<std::sync::Barrier>>,
-) -> (Channel, Channel) {
+    barrier: Option<Arc<Barrier>>,
+) -> io::Result<(Channel, Channel)> {
     // Use features when compiling to decide what arm(s) will be supported.
     // In the server side, the sender's name is stoc_channel_name,
     // receiver's name is ctos_channel_name.
     match config.comm_type.as_str() {
         "shm" => {
-            let (receiver, sender) = SHMChannel::new_server_with_id(config, id).unwrap();
-            barrier.unwrap().wait();
+            let (receiver, sender) = SHMChannel::new_server_with_id(config, id)?;
+            let barrier = barrier.ok_or_else(|| missing_barrier("shm"))?;
+            barrier.wait();
             if config.emulator {
-                return (
+                return Ok((
                     Channel::new(Box::new(EmulatorChannel::new(sender, config))),
                     Channel::new(Box::new(EmulatorChannel::new(receiver, config))),
-                );
+                ));
             }
-            (
+            Ok((
                 Channel::new(Box::new(sender)),
                 Channel::new(Box::new(receiver)),
-            )
+            ))
         }
         "tcp" => {
-            let (receiver, sender) = tcp::new_server(config, id, &barrier.unwrap()).unwrap();
-            (
+            let barrier = barrier.ok_or_else(|| missing_barrier("tcp"))?;
+            let (receiver, sender) = tcp::new_server(config, id, &barrier)?;
+            Ok((
                 Channel::new(Box::new(sender)),
                 Channel::new(Box::new(receiver)),
-            )
+            ))
         }
         #[cfg(feature = "rdma")]
         "rdma" => {
-            assert!(barrier.is_none());
+            if barrier.is_some() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "rdma server channel should not use a startup barrier",
+                ));
+            }
             let (receiver, sender) = RDMAChannel::new_server(config, id);
-            (
+            Ok((
                 Channel::new(Box::new(sender)),
                 Channel::new(Box::new(receiver)),
-            )
+            ))
         }
-        &_ => panic!("Unsupported communication type in config"),
+        other => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unsupported communication type in config: {other}"),
+        )),
     }
 }
 
@@ -91,10 +103,26 @@ fn receive_request<T: CommChannel>(channel_receiver: &mut T) -> Result<i32, Comm
 pub fn launch_server(
     config: &NetworkConfig,
     id: i32,
-    barrier: Option<std::sync::Arc<std::sync::Barrier>>,
+    barrier: Option<Arc<Barrier>>,
     is_main_thread: bool,
 ) {
-    let (channel_sender, channel_receiver) = create_buffer(config, id, barrier);
+    let barrier_on_error = barrier.clone();
+    let (channel_sender, channel_receiver) = match create_buffer(config, id, barrier) {
+        Ok(channels) => channels,
+        Err(err) => {
+            error!(
+                "[{}:{}] failed to create {} buffer: {}",
+                std::file!(),
+                std::line!(),
+                config.comm_type,
+                err
+            );
+            if let Some(barrier) = barrier_on_error {
+                barrier.wait();
+            }
+            return;
+        }
+    };
     info!(
         "[{}:{}] {} buffer created",
         std::file!(),
@@ -117,7 +145,7 @@ pub fn launch_server(
             std::file!(),
             std::line!()
         );
-        panic!();
+        return;
     }
 
     let mut server = ServerWorker {
@@ -158,4 +186,11 @@ pub fn launch_server(
     if is_main_thread {
         std::process::exit(0);
     }
+}
+
+fn missing_barrier(comm_type: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("{comm_type} server channel requires a startup barrier"),
+    )
 }
