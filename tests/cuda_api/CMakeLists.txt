@@ -13,7 +13,7 @@ set(CMAKE_CXX_COMPILER g++)
 include_directories(${CUDA_INCLUDE_DIRS})
 message(STATUS "CUDA Libraries: ${CUDA_CUDART_LIBRARY}")
 
-file(GLOB_RECURSE sources RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/*.cu")
+file(GLOB sources RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/*.cu")
 foreach(source IN LISTS sources)
     # Get file name without directory
     get_filename_component(source_name ${source} NAME_WE)
