@@ -22,6 +22,13 @@ fn cudaArrayGetInfo(
     array: cudaArray_t,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900578)]
+fn cudaArrayGetPlane(
+    pPlaneArray: *mut cudaArray_t,
+    hArray: cudaArray_t,
+    planeIdx: c_uint,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900481)]
 fn cudaGetChannelDesc(desc: *mut cudaChannelFormatDesc, array: cudaArray_const_t) -> cudaError_t;
 

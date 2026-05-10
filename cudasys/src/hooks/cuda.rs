@@ -26,6 +26,9 @@ fn cuArray3DGetDescriptor_v2(
     hArray: CUarray,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900579)]
+fn cuArrayGetPlane(pPlaneArray: *mut CUarray, hArray: CUarray, planeIdx: c_uint) -> CUresult;
+
 #[cuda_hook(proc_id = 900463, async_api = false)]
 fn cuArrayDestroy(hArray: CUarray) -> CUresult;
 
