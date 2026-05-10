@@ -44,6 +44,27 @@ pub mod cuda {
             }
         }
     }
+
+    impl CUmemPool_attribute {
+        pub fn data_size(&self) -> usize {
+            match self {
+                Self::CU_MEMPOOL_ATTR_REUSE_FOLLOW_EVENT_DEPENDENCIES
+                | Self::CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC
+                | Self::CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES
+                | Self::CU_MEMPOOL_ATTR_LOCATION_ID
+                | Self::CU_MEMPOOL_ATTR_HW_DECOMPRESS_ENABLED => size_of::<i32>(),
+                Self::CU_MEMPOOL_ATTR_RELEASE_THRESHOLD
+                | Self::CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT
+                | Self::CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH
+                | Self::CU_MEMPOOL_ATTR_USED_MEM_CURRENT
+                | Self::CU_MEMPOOL_ATTR_USED_MEM_HIGH
+                | Self::CU_MEMPOOL_ATTR_MAX_POOL_SIZE => size_of::<u64>(),
+                Self::CU_MEMPOOL_ATTR_ALLOCATION_TYPE => size_of::<CUmemAllocationType>(),
+                Self::CU_MEMPOOL_ATTR_EXPORT_HANDLE_TYPES => size_of::<CUmemAllocationHandleType>(),
+                Self::CU_MEMPOOL_ATTR_LOCATION_TYPE => size_of::<CUmemLocationType>(),
+            }
+        }
+    }
 }
 
 pub mod cudart {
@@ -61,6 +82,27 @@ pub mod cudart {
                     | Self::cudaErrorNotReady
                     | Self::cudaErrorPeerAccessAlreadyEnabled
             )
+        }
+    }
+
+    impl cudaMemPoolAttr {
+        pub fn data_size(&self) -> usize {
+            match self {
+                Self::cudaMemPoolReuseFollowEventDependencies
+                | Self::cudaMemPoolReuseAllowOpportunistic
+                | Self::cudaMemPoolReuseAllowInternalDependencies
+                | Self::cudaMemPoolAttrLocationId
+                | Self::cudaMemPoolAttrHwDecompressEnabled => size_of::<i32>(),
+                Self::cudaMemPoolAttrReleaseThreshold
+                | Self::cudaMemPoolAttrReservedMemCurrent
+                | Self::cudaMemPoolAttrReservedMemHigh
+                | Self::cudaMemPoolAttrUsedMemCurrent
+                | Self::cudaMemPoolAttrUsedMemHigh
+                | Self::cudaMemPoolAttrMaxPoolSize => size_of::<u64>(),
+                Self::cudaMemPoolAttrAllocationType => size_of::<cudaMemAllocationType>(),
+                Self::cudaMemPoolAttrExportHandleTypes => size_of::<cudaMemAllocationHandleType>(),
+                Self::cudaMemPoolAttrLocationType => size_of::<cudaMemLocationType>(),
+            }
         }
     }
 }
@@ -142,7 +184,10 @@ pub mod nvrtc {
 pub mod nccl {
     include!("bindings/types/nccl.rs");
 
-    const _: () = assert!(NCCL_VERSION_CODE >= 21602, "run `apt install libnccl2 libnccl-dev`");
+    const _: () = assert!(
+        NCCL_VERSION_CODE >= 21602,
+        "run `apt install libnccl2 libnccl-dev`"
+    );
 
     success_return_value!(ncclResult_t::ncclSuccess);
     impl_is_error!(ncclResult_t);

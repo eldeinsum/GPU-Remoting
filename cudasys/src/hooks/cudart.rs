@@ -43,6 +43,15 @@ fn cudaDeviceCanAccessPeer(
     peerDevice: c_int,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900440)]
+fn cudaDeviceGetDefaultMemPool(memPool: *mut cudaMemPool_t, device: c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900441)]
+fn cudaDeviceGetMemPool(memPool: *mut cudaMemPool_t, device: c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900442, async_api = false)]
+fn cudaDeviceSetMemPool(device: c_int, memPool: cudaMemPool_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900351)]
 fn cudaDeviceGetByPCIBusId(device: *mut c_int, pciBusId: *const c_char) -> cudaError_t;
 
@@ -342,6 +351,31 @@ fn cudaGetErrorName(error: cudaError_t) -> *const c_char;
 
 #[cuda_hook(proc_id = 274)]
 fn cudaMemGetInfo(free: *mut usize, total: *mut usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900443, async_api = false)]
+fn cudaMemPoolTrimTo(memPool: cudaMemPool_t, minBytesToKeep: usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900444)]
+fn cudaMemPoolGetAttribute(
+    memPool: cudaMemPool_t,
+    attr: cudaMemPoolAttr,
+    #[host(output, len = attr.data_size())] value: *mut c_void,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900445)]
+fn cudaMemPoolSetAttribute(
+    memPool: cudaMemPool_t,
+    attr: cudaMemPoolAttr,
+    #[host(input, len = attr.data_size())] value: *mut c_void,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900446)]
+fn cudaMallocFromPoolAsync(
+    ptr: *mut *mut c_void,
+    size: usize,
+    memPool: cudaMemPool_t,
+    stream: cudaStream_t,
+) -> cudaError_t;
 
 #[cuda_custom_hook] // local
 fn __cudaPushCallConfiguration(

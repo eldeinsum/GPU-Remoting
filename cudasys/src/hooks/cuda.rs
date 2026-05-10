@@ -205,6 +205,15 @@ fn cuDevicePrimaryCtxRetain(pctx: *mut CUcontext, dev: CUdevice) -> CUresult;
 #[cuda_hook(proc_id = 900321, async_api = false)]
 fn cuDevicePrimaryCtxRelease_v2(dev: CUdevice) -> CUresult;
 
+#[cuda_hook(proc_id = 900433)]
+fn cuDeviceGetDefaultMemPool(pool_out: *mut CUmemoryPool, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900434)]
+fn cuDeviceGetMemPool(pool: *mut CUmemoryPool, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900435, async_api = false)]
+fn cuDeviceSetMemPool(dev: CUdevice, pool: CUmemoryPool) -> CUresult;
+
 #[cuda_hook(proc_id = 910)]
 fn cuFuncGetAttribute(pi: *mut c_int, attrib: CUfunction_attribute, hfunc: CUfunction) -> CUresult;
 
@@ -229,6 +238,31 @@ fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
 
 #[cuda_hook(proc_id = 900403)]
 fn cuMemGetInfo_v2(free: *mut usize, total: *mut usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900436, async_api = false)]
+fn cuMemPoolTrimTo(pool: CUmemoryPool, minBytesToKeep: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900437)]
+fn cuMemPoolGetAttribute(
+    pool: CUmemoryPool,
+    attr: CUmemPool_attribute,
+    #[host(output, len = attr.data_size())] value: *mut c_void,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900438)]
+fn cuMemPoolSetAttribute(
+    pool: CUmemoryPool,
+    attr: CUmemPool_attribute,
+    #[host(input, len = attr.data_size())] value: *mut c_void,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900439)]
+fn cuMemAllocFromPoolAsync(
+    dptr: *mut CUdeviceptr,
+    bytesize: usize,
+    pool: CUmemoryPool,
+    hStream: CUstream,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900404, async_api)]
 fn cuMemcpy(dst: CUdeviceptr, src: CUdeviceptr, ByteCount: usize) -> CUresult;
