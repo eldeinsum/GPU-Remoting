@@ -1054,6 +1054,32 @@ fn cudaGraphEventWaitNodeGetEvent(
 #[cuda_hook(proc_id = 900537)]
 fn cudaGraphEventWaitNodeSetEvent(node: cudaGraphNode_t, event: cudaEvent_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900540)]
+fn cudaGraphAddMemsetNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    #[host(len = 1)] pMemsetParams: *const cudaMemsetParams,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900541)]
+fn cudaGraphMemsetNodeGetParams(
+    node: cudaGraphNode_t,
+    #[host(output, len = 1)] pNodeParams: *mut cudaMemsetParams,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900542)]
+fn cudaGraphMemsetNodeSetParams(
+    node: cudaGraphNode_t,
+    #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 545, async_api = false)]
 fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
 
@@ -1187,6 +1213,13 @@ fn cudaGraphExecEventWaitNodeSetEvent(
     hGraphExec: cudaGraphExec_t,
     hNode: cudaGraphNode_t,
     event: cudaEvent_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900543)]
+fn cudaGraphExecMemsetNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900514, async_api)]

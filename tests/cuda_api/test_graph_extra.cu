@@ -107,6 +107,52 @@ int main()
 
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(graph));
+
+    cudaGraph_t memset_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&memset_graph, 0));
+    cudaMemsetParams memset_params = {};
+    memset_params.dst = device;
+    memset_params.value = 0x3c;
+    memset_params.elementSize = 1;
+    memset_params.width = kBytes;
+    memset_params.height = 1;
+
+    cudaGraphNode_t memset_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemsetNode(&memset_node, memset_graph, nullptr,
+                                      0, &memset_params));
+    cudaMemsetParams queried_memset = {};
+    CHECK_CUDA(cudaGraphMemsetNodeGetParams(memset_node, &queried_memset));
+    if (queried_memset.dst != device || queried_memset.value != 0x3c ||
+        queried_memset.elementSize != 1 || queried_memset.width != kBytes ||
+        queried_memset.height != 1) {
+        std::fprintf(stderr, "unexpected graph memset node params\n");
+        return 1;
+    }
+
+    memset_params.value = 0x2a;
+    CHECK_CUDA(cudaGraphMemsetNodeSetParams(memset_node, &memset_params));
+    CHECK_CUDA(cudaGraphMemsetNodeGetParams(memset_node, &queried_memset));
+    if (queried_memset.value != 0x2a) {
+        std::fprintf(stderr, "graph memset node set unexpected value\n");
+        return 1;
+    }
+
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, memset_graph, 0));
+    memset_params.value = 0x7f;
+    CHECK_CUDA(cudaGraphExecMemsetNodeSetParams(exec, memset_node,
+                                                &memset_params));
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes, cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x7f) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(memset_graph));
+
     CHECK_CUDA(cudaStreamDestroy(stream));
     CHECK_CUDA(cudaFree(device));
 
