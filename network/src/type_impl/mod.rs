@@ -97,8 +97,8 @@ pub fn recv_slice<T: TransportableMarker, C: CommChannel>(
 ) -> Result<Box<[T]>, CommChannelError> {
     let mut len = 0;
     len.recv(channel)?;
+    let bytes = checked_byte_len::<T>(len)?;
     let mut data = Box::<[T]>::new_uninit_slice(len);
-    let bytes = len * size_of::<T>();
     let mut memory = RawMemoryMut::from_ptr(data.as_mut_ptr() as *mut u8, bytes);
     match channel.get_bytes(&mut memory)? == bytes {
         true => Ok(unsafe { data.assume_init() }),
@@ -112,13 +112,20 @@ pub fn recv_slice_to<T: TransportableMarker, C: CommChannel>(
 ) -> Result<(), CommChannelError> {
     let mut len = 0;
     len.recv(channel)?;
-    assert_eq!(len, data.len()); // TODO: relax to <=?
-    let bytes = len * size_of::<T>();
+    if len != data.len() {
+        return Err(CommChannelError::InvalidOperation);
+    }
+    let bytes = checked_byte_len::<T>(len)?;
     let mut memory = RawMemoryMut::from_ptr(data.as_mut_ptr() as *mut u8, bytes);
     match channel.get_bytes(&mut memory)? == bytes {
         true => Ok(()),
         false => Err(CommChannelError::IoError),
     }
+}
+
+fn checked_byte_len<T>(len: usize) -> Result<usize, CommChannelError> {
+    len.checked_mul(size_of::<T>())
+        .ok_or(CommChannelError::InvalidOperation)
 }
 
 #[cfg(test)]
@@ -182,5 +189,26 @@ mod tests {
         a.send(&channel).unwrap();
         b.recv(&channel).unwrap();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn rejects_oversized_slice_length() {
+        let channel = Channel::new(Box::new(LocalChannel::new(16 + META_AREA)));
+        usize::MAX.send(&channel).unwrap();
+        assert!(matches!(
+            recv_slice::<u16, _>(&channel),
+            Err(CommChannelError::InvalidOperation)
+        ));
+    }
+
+    #[test]
+    fn recv_slice_to_rejects_length_mismatch() {
+        let channel = Channel::new(Box::new(LocalChannel::new(16 + META_AREA)));
+        2usize.send(&channel).unwrap();
+        let mut dst = [0u8; 3];
+        assert!(matches!(
+            recv_slice_to(&mut dst, &channel),
+            Err(CommChannelError::InvalidOperation)
+        ));
     }
 }
