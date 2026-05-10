@@ -135,7 +135,9 @@ pub fn launch_server(
             if proc_id == -1 {
                 break;
             }
-            dispatch(proc_id, &mut server);
+            if !dispatch(proc_id, &mut server) {
+                break;
+            }
         } else {
             error!(
                 "[{}:{}] failed to receive request",
