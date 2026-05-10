@@ -26,7 +26,8 @@ use std::sync::RwLock;
 
 use cudasys::types::cublas::{cublasHandle_t, cublasPointerMode_t};
 use cudasys::types::cublasLt::{
-    cublasLtMatmulDesc_t, cublasLtPointerMode_t, cudaDataType_t as CublasLtCudaDataType,
+    cublasLtMatmulDesc_t, cublasLtMatrixTransformDesc_t, cublasLtPointerMode_t,
+    cudaDataType_t as CublasLtCudaDataType,
 };
 use cudasys::types::cuda::{CUfunction, CUkernel, CUlibrary, CUmodule};
 type FatBinaryHandle = usize;
@@ -240,6 +241,7 @@ impl RuntimeCache {
 struct CublasCache {
     pointer_modes: BTreeMap<cublasHandle_t, cublasPointerMode_t>,
     lt_matmul_descs: BTreeMap<cublasLtMatmulDesc_t, CublasLtMatmulDescState>,
+    lt_transform_descs: BTreeMap<cublasLtMatrixTransformDesc_t, CublasLtTransformDescState>,
 }
 
 // The handles are server-side.
@@ -251,17 +253,25 @@ impl CublasCache {
         Self {
             pointer_modes: BTreeMap::new(),
             lt_matmul_descs: BTreeMap::new(),
+            lt_transform_descs: BTreeMap::new(),
         }
     }
 
     fn reset_after_fork(&mut self) {
         self.pointer_modes.clear();
         self.lt_matmul_descs.clear();
+        self.lt_transform_descs.clear();
     }
 }
 
 #[derive(Copy, Clone)]
 struct CublasLtMatmulDescState {
+    pointer_mode: cublasLtPointerMode_t,
+    scale_type_size: Option<usize>,
+}
+
+#[derive(Copy, Clone)]
+struct CublasLtTransformDescState {
     pointer_mode: cublasLtPointerMode_t,
     scale_type_size: Option<usize>,
 }
