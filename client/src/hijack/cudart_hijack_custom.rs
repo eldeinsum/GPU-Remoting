@@ -223,6 +223,86 @@ pub extern "C" fn cudaMemcpy2DAsync(
     cudaError_t::cudaSuccess
 }
 
+#[no_mangle]
+pub extern "C" fn cudaMemcpyToArray(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyToArray", "count = {count}, kind = {kind:?}");
+    if count > 0 && (dst.is_null() || src.is_null()) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let kind = if kind == cudaMemcpyKind::cudaMemcpyDefault {
+        if is_device_pointer(src) {
+            cudaMemcpyKind::cudaMemcpyDeviceToDevice
+        } else {
+            cudaMemcpyKind::cudaMemcpyHostToDevice
+        }
+    } else {
+        kind
+    };
+
+    match kind {
+        cudaMemcpyKind::cudaMemcpyHostToDevice => super::cudart_hijack::cudaMemcpyToArrayHtod(
+            dst,
+            wOffset,
+            hOffset,
+            src.cast::<u8>(),
+            count,
+            kind,
+        ),
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
+            super::cudart_hijack::cudaMemcpyToArrayDtod(dst, wOffset, hOffset, src, count, kind)
+        }
+        _ => cudaError_t::cudaErrorInvalidValue,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyFromArray(
+    dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyFromArray", "count = {count}, kind = {kind:?}");
+    if count > 0 && (dst.is_null() || src.is_null()) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let kind = if kind == cudaMemcpyKind::cudaMemcpyDefault {
+        if is_device_pointer(dst.cast_const()) {
+            cudaMemcpyKind::cudaMemcpyDeviceToDevice
+        } else {
+            cudaMemcpyKind::cudaMemcpyDeviceToHost
+        }
+    } else {
+        kind
+    };
+
+    match kind {
+        cudaMemcpyKind::cudaMemcpyDeviceToHost => super::cudart_hijack::cudaMemcpyFromArrayDtoh(
+            dst.cast::<u8>(),
+            src,
+            wOffset,
+            hOffset,
+            count,
+            kind,
+        ),
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
+            super::cudart_hijack::cudaMemcpyFromArrayDtod(dst, src, wOffset, hOffset, count, kind)
+        }
+        _ => cudaError_t::cudaErrorInvalidValue,
+    }
+}
+
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     if !CLIENT_THREAD.with_borrow(|client| client.cuda_device_init) {
         // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#initialization

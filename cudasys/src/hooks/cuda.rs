@@ -2,6 +2,21 @@ use crate::types::cuda::*;
 use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
 
+#[cuda_hook(proc_id = 900461)]
+fn cuArrayCreate_v2(
+    pHandle: *mut CUarray,
+    #[host(len = 1)] pAllocateArray: *const CUDA_ARRAY_DESCRIPTOR,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900462)]
+fn cuArrayGetDescriptor_v2(
+    pArrayDescriptor: *mut CUDA_ARRAY_DESCRIPTOR,
+    hArray: CUarray,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900463, async_api = false)]
+fn cuArrayDestroy(hArray: CUarray) -> CUresult;
+
 #[cuda_hook(proc_id = 670)]
 fn cuDevicePrimaryCtxGetState(dev: CUdevice, flags: *mut c_uint, active: *mut c_int) -> CUresult;
 
@@ -345,6 +360,38 @@ fn cuMemcpyDtoH_v2(
 
 #[cuda_hook(proc_id = 900205, async_api)]
 fn cuMemcpyDtoD_v2(dstDevice: CUdeviceptr, srcDevice: CUdeviceptr, ByteCount: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900464, async_api)]
+fn cuMemcpyDtoA_v2(
+    dstArray: CUarray,
+    dstOffset: usize,
+    srcDevice: CUdeviceptr,
+    ByteCount: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900465, async_api)]
+fn cuMemcpyAtoD_v2(
+    dstDevice: CUdeviceptr,
+    srcArray: CUarray,
+    srcOffset: usize,
+    ByteCount: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900466)]
+fn cuMemcpyAtoH_v2(
+    #[host(output, len = ByteCount)] dstHost: *mut c_void,
+    srcArray: CUarray,
+    srcOffset: usize,
+    ByteCount: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900467, async_api)]
+fn cuMemcpyHtoA_v2(
+    dstArray: CUarray,
+    dstOffset: usize,
+    #[host(len = ByteCount)] srcHost: *const c_void,
+    ByteCount: usize,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900406, async_api)]
 fn cuMemcpyDtoDAsync_v2(

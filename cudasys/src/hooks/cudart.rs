@@ -5,6 +5,26 @@ use std::os::raw::*;
 // Hacked via type alias because imports are rewritten in generated code.
 type CUfunction = crate::types::cuda::CUfunction;
 
+#[cuda_hook(proc_id = 900468)]
+fn cudaMallocArray(
+    array: *mut cudaArray_t,
+    #[host(len = 1)] desc: *const cudaChannelFormatDesc,
+    width: usize,
+    height: usize,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900469)]
+fn cudaArrayGetInfo(
+    desc: *mut cudaChannelFormatDesc,
+    extent: *mut cudaExtent,
+    flags: *mut c_uint,
+    array: cudaArray_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900470, async_api = false)]
+fn cudaFreeArray(array: cudaArray_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 120)]
 fn cudaGetDevice(device: *mut c_int) -> cudaError_t {
     'client_before_send: {
@@ -276,6 +296,66 @@ fn cudaMemcpy2DAsync(
     height: usize,
     kind: cudaMemcpyKind,
     stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudaMemcpyToArray(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900471, async_api, parent = cudaMemcpyToArray)]
+fn cudaMemcpyToArrayHtod(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    #[host(len = count)] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900472, async_api, parent = cudaMemcpyToArray)]
+fn cudaMemcpyToArrayDtod(
+    dst: cudaArray_t,
+    wOffset: usize,
+    hOffset: usize,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudaMemcpyFromArray(
+    dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900473, parent = cudaMemcpyFromArray)]
+fn cudaMemcpyFromArrayDtoh(
+    #[host(output, len = count)] dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900474, async_api, parent = cudaMemcpyFromArray)]
+fn cudaMemcpyFromArrayDtod(
+    #[device] dst: *mut c_void,
+    src: cudaArray_const_t,
+    wOffset: usize,
+    hOffset: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 253, async_api)]
