@@ -143,9 +143,73 @@ int main()
 
     unsigned int graph_id = 0;
     CHECK_CUDA(cudaGraphGetId(manual_graph, &graph_id));
+    cudaGraphNodeType node_type = cudaGraphNodeTypeCount;
+    CHECK_CUDA(cudaGraphNodeGetType(node_a, &node_type));
+    if (node_type != cudaGraphNodeTypeEmpty) {
+        std::fprintf(stderr, "unexpected node type: %d\n", static_cast<int>(node_type));
+        return 1;
+    }
+
+    cudaGraph_t containing_graph = nullptr;
+    CHECK_CUDA(cudaGraphNodeGetContainingGraph(node_a, &containing_graph));
+    if (containing_graph == nullptr) {
+        std::fprintf(stderr, "cudaGraphNodeGetContainingGraph returned null\n");
+        return 1;
+    }
+
+    unsigned int local_id = 0;
+    CHECK_CUDA(cudaGraphNodeGetLocalId(node_a, &local_id));
+    unsigned long long tools_id = 0;
+    CHECK_CUDA(cudaGraphNodeGetToolsId(node_a, &tools_id));
+
+    size_t dependency_count = 0;
+    CHECK_CUDA(cudaGraphNodeGetDependencies(node_b, nullptr, nullptr, &dependency_count));
+    if (dependency_count != 1) {
+        std::fprintf(stderr, "unexpected dependency count: %zu\n", dependency_count);
+        return 1;
+    }
+
+    size_t dependent_count = 0;
+    CHECK_CUDA(cudaGraphNodeGetDependentNodes(node_a, nullptr, nullptr, &dependent_count));
+    if (dependent_count != 1) {
+        std::fprintf(stderr, "unexpected dependent count: %zu\n", dependent_count);
+        return 1;
+    }
+
+    cudaGraph_t cloned_graph = nullptr;
+    CHECK_CUDA(cudaGraphClone(&cloned_graph, manual_graph));
+    cudaGraphNode_t cloned_node_a = nullptr;
+    CHECK_CUDA(cudaGraphNodeFindInClone(&cloned_node_a, node_a, cloned_graph));
+    CHECK_CUDA(cudaGraphNodeGetType(cloned_node_a, &node_type));
+    if (node_type != cudaGraphNodeTypeEmpty) {
+        std::fprintf(stderr, "unexpected cloned node type: %d\n", static_cast<int>(node_type));
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroy(cloned_graph));
+
+    cudaGraph_t child_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&child_graph, 0));
+    cudaGraphNode_t child_inner_node = nullptr;
+    CHECK_CUDA(cudaGraphAddEmptyNode(&child_inner_node, child_graph, nullptr, 0));
+    cudaGraphNode_t child_graph_node = nullptr;
+    CHECK_CUDA(cudaGraphAddChildGraphNode(&child_graph_node, manual_graph, nullptr, 0, child_graph));
+    CHECK_CUDA(cudaGraphChildGraphNodeGetGraph(child_graph_node, &containing_graph));
+    size_t child_nodes = 0;
+    CHECK_CUDA(cudaGraphGetNodes(containing_graph, nullptr, &child_nodes));
+    if (child_nodes != 1) {
+        std::fprintf(stderr, "unexpected child graph node count: %zu\n", child_nodes);
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroy(child_graph));
 
     exec = nullptr;
     CHECK_CUDA(cudaGraphInstantiate(&exec, manual_graph, 0));
+    cudaGraphExecUpdateResultInfo update_info = {};
+    CHECK_CUDA(cudaGraphExecUpdate(exec, manual_graph, &update_info));
+    if (update_info.result != cudaGraphExecUpdateSuccess) {
+        std::fprintf(stderr, "graph exec update failed: %d\n", static_cast<int>(update_info.result));
+        return 1;
+    }
     unsigned long long exec_flags = 1;
     CHECK_CUDA(cudaGraphExecGetFlags(exec, &exec_flags));
     if (exec_flags != 0) {
@@ -167,6 +231,7 @@ int main()
         return 1;
     }
     CHECK_CUDA(cudaGraphDestroyNode(node_b));
+    CHECK_CUDA(cudaGraphDestroyNode(child_graph_node));
     nodes = 0;
     CHECK_CUDA(cudaGraphGetNodes(manual_graph, nullptr, &nodes));
     if (nodes != 1) {

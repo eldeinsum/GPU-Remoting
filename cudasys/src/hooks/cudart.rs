@@ -915,6 +915,23 @@ fn cudaGraphRemoveDependencies(
 #[cuda_hook(proc_id = 900508, async_api = false)]
 fn cudaGraphDestroyNode(node: cudaGraphNode_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900515)]
+fn cudaGraphAddChildGraphNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    childGraph: cudaGraph_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900516)]
+fn cudaGraphChildGraphNodeGetGraph(node: cudaGraphNode_t, pGraph: *mut cudaGraph_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 545, async_api = false)]
 fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
 
@@ -958,6 +975,57 @@ fn cudaGraphGetEdges(
 #[cuda_hook(proc_id = 900511)]
 fn cudaGraphGetId(hGraph: cudaGraph_t, graphID: *mut c_uint) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900517)]
+fn cudaGraphClone(pGraphClone: *mut cudaGraph_t, originalGraph: cudaGraph_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900518)]
+fn cudaGraphNodeFindInClone(
+    pNode: *mut cudaGraphNode_t,
+    originalNode: cudaGraphNode_t,
+    clonedGraph: cudaGraph_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900519)]
+fn cudaGraphNodeGetType(node: cudaGraphNode_t, pType: *mut cudaGraphNodeType) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900520)]
+fn cudaGraphNodeGetContainingGraph(
+    hNode: cudaGraphNode_t,
+    phGraph: *mut cudaGraph_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900521)]
+fn cudaGraphNodeGetLocalId(hNode: cudaGraphNode_t, nodeId: *mut c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900522)]
+fn cudaGraphNodeGetToolsId(hNode: cudaGraphNode_t, toolsNodeId: *mut c_ulonglong) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900523)]
+fn cudaGraphNodeGetDependencies(
+    node: cudaGraphNode_t,
+    #[device] pDependencies: *mut cudaGraphNode_t, // null
+    #[device] edgeData: *mut cudaGraphEdgeData,    // null
+    pNumDependencies: *mut usize,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert!(edgeData.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900524)]
+fn cudaGraphNodeGetDependentNodes(
+    node: cudaGraphNode_t,
+    #[device] pDependentNodes: *mut cudaGraphNode_t, // null
+    #[device] edgeData: *mut cudaGraphEdgeData,      // null
+    pNumDependentNodes: *mut usize,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependentNodes.is_null());
+        assert!(edgeData.is_null());
+    }
+}
+
 #[cuda_hook(proc_id = 567, min_cuda_version = 12)]
 fn cudaGraphInstantiate(
     pGraphExec: *mut cudaGraphExec_t,
@@ -977,6 +1045,13 @@ fn cudaGraphExecGetFlags(graphExec: cudaGraphExec_t, flags: *mut c_ulonglong) ->
 
 #[cuda_hook(proc_id = 900513)]
 fn cudaGraphExecGetId(hGraphExec: cudaGraphExec_t, graphID: *mut c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900525)]
+fn cudaGraphExecUpdate(
+    hGraphExec: cudaGraphExec_t,
+    hGraph: cudaGraph_t,
+    resultInfo: *mut cudaGraphExecUpdateResultInfo,
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900514, async_api)]
 fn cudaGraphUpload(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;
