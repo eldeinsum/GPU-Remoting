@@ -1080,6 +1080,47 @@ fn cudaGraphMemsetNodeSetParams(
     #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900547)]
+fn cudaGraphAddMemcpyNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    #[host(len = 1)] pCopyParams: *const cudaMemcpy3DParms,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        let params = unsafe { &*pCopyParams };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+        assert_eq!(params.kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
+#[cuda_hook(proc_id = 900548)]
+fn cudaGraphMemcpyNodeGetParams(
+    node: cudaGraphNode_t,
+    #[host(output, len = 1)] pNodeParams: *mut cudaMemcpy3DParms,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900549)]
+fn cudaGraphMemcpyNodeSetParams(
+    node: cudaGraphNode_t,
+    #[host(len = 1)] pNodeParams: *const cudaMemcpy3DParms,
+) -> cudaError_t {
+    'client_before_send: {
+        let params = unsafe { &*pNodeParams };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+        assert_eq!(params.kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
 #[cuda_hook(proc_id = 900544)]
 fn cudaGraphAddMemcpyNode1D(
     pGraphNode: *mut cudaGraphNode_t,
@@ -1253,6 +1294,22 @@ fn cudaGraphExecMemsetNodeSetParams(
     #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900550)]
+fn cudaGraphExecMemcpyNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    #[host(len = 1)] pNodeParams: *const cudaMemcpy3DParms,
+) -> cudaError_t {
+    'client_before_send: {
+        let params = unsafe { &*pNodeParams };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+        assert_eq!(params.kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
 #[cuda_hook(proc_id = 900546)]
 fn cudaGraphExecMemcpyNodeSetParams1D(
     hGraphExec: cudaGraphExec_t,
@@ -1272,3 +1329,17 @@ fn cudaGraphUpload(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaErro
 
 #[cuda_hook(proc_id = 573, async_api)]
 fn cudaGraphLaunch(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900551)]
+fn cudaGraphNodeSetEnabled(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    isEnabled: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900552)]
+fn cudaGraphNodeGetEnabled(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    isEnabled: *mut c_uint,
+) -> cudaError_t;

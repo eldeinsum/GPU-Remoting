@@ -194,6 +194,97 @@ int main()
     }
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(memcpy_graph));
+
+    CHECK_CUDA(cudaMemset(copy_src, 0x22, kBytes));
+    CHECK_CUDA(cudaMemset(copy_dst, 0, kBytes));
+
+    cudaMemcpy3DParms copy_params = {};
+    copy_params.srcPtr = make_cudaPitchedPtr(copy_src, kBytes, kBytes, 1);
+    copy_params.dstPtr = make_cudaPitchedPtr(copy_dst, kBytes, kBytes, 1);
+    copy_params.extent = make_cudaExtent(kBytes, 1, 1);
+    copy_params.kind = cudaMemcpyDeviceToDevice;
+
+    CHECK_CUDA(cudaGraphCreate(&memcpy_graph, 0));
+    memcpy_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemcpyNode(&memcpy_node, memcpy_graph, nullptr,
+                                      0, &copy_params));
+    cudaMemcpy3DParms queried_copy = {};
+    CHECK_CUDA(cudaGraphMemcpyNodeGetParams(memcpy_node, &queried_copy));
+    if (queried_copy.srcPtr.ptr != copy_src ||
+        queried_copy.dstPtr.ptr != copy_dst ||
+        queried_copy.extent.width != kBytes ||
+        queried_copy.extent.height != 1 ||
+        queried_copy.extent.depth != 1 ||
+        queried_copy.kind != cudaMemcpyDeviceToDevice) {
+        std::fprintf(stderr, "unexpected graph memcpy node params\n");
+        return 1;
+    }
+
+    CHECK_CUDA(cudaMemset(device, 0x33, kBytes));
+    copy_params.srcPtr = make_cudaPitchedPtr(device, kBytes, kBytes, 1);
+    CHECK_CUDA(cudaGraphMemcpyNodeSetParams(memcpy_node, &copy_params));
+    CHECK_CUDA(cudaGraphInstantiate(&exec, memcpy_graph, 0));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x33) != 0) {
+        return 1;
+    }
+
+    CHECK_CUDA(cudaMemset(copy_src, 0x44, kBytes));
+    CHECK_CUDA(cudaMemset(copy_dst, 0, kBytes));
+    copy_params.srcPtr = make_cudaPitchedPtr(copy_src, kBytes, kBytes, 1);
+    CHECK_CUDA(cudaGraphExecMemcpyNodeSetParams(exec, memcpy_node,
+                                                &copy_params));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x44) != 0) {
+        return 1;
+    }
+
+    unsigned int node_enabled = 0;
+    CHECK_CUDA(cudaGraphNodeGetEnabled(exec, memcpy_node, &node_enabled));
+    if (node_enabled != 1) {
+        std::fprintf(stderr, "unexpected graph node enabled state: %u\n",
+                     node_enabled);
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphNodeSetEnabled(exec, memcpy_node, 0));
+    CHECK_CUDA(cudaGraphNodeGetEnabled(exec, memcpy_node, &node_enabled));
+    if (node_enabled != 0) {
+        std::fprintf(stderr, "graph node disable did not persist\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaMemset(copy_dst, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphNodeSetEnabled(exec, memcpy_node, 1));
+    CHECK_CUDA(cudaGraphNodeGetEnabled(exec, memcpy_node, &node_enabled));
+    if (node_enabled != 1) {
+        std::fprintf(stderr, "graph node enable did not persist\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x44) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(memcpy_graph));
     CHECK_CUDA(cudaFree(copy_dst));
     CHECK_CUDA(cudaFree(copy_src));
 
