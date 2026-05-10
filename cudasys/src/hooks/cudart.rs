@@ -351,6 +351,69 @@ fn cudaMemcpy3DAsync(
     }
 }
 
+#[cuda_hook(proc_id = 900567)]
+fn cudaMemcpy3DPeer(#[host(len = 1)] p: *const cudaMemcpy3DPeerParms) -> cudaError_t {
+    'client_before_send: {
+        let params = unsafe { &*p };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+    }
+    'server_execution: {
+        let params = unsafe { &*p__ptr };
+        let copy_params = cudaMemcpy3DParms {
+            srcArray: params.srcArray,
+            srcPos: params.srcPos,
+            srcPtr: params.srcPtr,
+            dstArray: params.dstArray,
+            dstPos: params.dstPos,
+            dstPtr: params.dstPtr,
+            extent: params.extent,
+            kind: cudaMemcpyKind::cudaMemcpyDeviceToDevice,
+        };
+        let set_result = unsafe { cudasys::cudart::cudaSetDevice(params.srcDevice) };
+        let result = if set_result == cudaError_t::cudaSuccess {
+            unsafe { cudasys::cudart::cudaMemcpy3D(&copy_params as *const _) }
+        } else {
+            set_result
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900568, async_api)]
+fn cudaMemcpy3DPeerAsync(
+    #[host(len = 1)] p: *const cudaMemcpy3DPeerParms,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        let params = unsafe { &*p };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+    }
+    'server_execution: {
+        let params = unsafe { &*p__ptr };
+        let copy_params = cudaMemcpy3DParms {
+            srcArray: params.srcArray,
+            srcPos: params.srcPos,
+            srcPtr: params.srcPtr,
+            dstArray: params.dstArray,
+            dstPos: params.dstPos,
+            dstPtr: params.dstPtr,
+            extent: params.extent,
+            kind: cudaMemcpyKind::cudaMemcpyDeviceToDevice,
+        };
+        let set_result = unsafe { cudasys::cudart::cudaSetDevice(params.srcDevice) };
+        let result = if set_result == cudaError_t::cudaSuccess {
+            unsafe { cudasys::cudart::cudaMemcpy3DAsync(&copy_params as *const _, stream) }
+        } else {
+            set_result
+        };
+    }
+}
+
 #[cuda_custom_hook] // calls one of the following internal APIs
 fn cudaMemcpyToArray(
     dst: cudaArray_t,

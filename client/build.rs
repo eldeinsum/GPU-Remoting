@@ -2,6 +2,8 @@ use std::{env, fs, path::PathBuf};
 
 fn main() {
     create_cuda_symlinks();
+    println!("cargo:rerun-if-changed=../cudasys/src/hooks");
+    println!("cargo:rerun-if-changed=../cudasys/src/bindings/funcs");
 
     #[cfg(not(feature = "passthrough"))]
     hookgen::generate_impls(
