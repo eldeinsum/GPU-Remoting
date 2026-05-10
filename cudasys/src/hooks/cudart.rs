@@ -934,6 +934,20 @@ fn cudaStreamGetCaptureInfo(
     }
 }
 
+#[cuda_hook(proc_id = 900555)]
+fn cudaStreamUpdateCaptureDependencies(
+    stream: cudaStream_t,
+    #[host(input, len = numDependencies)] dependencies: *mut cudaGraphNode_t,
+    #[device] dependencyData: *const cudaGraphEdgeData, // null
+    numDependencies: usize,
+    flags: c_uint,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(numDependencies > 0);
+        assert!(dependencyData.is_null());
+    }
+}
+
 // We use hooks to implement the inout parameter `mode` for now.
 #[cuda_hook(proc_id = 181)]
 fn cudaThreadExchangeStreamCaptureMode(mode: *mut cudaStreamCaptureMode) -> cudaError_t {

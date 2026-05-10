@@ -113,10 +113,17 @@ int main()
     cudaGraphNode_t capture_dependency = nullptr;
     CHECK_CUDA(cudaGraphAddEmptyNode(&capture_dependency, capture_graph,
                                      nullptr, 0));
+    cudaGraphNode_t capture_updated_dependency = nullptr;
+    CHECK_CUDA(cudaGraphAddEmptyNode(&capture_updated_dependency,
+                                     capture_graph, nullptr, 0));
     cudaGraphNode_t capture_dependencies[] = {capture_dependency};
     CHECK_CUDA(cudaStreamBeginCaptureToGraph(
         stream, capture_graph, capture_dependencies, nullptr, 1,
         cudaStreamCaptureModeThreadLocal));
+    cudaGraphNode_t updated_dependencies[] = {capture_updated_dependency};
+    CHECK_CUDA(cudaStreamUpdateCaptureDependencies(
+        stream, updated_dependencies, nullptr, 1,
+        cudaStreamSetCaptureDependencies));
     CHECK_CUDA(cudaMemsetAsync(device, 0x6b, kBytes, stream));
     cudaGraph_t captured_to_graph = nullptr;
     CHECK_CUDA(cudaStreamEndCapture(stream, &captured_to_graph));
@@ -126,7 +133,7 @@ int main()
     }
     nodes = 0;
     CHECK_CUDA(cudaGraphGetNodes(captured_to_graph, nullptr, &nodes));
-    if (nodes != 2) {
+    if (nodes != 3) {
         std::fprintf(stderr, "unexpected capture-to-graph node count: %zu\n",
                      nodes);
         return 1;
