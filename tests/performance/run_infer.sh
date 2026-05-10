@@ -57,10 +57,10 @@ for rtt in "${rtt_values[@]}"; do
       params=${model_params[$model]}
 
       echo "Stopping old server instance if any..."
-      pkill -f gpu-remoting-server || true
+      pkill -f server || true
 
-      echo "Running: RUST_LOG=warn cargo run --bin gpu-remoting-server"
-      RUST_LOG=warn cargo run --release ${OPT_FLAG} --bin gpu-remoting-server >/dev/null 2>&1 &
+      echo "Running: RUST_LOG=warn cargo run --bin server"
+      RUST_LOG=warn cargo run --release ${OPT_FLAG} --bin server >/dev/null 2>&1 &
 
       sleep 2
 
@@ -81,5 +81,5 @@ for rtt in "${rtt_values[@]}"; do
 
   done
 done
-pkill -f gpu-remoting-server
+pkill -f server
 echo "All operations completed."

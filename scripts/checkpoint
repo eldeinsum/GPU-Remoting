@@ -19,27 +19,29 @@ path="${3:-}"
 case "$command" in
     checkpoint|ckpt)
         if [[ -z "$pid" ]]; then
-            echo "usage: scripts/gpu-remoting-checkpoint checkpoint <server-pid> [checkpoint-path]" >&2
+            echo "usage: scripts/checkpoint checkpoint <server-pid> [checkpoint-path]" >&2
             exit 2
         fi
         if [[ -n "$path" ]]; then
-            if [[ -d "$path" ]]; then
-                path="$path/checkpoint.bin"
+            if [[ "$path" == */ || -d "$path" ]]; then
+                mkdir -p "$path"
+                path="${path%/}/checkpoint.bin"
+            else
+                mkdir -p "$(dirname "$path")"
             fi
-            mkdir -p "$(dirname "$path")"
             exec "$client" checkpoint "$pid" "$path"
         fi
         exec "$client" checkpoint "$pid"
         ;;
     restore)
         if [[ -z "$pid" ]]; then
-            echo "usage: scripts/gpu-remoting-checkpoint restore <server-pid>" >&2
+            echo "usage: scripts/checkpoint restore <server-pid>" >&2
             exit 2
         fi
         exec "$client" restore "$pid"
         ;;
     *)
-        echo "usage: scripts/gpu-remoting-checkpoint <checkpoint|restore> <server-pid> [checkpoint-path]" >&2
+        echo "usage: scripts/checkpoint <checkpoint|restore> <server-pid> [checkpoint-path]" >&2
         exit 2
         ;;
 esac

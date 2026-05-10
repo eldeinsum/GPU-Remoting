@@ -92,6 +92,6 @@ fn create_cuda_symlinks() {
         "libnvrtc.so.11.3",
     ] {
         symlink_dir.set_file_name(lib);
-        let _ = std::os::unix::fs::symlink("../libgpu_remoting_client.so", &symlink_dir);
+        let _ = std::os::unix::fs::symlink("../libclient.so", &symlink_dir);
     }
 }

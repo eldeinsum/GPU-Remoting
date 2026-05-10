@@ -22,7 +22,7 @@ if you want to run ResNet application, please create a `checkpoint` folder under
 
 in root directory
 ```shell
-NETWORK_CONFIG="path/to/config.toml" cargo run --bin gpu-remoting-server
+NETWORK_CONFIG="path/to/config.toml" cargo run --bin server
 ```
 
 in tests/apps directory

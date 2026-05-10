@@ -26,10 +26,10 @@ for model in "${models[@]}"; do
     client_file="client_${model}.log"
 
     echo "Stopping old server instance if any..."
-    pkill -f gpu-remoting-server || true
+    pkill -f server || true
 
     echo "Running server"
-    numactl --cpunodebind=0 cargo run --release ${OPT_FLAG} --bin gpu-remoting-server >"log/${server_file}" 2>&1 &
+    numactl --cpunodebind=0 cargo run --release ${OPT_FLAG} --bin server >"log/${server_file}" 2>&1 &
 
     sleep 3
 

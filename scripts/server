@@ -22,8 +22,8 @@ if [[ ! -f "$runtime" ]]; then
 fi
 
 export CARGO_INCREMENTAL=0
-cargo build "${cargo_args[@]}" --bin gpu-remoting-server
-bin="$repo_root/target/$profile/gpu-remoting-server"
+cargo build "${cargo_args[@]}" --bin server
+bin="$repo_root/target/$profile/server"
 
 export LD_PRELOAD="$runtime${LD_PRELOAD:+:$LD_PRELOAD}"
 exec "$bin" "$@"

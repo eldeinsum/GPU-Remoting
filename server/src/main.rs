@@ -5,7 +5,7 @@ use std::sync::{Arc, Barrier};
 use std::time::Duration;
 use std::{ptr, thread};
 
-use gpu_remoting_server::*;
+use server::*;
 use network::NetworkConfig;
 
 fn main() {

@@ -6,8 +6,8 @@ This fork removes the PhoenixOS/libpos integration path and targets GPU-CR for N
 
 ## Components
 
-- `gpu-remoting-server`: GPU-side CUDA API execution server.
-- `gpu-remoting-client`: preload library used by applications.
+- `server`: GPU-side CUDA API execution server.
+- `client`: preload library used by applications.
 - `network`: shared memory, TCP, and optional RDMA transports.
 - `codegen` and `cudasys`: CUDA binding and hook generation.
 
@@ -56,21 +56,21 @@ Start the GPU-side server under GPU-CR:
 ```bash
 GPUCR_HOME=~/Projects/GPU-CR \
 NETWORK_CONFIG=$PWD/config.toml \
-scripts/gpu-remoting-server --release
+scripts/server --release
 ```
 
 Run a CUDA application through the client preload library:
 
 ```bash
 NETWORK_CONFIG=$PWD/config.toml \
-scripts/gpu-remoting-client --release ./path/to/cuda_app
+scripts/client --release ./path/to/cuda_app
 ```
 
 Checkpoint and restore the remoting server process:
 
 ```bash
-scripts/gpu-remoting-checkpoint checkpoint <server-pid>
-scripts/gpu-remoting-checkpoint restore <server-pid>
+scripts/checkpoint checkpoint <server-pid>
+scripts/checkpoint restore <server-pid>
 ```
 
 `GPUCR_RUNTIME` and `GPUCR_CLIENT` can be set to override the default GPU-CR runtime and client paths.
@@ -87,14 +87,14 @@ cmake --build tests/cuda_api/build -j$(nproc)
 Run the server in one terminal:
 
 ```bash
-NETWORK_CONFIG=$PWD/config.toml scripts/gpu-remoting-server
+NETWORK_CONFIG=$PWD/config.toml scripts/server
 ```
 
 Run tests through the client in another terminal:
 
 ```bash
 for test in tests/cuda_api/build/test_*; do
-    NETWORK_CONFIG=$PWD/config.toml scripts/gpu-remoting-client --release "$test"
+    NETWORK_CONFIG=$PWD/config.toml scripts/client --release "$test"
 done
 ```
 
