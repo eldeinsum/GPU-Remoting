@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <unistd.h>
 #include <vector>
 
 #define CHECK_CUDA(call)                                                       \
@@ -343,6 +344,80 @@ int main()
     }
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(memcpy_graph));
+
+    cudaGraph_t alloc_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&alloc_graph, 0));
+    cudaMemAllocNodeParams alloc_params = {};
+    alloc_params.poolProps.allocType = cudaMemAllocationTypePinned;
+    alloc_params.poolProps.handleTypes = cudaMemHandleTypeNone;
+    alloc_params.poolProps.location.type = cudaMemLocationTypeDevice;
+    alloc_params.poolProps.location.id = 0;
+    alloc_params.bytesize = kBytes;
+
+    cudaGraphNode_t alloc_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemAllocNode(&alloc_node, alloc_graph, nullptr,
+                                        0, &alloc_params));
+    if (alloc_params.dptr == nullptr) {
+        std::fprintf(stderr, "graph alloc node returned null allocation\n");
+        return 1;
+    }
+    cudaMemAllocNodeParams queried_alloc = {};
+    CHECK_CUDA(cudaGraphMemAllocNodeGetParams(alloc_node, &queried_alloc));
+    if (queried_alloc.dptr != alloc_params.dptr ||
+        queried_alloc.bytesize != kBytes) {
+        std::fprintf(stderr, "unexpected graph alloc node params\n");
+        return 1;
+    }
+
+    cudaMemsetParams alloc_memset_params = {};
+    alloc_memset_params.dst = alloc_params.dptr;
+    alloc_memset_params.value = 0x55;
+    alloc_memset_params.elementSize = 1;
+    alloc_memset_params.width = kBytes;
+    alloc_memset_params.height = 1;
+    cudaGraphNode_t alloc_memset_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemsetNode(&alloc_memset_node, alloc_graph,
+                                      nullptr, 0, &alloc_memset_params));
+
+    cudaMemcpy3DParms alloc_copy_params = {};
+    alloc_copy_params.srcPtr = make_cudaPitchedPtr(alloc_params.dptr, kBytes,
+                                                   kBytes, 1);
+    alloc_copy_params.dstPtr = make_cudaPitchedPtr(copy_dst, kBytes, kBytes, 1);
+    alloc_copy_params.extent = make_cudaExtent(kBytes, 1, 1);
+    alloc_copy_params.kind = cudaMemcpyDeviceToDevice;
+    cudaGraphNode_t alloc_copy_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemcpyNode(&alloc_copy_node, alloc_graph, nullptr,
+                                      0, &alloc_copy_params));
+
+    cudaGraphNode_t free_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemFreeNode(&free_node, alloc_graph, nullptr, 0,
+                                       alloc_params.dptr));
+    void *queried_free = nullptr;
+    CHECK_CUDA(cudaGraphMemFreeNodeGetParams(free_node, &queried_free));
+    if (queried_free != alloc_params.dptr) {
+        std::fprintf(stderr, "unexpected graph free node pointer\n");
+        return 1;
+    }
+
+    cudaGraphNode_t alloc_from[] = {alloc_node, alloc_memset_node,
+                                    alloc_copy_node};
+    cudaGraphNode_t alloc_to[] = {alloc_memset_node, alloc_copy_node,
+                                  free_node};
+    CHECK_CUDA(cudaGraphAddDependencies(alloc_graph, alloc_from, alloc_to,
+                                        nullptr, 3));
+    CHECK_CUDA(cudaMemset(copy_dst, 0, kBytes));
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, alloc_graph, 0));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x55) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(alloc_graph));
     CHECK_CUDA(cudaFree(copy_dst));
     CHECK_CUDA(cudaFree(copy_src));
 
@@ -440,6 +515,11 @@ int main()
         return 1;
     }
     CHECK_CUDA(cudaGraphDestroy(child_graph));
+    cudaGraph_t replacement_child_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&replacement_child_graph, 0));
+    cudaGraphNode_t replacement_child_node = nullptr;
+    CHECK_CUDA(cudaGraphAddEmptyNode(&replacement_child_node,
+                                     replacement_child_graph, nullptr, 0));
 
     cudaEvent_t event_initial = nullptr;
     cudaEvent_t event_replacement = nullptr;
@@ -487,6 +567,8 @@ int main()
 
     exec = nullptr;
     CHECK_CUDA(cudaGraphInstantiate(&exec, manual_graph, 0));
+    CHECK_CUDA(cudaGraphExecChildGraphNodeSetParams(
+        exec, child_graph_node, replacement_child_graph));
     cudaGraphExecUpdateResultInfo update_info = {};
     CHECK_CUDA(cudaGraphExecUpdate(exec, manual_graph, &update_info));
     if (update_info.result != cudaGraphExecUpdateSuccess) {
@@ -509,6 +591,7 @@ int main()
     CHECK_CUDA(cudaGraphLaunch(exec, stream));
     CHECK_CUDA(cudaStreamSynchronize(stream));
     CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(replacement_child_graph));
 
     CHECK_CUDA(cudaGraphRemoveDependencies(manual_graph, event_from, event_to,
                                            nullptr, 1));
@@ -531,6 +614,19 @@ int main()
         std::fprintf(stderr, "unexpected node count after destroy: %zu\n", nodes);
         return 1;
     }
+    char dot_path[128] = {};
+    std::snprintf(dot_path, sizeof(dot_path),
+                  "/tmp/gpu_remoting_graph_extra_%d.dot",
+                  static_cast<int>(getpid()));
+    std::remove(dot_path);
+    CHECK_CUDA(cudaGraphDebugDotPrint(manual_graph, dot_path, 0));
+    FILE *dot_file = std::fopen(dot_path, "r");
+    if (dot_file == nullptr) {
+        std::fprintf(stderr, "cudaGraphDebugDotPrint did not create output\n");
+        return 1;
+    }
+    std::fclose(dot_file);
+    std::remove(dot_path);
     CHECK_CUDA(cudaGraphDestroy(manual_graph));
     CHECK_CUDA(cudaStreamDestroy(stream));
 

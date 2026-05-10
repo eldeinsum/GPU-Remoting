@@ -1037,6 +1037,13 @@ fn cudaGraphAddChildGraphNode(
 #[cuda_hook(proc_id = 900516)]
 fn cudaGraphChildGraphNodeGetGraph(node: cudaGraphNode_t, pGraph: *mut cudaGraph_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900556)]
+fn cudaGraphExecChildGraphNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    childGraph: cudaGraph_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900532)]
 fn cudaGraphAddEventRecordNode(
     pGraphNode: *mut cudaGraphNode_t,
@@ -1345,6 +1352,74 @@ fn cudaGraphExecMemsetNodeSetParams(
     #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900557)]
+fn cudaGraphAddMemAllocNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    #[host(input, len = 1)] nodeParams: *mut cudaMemAllocNodeParams,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        let params = unsafe { &*nodeParams };
+        assert!(params.accessDescs.is_null());
+        assert_eq!(params.accessDescCount, 0);
+        assert_eq!(
+            params.poolProps.allocType,
+            cudaMemAllocationType::cudaMemAllocationTypePinned
+        );
+        assert_eq!(
+            params.poolProps.handleTypes,
+            cudaMemAllocationHandleType::cudaMemHandleTypeNone
+        );
+        assert_eq!(
+            params.poolProps.location.type_,
+            cudaMemLocationType::cudaMemLocationTypeDevice
+        );
+        assert!(params.poolProps.win32SecurityAttributes.is_null());
+    }
+    'client_after_recv: {
+        let mut node_params_out: cudaMemAllocNodeParams = unsafe { std::mem::zeroed() };
+        node_params_out.recv(channel_receiver).unwrap();
+        unsafe {
+            std::ptr::write(nodeParams.as_ptr().cast_mut(), node_params_out);
+        }
+    }
+    'server_after_send: {
+        nodeParams[0].send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+    }
+}
+
+#[cuda_hook(proc_id = 900558)]
+fn cudaGraphMemAllocNodeGetParams(
+    node: cudaGraphNode_t,
+    #[host(output, len = 1)] params_out: *mut cudaMemAllocNodeParams,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900559)]
+fn cudaGraphAddMemFreeNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    #[device] dptr: *mut c_void,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        assert!(!dptr.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900560)]
+fn cudaGraphMemFreeNodeGetParams(
+    node: cudaGraphNode_t,
+    #[host(output, len = std::mem::size_of::<*mut c_void>())] dptr_out: *mut c_void,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900550)]
 fn cudaGraphExecMemcpyNodeSetParams(
     hGraphExec: cudaGraphExec_t,
@@ -1394,3 +1469,6 @@ fn cudaGraphNodeGetEnabled(
     hNode: cudaGraphNode_t,
     isEnabled: *mut c_uint,
 ) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900561)]
+fn cudaGraphDebugDotPrint(graph: cudaGraph_t, path: *const c_char, flags: c_uint) -> cudaError_t;
