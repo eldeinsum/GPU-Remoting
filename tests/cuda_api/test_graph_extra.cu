@@ -108,6 +108,57 @@ int main()
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(graph));
 
+    cudaGraph_t capture_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&capture_graph, 0));
+    cudaGraphNode_t capture_dependency = nullptr;
+    CHECK_CUDA(cudaGraphAddEmptyNode(&capture_dependency, capture_graph,
+                                     nullptr, 0));
+    cudaGraphNode_t capture_dependencies[] = {capture_dependency};
+    CHECK_CUDA(cudaStreamBeginCaptureToGraph(
+        stream, capture_graph, capture_dependencies, nullptr, 1,
+        cudaStreamCaptureModeThreadLocal));
+    CHECK_CUDA(cudaMemsetAsync(device, 0x6b, kBytes, stream));
+    cudaGraph_t captured_to_graph = nullptr;
+    CHECK_CUDA(cudaStreamEndCapture(stream, &captured_to_graph));
+    if (captured_to_graph == nullptr) {
+        std::fprintf(stderr, "capture-to-graph returned a null graph\n");
+        return 1;
+    }
+    nodes = 0;
+    CHECK_CUDA(cudaGraphGetNodes(captured_to_graph, nullptr, &nodes));
+    if (nodes != 2) {
+        std::fprintf(stderr, "unexpected capture-to-graph node count: %zu\n",
+                     nodes);
+        return 1;
+    }
+    size_t capture_edges = 0;
+    CHECK_CUDA(cudaGraphGetEdges(captured_to_graph, nullptr, nullptr,
+                                 nullptr, &capture_edges));
+    if (capture_edges != 1) {
+        std::fprintf(stderr, "unexpected capture-to-graph edge count: %zu\n",
+                     capture_edges);
+        return 1;
+    }
+    cudaGraphInstantiateParams instantiate_params = {};
+    CHECK_CUDA(cudaGraphInstantiateWithParams(&exec, captured_to_graph,
+                                              &instantiate_params));
+    if (instantiate_params.result_out != cudaGraphInstantiateSuccess ||
+        instantiate_params.errNode_out != nullptr) {
+        std::fprintf(stderr, "unexpected instantiate-with-params result\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x6b) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(captured_to_graph));
+
     cudaGraph_t memset_graph = nullptr;
     CHECK_CUDA(cudaGraphCreate(&memset_graph, 0));
     cudaMemsetParams memset_params = {};

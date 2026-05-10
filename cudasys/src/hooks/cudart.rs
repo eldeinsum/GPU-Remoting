@@ -897,6 +897,21 @@ fn cudaCtxResetPersistingL2Cache() -> cudaError_t;
 #[cuda_hook(proc_id = 163, async_api = false)]
 fn cudaStreamBeginCapture(stream: cudaStream_t, mode: cudaStreamCaptureMode) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900553)]
+fn cudaStreamBeginCaptureToGraph(
+    stream: cudaStream_t,
+    graph: cudaGraph_t,
+    #[host(len = numDependencies)] dependencies: *const cudaGraphNode_t,
+    #[device] dependencyData: *const cudaGraphEdgeData, // null
+    numDependencies: usize,
+    mode: cudaStreamCaptureMode,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(numDependencies > 0);
+        assert!(dependencyData.is_null());
+    }
+}
+
 #[cuda_hook(proc_id = 169)]
 fn cudaStreamEndCapture(stream: cudaStream_t, pGraph: *mut cudaGraph_t) -> cudaError_t;
 
@@ -1259,6 +1274,28 @@ fn cudaGraphInstantiateWithFlags(
     graph: cudaGraph_t,
     flags: c_ulonglong,
 ) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900554)]
+fn cudaGraphInstantiateWithParams(
+    pGraphExec: *mut cudaGraphExec_t,
+    graph: cudaGraph_t,
+    #[host(input, len = 1)] instantiateParams: *mut cudaGraphInstantiateParams,
+) -> cudaError_t {
+    'client_after_recv: {
+        let mut instantiate_params_out: cudaGraphInstantiateParams = unsafe { std::mem::zeroed() };
+        instantiate_params_out.recv(channel_receiver).unwrap();
+        unsafe {
+            std::ptr::write(
+                instantiateParams.as_ptr().cast_mut(),
+                instantiate_params_out,
+            );
+        }
+    }
+    'server_after_send: {
+        instantiateParams[0].send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+    }
+}
 
 #[cuda_hook(proc_id = 900512)]
 fn cudaGraphExecGetFlags(graphExec: cudaGraphExec_t, flags: *mut c_ulonglong) -> cudaError_t;
