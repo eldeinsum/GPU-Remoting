@@ -121,14 +121,89 @@ fn cuInit(Flags: c_uint) -> CUresult;
 #[cuda_hook(proc_id = 684)]
 fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
 
+#[cuda_hook(proc_id = 900300)]
+fn cuCtxGetApiVersion(ctx: CUcontext, version: *mut c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900301)]
+fn cuCtxGetCacheConfig(pconfig: *mut CUfunc_cache) -> CUresult;
+
+#[cuda_hook(proc_id = 900302)]
+fn cuCtxGetDevice(device: *mut CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900303)]
+fn cuCtxGetDevice_v2(device: *mut CUdevice, ctx: CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900304)]
+fn cuCtxGetFlags(flags: *mut c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900305)]
+fn cuCtxGetLimit(pvalue: *mut usize, limit: CUlimit) -> CUresult;
+
+#[cuda_hook(proc_id = 900306)]
+fn cuCtxGetSharedMemConfig(pConfig: *mut CUsharedconfig) -> CUresult;
+
+#[cuda_hook(proc_id = 900307)]
+fn cuCtxGetStreamPriorityRange(leastPriority: *mut c_int, greatestPriority: *mut c_int)
+    -> CUresult;
+
+#[cuda_hook(proc_id = 900308, async_api = false)]
+fn cuCtxSetCacheConfig(config: CUfunc_cache) -> CUresult;
+
+#[cuda_hook(proc_id = 900309, async_api = false)]
+fn cuCtxSetLimit(limit: CUlimit, value: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900310, async_api = false)]
+fn cuCtxSetSharedMemConfig(config: CUsharedconfig) -> CUresult;
+
 #[cuda_hook(proc_id = 900200, async_api = false)]
 fn cuCtxSynchronize() -> CUresult;
+
+#[cuda_hook(proc_id = 900311, async_api = false)]
+fn cuCtxResetPersistingL2Cache() -> CUresult;
+
+#[cuda_hook(proc_id = 900312)]
+fn cuDeviceCanAccessPeer(canAccessPeer: *mut c_int, dev: CUdevice, peerDev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900313)]
+fn cuDeviceComputeCapability(major: *mut c_int, minor: *mut c_int, dev: CUdevice) -> CUresult;
 
 #[cuda_hook(proc_id = 650)]
 fn cuDeviceGet(device: *mut CUdevice, ordinal: c_int) -> CUresult;
 
 #[cuda_hook(proc_id = 651)]
 fn cuDeviceGetAttribute(pi: *mut c_int, attrib: CUdevice_attribute, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900314)]
+fn cuDeviceGetByPCIBusId(dev: *mut CUdevice, pciBusId: *const c_char) -> CUresult;
+
+#[cuda_hook(proc_id = 900315)]
+fn cuDeviceGetCount(count: *mut c_int) -> CUresult;
+
+#[cuda_hook(proc_id = 900316)]
+fn cuDeviceGetName(
+    #[host(output, len = len)] name: *mut c_char,
+    len: c_int,
+    dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900317)]
+fn cuDeviceGetPCIBusId(
+    #[host(output, len = len)] pciBusId: *mut c_char,
+    len: c_int,
+    dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900318)]
+fn cuDeviceGetUuid_v2(uuid: *mut CUuuid, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900319)]
+fn cuDeviceTotalMem_v2(bytes: *mut usize, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900320)]
+fn cuDevicePrimaryCtxRetain(pctx: *mut CUcontext, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900321, async_api = false)]
+fn cuDevicePrimaryCtxRelease_v2(dev: CUdevice) -> CUresult;
 
 #[cuda_hook(proc_id = 910)]
 fn cuFuncGetAttribute(pi: *mut c_int, attrib: CUfunction_attribute, hfunc: CUfunction) -> CUresult;

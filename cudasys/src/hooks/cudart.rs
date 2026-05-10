@@ -36,6 +36,41 @@ fn cudaSetDevice(device: c_int) -> cudaError_t {
 #[cuda_hook(proc_id = 121)]
 fn cudaGetDeviceCount(count: *mut c_int) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900350)]
+fn cudaDeviceCanAccessPeer(
+    canAccessPeer: *mut c_int,
+    device: c_int,
+    peerDevice: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900351)]
+fn cudaDeviceGetByPCIBusId(device: *mut c_int, pciBusId: *const c_char) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900352)]
+fn cudaDeviceGetCacheConfig(pCacheConfig: *mut cudaFuncCache) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900353)]
+fn cudaDeviceGetLimit(pValue: *mut usize, limit: cudaLimit) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900354)]
+fn cudaDeviceGetPCIBusId(
+    #[host(output, len = len)] pciBusId: *mut c_char,
+    len: c_int,
+    device: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900355)]
+fn cudaDeviceGetSharedMemConfig(pConfig: *mut cudaSharedMemConfig) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900356, async_api = false)]
+fn cudaDeviceSetCacheConfig(cacheConfig: cudaFuncCache) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900357, async_api = false)]
+fn cudaDeviceSetLimit(limit: cudaLimit, value: usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900358, async_api = false)]
+fn cudaDeviceSetSharedMemConfig(config: cudaSharedMemConfig) -> cudaError_t;
+
 #[cuda_hook(proc_id = 152, async_api = false)]
 fn cudaGetLastError() -> cudaError_t;
 
@@ -395,6 +430,12 @@ fn cudaThreadExchangeStreamCaptureMode(mode: *mut cudaStreamCaptureMode) -> cuda
 
 #[cuda_hook(proc_id = 510)]
 fn cudaDriverGetVersion(driverVersion: *mut c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900359)]
+fn cudaGetDeviceFlags(flags: *mut c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900360)]
+fn cudaRuntimeGetVersion(runtimeVersion: *mut c_int) -> cudaError_t;
 
 #[cuda_hook(proc_id = 538, async_api = false)]
 fn cudaGraphDestroy(graph: cudaGraph_t) -> cudaError_t;
