@@ -389,6 +389,17 @@ pub extern "C" fn cudaGetErrorName(cudaError: cudaError_t) -> *const ::std::os::
     result.into_raw()
 }
 
+#[no_mangle]
+pub extern "C" fn cudaCreateChannelDesc(
+    x: c_int,
+    y: c_int,
+    z: c_int,
+    w: c_int,
+    f: cudaChannelFormatKind,
+) -> cudaChannelFormatDesc {
+    cudaChannelFormatDesc { x, y, z, w, f }
+}
+
 struct CallConfiguration {
     gridDim: dim3,
     blockDim: dim3,

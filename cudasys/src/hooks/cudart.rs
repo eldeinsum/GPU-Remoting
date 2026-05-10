@@ -36,6 +36,12 @@ fn cudaSetDevice(device: c_int) -> cudaError_t {
 #[cuda_hook(proc_id = 121)]
 fn cudaGetDeviceCount(count: *mut c_int) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900457)]
+fn cudaChooseDevice(
+    device: *mut c_int,
+    #[host(len = 1)] prop: *const cudaDeviceProp,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900350)]
 fn cudaDeviceCanAccessPeer(
     canAccessPeer: *mut c_int,
@@ -59,6 +65,9 @@ fn cudaDeviceGetP2PAtomicCapabilities(
     srcDevice: c_int,
     dstDevice: c_int,
 ) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900458, async_api = false)]
+fn cudaDeviceDisablePeerAccess(peerDevice: c_int) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900440)]
 fn cudaDeviceGetDefaultMemPool(memPool: *mut cudaMemPool_t, device: c_int) -> cudaError_t;
@@ -87,6 +96,21 @@ fn cudaDeviceGetPCIBusId(
 
 #[cuda_hook(proc_id = 900355)]
 fn cudaDeviceGetSharedMemConfig(pConfig: *mut cudaSharedMemConfig) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900459)]
+fn cudaDeviceGetHostAtomicCapabilities(
+    #[host(output, len = count as usize)] capabilities: *mut c_uint,
+    #[host(len = count as usize)] operations: *const cudaAtomicOperation,
+    count: c_uint,
+    device: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900460)]
+fn cudaDeviceGetTexture1DLinearMaxWidth(
+    maxWidthInElements: *mut usize,
+    #[host(len = 1)] fmtDesc: *const cudaChannelFormatDesc,
+    device: c_int,
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900356, async_api = false)]
 fn cudaDeviceSetCacheConfig(cacheConfig: cudaFuncCache) -> cudaError_t;
@@ -365,6 +389,15 @@ fn cudaGetErrorString(error: cudaError_t) -> *const c_char;
 
 #[cuda_custom_hook] // local
 fn cudaGetErrorName(error: cudaError_t) -> *const c_char;
+
+#[cuda_custom_hook] // local
+fn cudaCreateChannelDesc(
+    x: c_int,
+    y: c_int,
+    z: c_int,
+    w: c_int,
+    f: cudaChannelFormatKind,
+) -> cudaChannelFormatDesc;
 
 #[cuda_hook(proc_id = 274)]
 fn cudaMemGetInfo(free: *mut usize, total: *mut usize) -> cudaError_t;

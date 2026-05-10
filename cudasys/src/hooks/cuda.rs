@@ -136,8 +136,20 @@ fn cuCtxGetDevice_v2(device: *mut CUdevice, ctx: CUcontext) -> CUresult;
 #[cuda_hook(proc_id = 900304)]
 fn cuCtxGetFlags(flags: *mut c_uint) -> CUresult;
 
+#[cuda_hook(proc_id = 900449)]
+fn cuCtxGetId(ctx: CUcontext, ctxId: *mut c_ulonglong) -> CUresult;
+
 #[cuda_hook(proc_id = 900305)]
 fn cuCtxGetLimit(pvalue: *mut usize, limit: CUlimit) -> CUresult;
+
+#[cuda_hook(proc_id = 900450, async_api = false)]
+fn cuCtxSetCurrent(ctx: CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900451, async_api = false)]
+fn cuCtxPushCurrent_v2(ctx: CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900452, async_api = false)]
+fn cuCtxPopCurrent_v2(pctx: *mut CUcontext) -> CUresult;
 
 #[cuda_hook(proc_id = 900306)]
 fn cuCtxGetSharedMemConfig(pConfig: *mut CUsharedconfig) -> CUresult;
@@ -163,6 +175,12 @@ fn cuCtxResetPersistingL2Cache() -> CUresult;
 
 #[cuda_hook(proc_id = 900312)]
 fn cuDeviceCanAccessPeer(canAccessPeer: *mut c_int, dev: CUdevice, peerDev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900453, async_api = false)]
+fn cuCtxEnablePeerAccess(peerContext: CUcontext, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900454, async_api = false)]
+fn cuCtxDisablePeerAccess(peerContext: CUcontext) -> CUresult;
 
 #[cuda_hook(proc_id = 900313)]
 fn cuDeviceComputeCapability(major: *mut c_int, minor: *mut c_int, dev: CUdevice) -> CUresult;
@@ -198,6 +216,22 @@ fn cuDeviceGetUuid_v2(uuid: *mut CUuuid, dev: CUdevice) -> CUresult;
 
 #[cuda_hook(proc_id = 900319)]
 fn cuDeviceTotalMem_v2(bytes: *mut usize, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900455)]
+fn cuDeviceGetHostAtomicCapabilities(
+    #[host(output, len = count as usize)] capabilities: *mut c_uint,
+    #[host(len = count as usize)] operations: *const CUatomicOperation,
+    count: c_uint,
+    dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900456)]
+fn cuDeviceGetTexture1DLinearMaxWidth(
+    maxWidthInElements: *mut usize,
+    format: CUarray_format,
+    numChannels: c_uint,
+    dev: CUdevice,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900322)]
 fn cuDeviceGetProperties(prop: *mut CUdevprop, dev: CUdevice) -> CUresult;

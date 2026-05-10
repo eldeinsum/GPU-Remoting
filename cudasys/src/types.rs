@@ -38,9 +38,34 @@ pub mod cuda {
     impl CUpointer_attribute {
         pub fn data_size(&self) -> usize {
             match self {
-                Self::CU_POINTER_ATTRIBUTE_DEVICE_POINTER => size_of::<*mut CUdeviceptr>(),
-                Self::CU_POINTER_ATTRIBUTE_RANGE_START_ADDR => size_of::<usize>(),
-                _ => panic!("unsupported pointer attribute {self:?}"),
+                Self::CU_POINTER_ATTRIBUTE_CONTEXT => size_of::<CUcontext>(),
+                Self::CU_POINTER_ATTRIBUTE_MEMORY_TYPE => size_of::<CUmemorytype>(),
+                Self::CU_POINTER_ATTRIBUTE_DEVICE_POINTER => size_of::<CUdeviceptr>(),
+                Self::CU_POINTER_ATTRIBUTE_HOST_POINTER => size_of::<*mut std::ffi::c_void>(),
+                Self::CU_POINTER_ATTRIBUTE_P2P_TOKENS => {
+                    size_of::<CUDA_POINTER_ATTRIBUTE_P2P_TOKENS>()
+                }
+                Self::CU_POINTER_ATTRIBUTE_SYNC_MEMOPS => size_of::<u32>(),
+                Self::CU_POINTER_ATTRIBUTE_BUFFER_ID => size_of::<u64>(),
+                Self::CU_POINTER_ATTRIBUTE_IS_MANAGED
+                | Self::CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL
+                | Self::CU_POINTER_ATTRIBUTE_IS_LEGACY_CUDA_IPC_CAPABLE
+                | Self::CU_POINTER_ATTRIBUTE_MAPPED
+                | Self::CU_POINTER_ATTRIBUTE_IS_GPU_DIRECT_RDMA_CAPABLE
+                | Self::CU_POINTER_ATTRIBUTE_IS_HW_DECOMPRESS_CAPABLE => size_of::<i32>(),
+                Self::CU_POINTER_ATTRIBUTE_RANGE_START_ADDR
+                | Self::CU_POINTER_ATTRIBUTE_MAPPING_BASE_ADDR => size_of::<CUdeviceptr>(),
+                Self::CU_POINTER_ATTRIBUTE_RANGE_SIZE | Self::CU_POINTER_ATTRIBUTE_MAPPING_SIZE => {
+                    size_of::<usize>()
+                }
+                Self::CU_POINTER_ATTRIBUTE_ALLOWED_HANDLE_TYPES => {
+                    size_of::<CUmemAllocationHandleType>()
+                }
+                Self::CU_POINTER_ATTRIBUTE_ACCESS_FLAGS => {
+                    size_of::<CUDA_POINTER_ATTRIBUTE_ACCESS_FLAGS>()
+                }
+                Self::CU_POINTER_ATTRIBUTE_MEMPOOL_HANDLE => size_of::<CUmemoryPool>(),
+                Self::CU_POINTER_ATTRIBUTE_MEMORY_BLOCK_ID => size_of::<u64>(),
             }
         }
     }
