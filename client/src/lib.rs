@@ -5,7 +5,7 @@
 use network::ringbufferchannel::RDMAChannel;
 
 use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
-use network::{tcp, Channel, CommChannel, Transportable};
+use network::{Channel, CommChannel, Transportable, tcp};
 
 #[cfg(not(feature = "passthrough"))]
 mod hijack;
@@ -18,17 +18,22 @@ use elf::{FatBinaryHeader, KernelParamInfo};
 mod dl;
 
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::ffi::c_char;
+use std::ffi::{CString, c_char};
 use std::io::{Read as _, Write as _};
 use std::sync::RwLock;
 
-use cudasys::types::cuda::{CUfunction, CUmodule};
+use cudasys::types::cublas::{cublasHandle_t, cublasPointerMode_t};
+use cudasys::types::cublasLt::{
+    cublasLtMatmulDesc_t, cublasLtPointerMode_t, cudaDataType_t as CublasLtCudaDataType,
+};
+use cudasys::types::cuda::{CUfunction, CUkernel, CUlibrary, CUmodule};
 type FatBinaryHandle = usize;
 type HostPtr = usize;
 
 struct ClientThread {
+    pid: u32,
     id: i32,
     channel_sender: Channel,
     channel_receiver: Channel,
@@ -100,13 +105,7 @@ impl ClientThread {
             &_ => panic!("Unsupported communication type in config"),
         };
 
-        CLIENT_THREAD_INIT.set(true);
         unsafe {
-            unsafe extern "C" fn atfork() {
-                assert!(!CLIENT_THREAD_INIT.get());
-            }
-            assert_eq!(0, libc::pthread_atfork(Some(atfork), None, None));
-
             // HACK: should just send something to the daemon socket
             fn atsignal(_info: &libc::siginfo_t) {
                 std::process::exit(0);
@@ -116,6 +115,7 @@ impl ClientThread {
         }
 
         Self {
+            pid: std::process::id(),
             id,
             channel_sender,
             channel_receiver,
@@ -127,10 +127,25 @@ impl ClientThread {
             opt_local: config.opt_local,
         }
     }
+
+    fn ensure_current_process(&mut self) {
+        if self.pid == std::process::id() {
+            return;
+        }
+
+        DRIVER_CACHE.write().unwrap().reset_after_fork();
+        RUNTIME_CACHE.write().unwrap().reset_after_fork();
+        CUBLAS_CACHE.write().unwrap().reset_after_fork();
+        let stale = std::mem::replace(self, ClientThread::new());
+        std::mem::forget(stale);
+    }
 }
 
 impl Drop for ClientThread {
     fn drop(&mut self) {
+        if self.pid != std::process::id() {
+            return;
+        }
         let proc_id = -1;
         proc_id.send(&self.channel_sender).unwrap();
         self.channel_sender.flush_out().unwrap();
@@ -139,17 +154,24 @@ impl Drop for ClientThread {
 
 thread_local! {
     static CLIENT_THREAD: RefCell<ClientThread> = RefCell::new(ClientThread::new());
-    static CLIENT_THREAD_INIT: Cell<bool> = const { Cell::new(false) };
 }
 
 static DRIVER_CACHE: RwLock<DriverCache> = RwLock::new(DriverCache::new());
 static RUNTIME_CACHE: RwLock<RuntimeCache> = RwLock::new(RuntimeCache::new());
+static CUBLAS_CACHE: RwLock<CublasCache> = RwLock::new(CublasCache::new());
 
 struct DriverCache {
     /// Used in `cuModuleGetFunction`, populated by `cuModuleLoadData`.
     images: BTreeMap<CUmodule, Cow<'static, [u8]>>,
+    /// Used in `cuLibraryGetKernel`, populated by `cuLibraryLoadData`.
+    library_images: BTreeMap<CUlibrary, Cow<'static, [u8]>>,
     /// Used in `cuLaunchKernel`, populated by `cuModuleGetFunction`.
     function_params: BTreeMap<CUfunction, Box<[KernelParamInfo]>>,
+    /// Used in `cuKernelGetName`, populated by `cuLibraryGetKernel`.
+    kernel_names: BTreeMap<CUkernel, CString>,
+    /// Used to remove library-owned kernel metadata on unload.
+    kernel_libraries: BTreeMap<CUkernel, CUlibrary>,
+    device_arch: Option<u32>,
 }
 
 // The pointers are server-side.
@@ -160,8 +182,21 @@ impl DriverCache {
     const fn new() -> Self {
         Self {
             images: BTreeMap::new(),
+            library_images: BTreeMap::new(),
             function_params: BTreeMap::new(),
+            kernel_names: BTreeMap::new(),
+            kernel_libraries: BTreeMap::new(),
+            device_arch: None,
         }
+    }
+
+    fn reset_after_fork(&mut self) {
+        self.images.clear();
+        self.library_images.clear();
+        self.function_params.clear();
+        self.kernel_names.clear();
+        self.kernel_libraries.clear();
+        self.device_arch = None;
     }
 }
 
@@ -194,6 +229,131 @@ impl RuntimeCache {
             loaded_functions: BTreeMap::new(),
         }
     }
+
+    fn reset_after_fork(&mut self) {
+        self.cuda_device = None;
+        self.loaded_modules.clear();
+        self.loaded_functions.clear();
+    }
+}
+
+struct CublasCache {
+    pointer_modes: BTreeMap<cublasHandle_t, cublasPointerMode_t>,
+    lt_matmul_descs: BTreeMap<cublasLtMatmulDesc_t, CublasLtMatmulDescState>,
+}
+
+// The handles are server-side.
+unsafe impl Send for CublasCache {}
+unsafe impl Sync for CublasCache {}
+
+impl CublasCache {
+    const fn new() -> Self {
+        Self {
+            pointer_modes: BTreeMap::new(),
+            lt_matmul_descs: BTreeMap::new(),
+        }
+    }
+
+    fn reset_after_fork(&mut self) {
+        self.pointer_modes.clear();
+        self.lt_matmul_descs.clear();
+    }
+}
+
+#[derive(Copy, Clone)]
+struct CublasLtMatmulDescState {
+    pointer_mode: cublasLtPointerMode_t,
+    scale_type_size: Option<usize>,
+}
+
+fn cublaslt_pointer_mode_from_u32(value: u32) -> Option<cublasLtPointerMode_t> {
+    Some(match value {
+        0 => cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_HOST,
+        1 => cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_DEVICE,
+        2 => cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_DEVICE_VECTOR,
+        3 => cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO,
+        4 => cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST,
+        _ => return None,
+    })
+}
+
+fn cublaslt_scale_type_from_u32(value: u32) -> Option<CublasLtCudaDataType> {
+    Some(match value {
+        0 => CublasLtCudaDataType::CUDA_R_32F,
+        1 => CublasLtCudaDataType::CUDA_R_64F,
+        2 => CublasLtCudaDataType::CUDA_R_16F,
+        3 => CublasLtCudaDataType::CUDA_R_8I,
+        4 => CublasLtCudaDataType::CUDA_C_32F,
+        5 => CublasLtCudaDataType::CUDA_C_64F,
+        6 => CublasLtCudaDataType::CUDA_C_16F,
+        7 => CublasLtCudaDataType::CUDA_C_8I,
+        8 => CublasLtCudaDataType::CUDA_R_8U,
+        9 => CublasLtCudaDataType::CUDA_C_8U,
+        10 => CublasLtCudaDataType::CUDA_R_32I,
+        11 => CublasLtCudaDataType::CUDA_C_32I,
+        12 => CublasLtCudaDataType::CUDA_R_32U,
+        13 => CublasLtCudaDataType::CUDA_C_32U,
+        14 => CublasLtCudaDataType::CUDA_R_16BF,
+        15 => CublasLtCudaDataType::CUDA_C_16BF,
+        16 => CublasLtCudaDataType::CUDA_R_4I,
+        17 => CublasLtCudaDataType::CUDA_C_4I,
+        18 => CublasLtCudaDataType::CUDA_R_4U,
+        19 => CublasLtCudaDataType::CUDA_C_4U,
+        20 => CublasLtCudaDataType::CUDA_R_16I,
+        21 => CublasLtCudaDataType::CUDA_C_16I,
+        22 => CublasLtCudaDataType::CUDA_R_16U,
+        23 => CublasLtCudaDataType::CUDA_C_16U,
+        24 => CublasLtCudaDataType::CUDA_R_64I,
+        25 => CublasLtCudaDataType::CUDA_C_64I,
+        26 => CublasLtCudaDataType::CUDA_R_64U,
+        27 => CublasLtCudaDataType::CUDA_C_64U,
+        28 => CublasLtCudaDataType::CUDA_R_8F_E4M3,
+        29 => CublasLtCudaDataType::CUDA_R_8F_E5M2,
+        30 => CublasLtCudaDataType::CUDA_R_8F_UE8M0,
+        31 => CublasLtCudaDataType::CUDA_R_6F_E2M3,
+        32 => CublasLtCudaDataType::CUDA_R_6F_E3M2,
+        33 => CublasLtCudaDataType::CUDA_R_4F_E2M1,
+        _ => return None,
+    })
+}
+
+fn cublaslt_scale_type_size(scale_type: CublasLtCudaDataType) -> Option<usize> {
+    Some(match scale_type {
+        CublasLtCudaDataType::CUDA_R_8I
+        | CublasLtCudaDataType::CUDA_R_8U
+        | CublasLtCudaDataType::CUDA_R_8F_E4M3
+        | CublasLtCudaDataType::CUDA_R_8F_E5M2
+        | CublasLtCudaDataType::CUDA_R_8F_UE8M0 => 1,
+        CublasLtCudaDataType::CUDA_R_16F
+        | CublasLtCudaDataType::CUDA_R_16BF
+        | CublasLtCudaDataType::CUDA_R_16I
+        | CublasLtCudaDataType::CUDA_R_16U
+        | CublasLtCudaDataType::CUDA_C_8I
+        | CublasLtCudaDataType::CUDA_C_8U => 2,
+        CublasLtCudaDataType::CUDA_R_32F
+        | CublasLtCudaDataType::CUDA_R_32I
+        | CublasLtCudaDataType::CUDA_R_32U
+        | CublasLtCudaDataType::CUDA_C_16F
+        | CublasLtCudaDataType::CUDA_C_16BF
+        | CublasLtCudaDataType::CUDA_C_16I
+        | CublasLtCudaDataType::CUDA_C_16U => 4,
+        CublasLtCudaDataType::CUDA_R_64F
+        | CublasLtCudaDataType::CUDA_R_64I
+        | CublasLtCudaDataType::CUDA_R_64U
+        | CublasLtCudaDataType::CUDA_C_32F
+        | CublasLtCudaDataType::CUDA_C_32I
+        | CublasLtCudaDataType::CUDA_C_32U => 8,
+        CublasLtCudaDataType::CUDA_C_64F
+        | CublasLtCudaDataType::CUDA_C_64I
+        | CublasLtCudaDataType::CUDA_C_64U => 16,
+        CublasLtCudaDataType::CUDA_R_4I
+        | CublasLtCudaDataType::CUDA_C_4I
+        | CublasLtCudaDataType::CUDA_R_4U
+        | CublasLtCudaDataType::CUDA_C_4U
+        | CublasLtCudaDataType::CUDA_R_6F_E2M3
+        | CublasLtCudaDataType::CUDA_R_6F_E3M2
+        | CublasLtCudaDataType::CUDA_R_4F_E2M1 => return None,
+    })
 }
 
 #[small_ctor::ctor]

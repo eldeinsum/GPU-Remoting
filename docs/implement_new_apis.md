@@ -6,7 +6,16 @@ An API should first be intercepted in `client` side, transfered through `network
 
 ## Which API need to be implemented?
 
-Now the implemented APIs are listed in `cudasys/src/hooks/*.rs`. All of the rest are unimplemented yet, but they are still intercepted by auto-generated placeholder functions in `client/src/hijack/*_unimplement.rs`. If we run a application and encounter an unimplemented API, the application will throw an `unimplemented!` error, so we only need to implement those APIs prompted by the error message.
+The implemented APIs are listed in `cudasys/src/hooks/*.rs`. All remaining APIs are still intercepted by auto-generated placeholder functions in `client/src/hijack/*_unimplement.rs`.
+
+Missing-symbol failures are useful diagnostics, but they should not be the main planning mechanism. Prefer this order:
+
+1. Generate a static coverage list from `cudasys/src/bindings/funcs/*.rs` and compare it with `cudasys/src/hooks/*.rs`.
+2. Trace native CUDA workloads to collect the APIs they actually call.
+3. Prioritize APIs that are both uncovered and required by target workloads.
+4. Add small native-vs-remoted tests for the API family before depending on a larger application as the only validation.
+
+The helper tools for this workflow are documented in `docs/api_coverage.md`.
 
 ## Steps of implementation
 

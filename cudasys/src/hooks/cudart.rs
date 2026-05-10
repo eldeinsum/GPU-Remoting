@@ -823,12 +823,38 @@ fn cudaStreamIsCapturing(
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 123)]
-fn cudaGetDeviceProperties(prop: *mut cudaDeviceProp, device: c_int) -> cudaError_t;
+fn cudaGetDeviceProperties(prop: *mut cudaDeviceProp, device: c_int) -> cudaError_t {
+    'client_after_recv: {
+        if result == cudaError_t::cudaSuccess {
+            if prop.major > 0 && prop.minor >= 0 {
+                DRIVER_CACHE.write().unwrap().device_arch =
+                    Some(prop.major as u32 * 10 + prop.minor as u32);
+            }
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 400)]
 fn cudaPointerGetAttributes(
     attributes: *mut cudaPointerAttributes,
     #[device] ptr: *const c_void,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaGetDriverEntryPoint(
+    symbol: *const c_char,
+    funcPtr: *mut *mut c_void,
+    flags: c_ulonglong,
+    driverStatus: *mut cudaDriverEntryPointQueryResult,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaGetDriverEntryPointByVersion(
+    symbol: *const c_char,
+    funcPtr: *mut *mut c_void,
+    cudaVersion: c_uint,
+    flags: c_ulonglong,
+    driverStatus: *mut cudaDriverEntryPointQueryResult,
 ) -> cudaError_t;
 
 #[cuda_custom_hook] // local
@@ -845,6 +871,16 @@ fn cudaHostRegister(ptr: *mut c_void, size: usize, flags: c_uint) -> cudaError_t
 
 #[cuda_custom_hook] // local
 fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cudaHostGetDevicePointer(
+    pDevice: *mut *mut c_void,
+    pHost: *mut c_void,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaGetSymbolAddress(devPtr: *mut *mut c_void, symbol: *const c_void) -> cudaError_t;
 
 #[cuda_custom_hook] // calls the internal API below
 fn cudaFuncGetAttributes(attr: *mut cudaFuncAttributes, func: *const c_void) -> cudaError_t;
@@ -900,6 +936,39 @@ fn cudaLaunchKernel(
     args: *mut *mut c_void,
     sharedMem: usize,
     stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn __cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn __cudaLaunchKernel(
+    kernel: cudaKernel_t,
+    gridDim: dim3,
+    blockDim: dim3,
+    args: *mut *mut c_void,
+    sharedMem: usize,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn __cudaLaunchKernel_ptsz(
+    kernel: cudaKernel_t,
+    gridDim: dim3,
+    blockDim: dim3,
+    args: *mut *mut c_void,
+    sharedMem: usize,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLaunchKernelExC(
+    config: *const cudaLaunchConfig_t,
+    func: *const c_void,
+    args: *mut *mut c_void,
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 112)]

@@ -33,3 +33,16 @@ pub fn pack_kernel_args(
     }
     result.into_boxed_slice()
 }
+
+pub fn pack_kernel_args_with_offsets(
+    arg_ptrs: *mut *mut std::ffi::c_void,
+    info: &[crate::elf::KernelParamInfo],
+) -> (Box<[u8]>, Box<[u32]>) {
+    let args = pack_kernel_args(arg_ptrs, info);
+    let offsets = info
+        .iter()
+        .map(|param| u32::from(param.offset))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    (args, offsets)
+}

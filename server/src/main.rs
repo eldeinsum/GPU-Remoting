@@ -1,9 +1,10 @@
 use std::collections::btree_map::{BTreeMap, Entry};
 use std::io::{self, Read as _, Write as _};
 use std::net::TcpListener;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Barrier};
+use std::thread;
 use std::time::Duration;
-use std::{ptr, thread};
 
 use network::NetworkConfig;
 use server::*;
@@ -43,7 +44,16 @@ fn daemon(config: &NetworkConfig) -> io::Result<(io::PipeReader, io::PipeWriter)
     loop {
         let finished = reap_children();
         if !finished.is_empty() {
-            children.retain(|_, (server_pid, _, _)| !finished.contains(server_pid));
+            for child in &finished {
+                log::warn!(
+                    "server child {} finished: {}",
+                    child.pid,
+                    describe_wait_status(child.status)
+                );
+            }
+            children.retain(|_, (server_pid, _, _)| {
+                !finished.iter().any(|child| child.pid == *server_pid)
+            });
         }
         drop(finished);
 
@@ -109,6 +119,7 @@ fn server_process(
         }
         let id = i32::from_ne_bytes(buf);
         let child_config = Arc::clone(&config);
+        let main_channel = is_main_thread;
         let (barrier, child_barrier) = match config.comm_type.as_str() {
             "shm" | "tcp" => {
                 let barrier = Arc::new(Barrier::new(2));
@@ -120,7 +131,21 @@ fn server_process(
             other => return Err(unsupported_comm_type(other)),
         };
         thread::spawn(move || {
-            launch_server(&child_config, id, child_barrier, is_main_thread);
+            log::debug!("[#{id}] server channel thread starting");
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                launch_server(&child_config, id, child_barrier, main_channel);
+            }));
+            let ok = result.is_ok();
+            match result {
+                Ok(()) => log::debug!("[#{id}] server channel thread returned"),
+                Err(payload) => log::error!(
+                    "[#{id}] server channel thread panicked: {}",
+                    panic_payload_message(payload.as_ref())
+                ),
+            }
+            if main_channel {
+                std::process::exit(if ok { 0 } else { 101 });
+            }
         });
         barrier.map(|barrier| barrier.wait());
         tx.write_all(&buf)?;
@@ -128,15 +153,42 @@ fn server_process(
     }
 }
 
-fn reap_children() -> Vec<libc::pid_t> {
+#[derive(Debug)]
+struct ChildStatus {
+    pid: libc::pid_t,
+    status: i32,
+}
+
+fn reap_children() -> Vec<ChildStatus> {
     let mut result = Vec::new();
     loop {
-        let pid = unsafe { libc::waitpid(-1, ptr::null_mut(), libc::WNOHANG) };
+        let mut status = 0;
+        let pid = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
         if pid > 0 {
-            result.push(pid);
+            result.push(ChildStatus { pid, status });
         } else {
             return result;
         }
+    }
+}
+
+fn describe_wait_status(status: i32) -> String {
+    if libc::WIFEXITED(status) {
+        format!("exit status {}", libc::WEXITSTATUS(status))
+    } else if libc::WIFSIGNALED(status) {
+        format!("signal {}", libc::WTERMSIG(status))
+    } else {
+        format!("raw wait status {status}")
+    }
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        message
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.as_str()
+    } else {
+        "non-string panic payload"
     }
 }
 

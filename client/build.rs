@@ -80,9 +80,12 @@ fn create_cuda_symlinks() {
     }
     symlink_dir.push("x");
     for lib in [
+        "libcuda.so",
         "libcuda.so.1",
+        "libcudart.so",
         "libcudart.so.11.0",
         "libcudart.so.12",
+        "libcudart.so.13",
         "libnvidia-ml.so.1",
         "libcudnn.so.8",
         "libcudnn.so.9",
@@ -92,8 +95,10 @@ fn create_cuda_symlinks() {
         "libcublasLt.so.12",
         "libnvrtc.so.11.2",
         "libnvrtc.so.11.3",
+        "libnvrtc.so.13",
     ] {
         symlink_dir.set_file_name(lib);
+        let _ = fs::remove_file(&symlink_dir);
         let _ = std::os::unix::fs::symlink("../libclient.so", &symlink_dir);
     }
 }

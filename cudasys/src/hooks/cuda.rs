@@ -51,7 +51,7 @@ fn cuLaunchKernel(
 ) -> CUresult {
     'client_before_send: {
         assert!(extra.is_null());
-        let args = super::cuda_hijack_utils::pack_kernel_args(
+        let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
             kernelParams,
             DRIVER_CACHE
                 .read()
@@ -62,9 +62,11 @@ fn cuLaunchKernel(
         );
     }
     'client_extra_send: {
+        send_slice(&arg_offsets, channel_sender).unwrap();
         send_slice(&args, channel_sender).unwrap();
     }
     'server_extra_recv: {
+        let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
         let args = recv_slice::<u8, _>(channel_receiver).unwrap();
     }
     'server_execution: {
@@ -79,9 +81,64 @@ fn cuLaunchKernel(
             sharedMemBytes,
             hStream,
             &args,
+            &arg_offsets,
         );
     }
 }
+
+#[cuda_hook(proc_id = 919, async_api)]
+fn cuLaunchKernelEx(
+    #[host] config: *const CUlaunchConfig,
+    f: CUfunction,
+    #[skip] kernelParams: *mut *mut c_void,
+    #[skip] extra: *mut *mut c_void,
+) -> CUresult {
+    'client_before_send: {
+        assert!(extra.is_null());
+        assert!(!config.is_null());
+        let config_ref = unsafe { &*config };
+        let attrs = if config_ref.numAttrs == 0 {
+            &[][..]
+        } else {
+            assert!(!config_ref.attrs.is_null());
+            unsafe { std::slice::from_raw_parts(config_ref.attrs, config_ref.numAttrs as usize) }
+        };
+        let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+            kernelParams,
+            DRIVER_CACHE
+                .read()
+                .unwrap()
+                .function_params
+                .get(&f)
+                .unwrap(),
+        );
+    }
+    'client_extra_send: {
+        send_slice(attrs, channel_sender).unwrap();
+        send_slice(&arg_offsets, channel_sender).unwrap();
+        send_slice(&args, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let _ = config__ptr;
+        let attrs = recv_slice::<CUlaunchAttribute, _>(channel_receiver).unwrap();
+        let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
+        let args = recv_slice::<u8, _>(channel_receiver).unwrap();
+        let mut launch_config = config;
+        launch_config.attrs = if attrs.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            attrs.as_ptr().cast_mut()
+        };
+        launch_config.numAttrs = attrs.len() as _;
+    }
+    'server_execution: {
+        let result =
+            super::cuda_exe_utils::cu_launch_kernel_ex(&launch_config, f, &args, &arg_offsets);
+    }
+}
+
+#[cuda_custom_hook] // calls the internal API below
+fn cuModuleLoad(module: *mut CUmodule, fname: *const c_char) -> CUresult;
 
 #[cuda_custom_hook] // calls the internal API below
 fn cuModuleLoadData(module: *mut CUmodule, image: *const c_void) -> CUresult;
@@ -93,12 +150,7 @@ fn cuModuleLoadDataInternal(
     #[skip] is_runtime: bool,
 ) -> CUresult {
     'client_before_send: {
-        let len = if FatBinaryHeader::is_fat_binary(image) {
-            let header: &FatBinaryHeader = unsafe { &*image.cast() };
-            header.entire_len()
-        } else {
-            crate::elf::elf_len(image)
-        };
+        let len = crate::elf::module_image_len(image);
     }
     'client_after_recv: {
         let image = if is_runtime {
@@ -106,12 +158,14 @@ fn cuModuleLoadDataInternal(
         } else {
             std::borrow::Cow::Owned(image.to_vec())
         };
-        assert!(DRIVER_CACHE
-            .write()
-            .unwrap()
-            .images
-            .insert(*module, image)
-            .is_none());
+        assert!(
+            DRIVER_CACHE
+                .write()
+                .unwrap()
+                .images
+                .insert(*module, image)
+                .is_none()
+        );
     }
     'server_execution: {
         let result = unsafe { cuModuleLoadData(module__ptr, image__ptr.cast()) };
@@ -124,17 +178,229 @@ fn cuModuleLoadDataInternal(
 #[cuda_hook(proc_id = 705)]
 fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_char) -> CUresult {
     'client_after_recv: {
+        let target_arch = DRIVER_CACHE.read().unwrap().device_arch;
         let mut driver = DRIVER_CACHE.write().unwrap();
         let image = driver.images.get(&hmod).unwrap();
         let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
             let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
-            fatbin.find_kernel_params(name.to_str().unwrap())
+            fatbin.find_kernel_params(name.to_str().unwrap(), target_arch)
         } else {
             crate::elf::find_kernel_params(image, name.to_str().unwrap())
         };
-        assert!(driver.function_params.insert(*hfunc, params).is_none());
+        driver.function_params.insert(*hfunc, params);
     }
 }
+
+#[cuda_hook(proc_id = 900706, async_api = false)]
+fn cuModuleUnload(hmod: CUmodule) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            DRIVER_CACHE.write().unwrap().images.remove(&hmod);
+        }
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            server.modules.retain(|module| *module != hmod);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900707)]
+fn cuModuleGetLoadingMode(mode: *mut CUmoduleLoadingMode) -> CUresult;
+
+#[cuda_hook(proc_id = 900708)]
+fn cuModuleGetGlobal_v2(
+    dptr: *mut CUdeviceptr,
+    bytes: *mut usize,
+    hmod: CUmodule,
+    name: *const c_char,
+) -> CUresult;
+
+#[cuda_custom_hook] // calls the internal API below
+fn cuLibraryLoadData(
+    library: *mut CUlibrary,
+    code: *const c_void,
+    jitOptions: *mut CUjit_option,
+    jitOptionsValues: *mut *mut c_void,
+    numJitOptions: c_uint,
+    libraryOptions: *mut CUlibraryOption,
+    libraryOptionValues: *mut *mut c_void,
+    numLibraryOptions: c_uint,
+) -> CUresult;
+
+#[cuda_custom_hook] // calls the internal API below
+fn cuLibraryLoadFromFile(
+    library: *mut CUlibrary,
+    fileName: *const c_char,
+    jitOptions: *mut CUjit_option,
+    jitOptionsValues: *mut *mut c_void,
+    numJitOptions: c_uint,
+    libraryOptions: *mut CUlibraryOption,
+    libraryOptionValues: *mut *mut c_void,
+    numLibraryOptions: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900709, parent = cuLibraryLoadData)]
+fn cuLibraryLoadDataInternal(
+    library: *mut CUlibrary,
+    #[host(len = len)] code: *const c_void,
+) -> CUresult {
+    'client_before_send: {
+        let len = crate::elf::module_image_len(code);
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            assert!(
+                DRIVER_CACHE
+                    .write()
+                    .unwrap()
+                    .library_images
+                    .insert(*library, std::borrow::Cow::Owned(code.to_vec()))
+                    .is_none()
+            );
+        }
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuLibraryLoadData(
+                library__ptr,
+                code__ptr.cast(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            server.libraries.push(library);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900710)]
+fn cuLibraryUnload(library: CUlibrary) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut driver = DRIVER_CACHE.write().unwrap();
+            driver.library_images.remove(&library);
+            let kernels = driver
+                .kernel_libraries
+                .iter()
+                .filter_map(|(kernel, owner)| (*owner == library).then_some(*kernel))
+                .collect::<Vec<_>>();
+            for kernel in kernels {
+                driver.kernel_libraries.remove(&kernel);
+                driver.kernel_names.remove(&kernel);
+                driver.function_params.remove(&kernel.cast::<CUfunc_st>());
+            }
+        }
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            server.libraries.retain(|item| *item != library);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900711)]
+fn cuLibraryGetKernel(pKernel: *mut CUkernel, library: CUlibrary, name: *const c_char) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let target_arch = DRIVER_CACHE.read().unwrap().device_arch;
+            let mut driver = DRIVER_CACHE.write().unwrap();
+            let image = driver.library_images.get(&library).unwrap();
+            let kernel_name = name.to_str().unwrap();
+            let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
+                let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
+                fatbin.find_kernel_params(kernel_name, target_arch)
+            } else {
+                crate::elf::find_kernel_params(image, kernel_name)
+            };
+            driver
+                .function_params
+                .insert((*pKernel).cast::<CUfunc_st>(), params);
+            driver
+                .kernel_names
+                .insert(*pKernel, std::ffi::CString::new(kernel_name).unwrap());
+            driver.kernel_libraries.insert(*pKernel, library);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900712)]
+fn cuLibraryGetModule(pMod: *mut CUmodule, library: CUlibrary) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut driver = DRIVER_CACHE.write().unwrap();
+            let image = driver.library_images.get(&library).unwrap().clone();
+            driver.images.insert(*pMod, image);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900713)]
+fn cuKernelGetFunction(pFunc: *mut CUfunction, kernel: CUkernel) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut driver = DRIVER_CACHE.write().unwrap();
+            if let Some(params) = driver
+                .function_params
+                .get(&kernel.cast::<CUfunc_st>())
+                .cloned()
+            {
+                driver.function_params.insert(*pFunc, params);
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900714)]
+fn cuKernelGetLibrary(pLib: *mut CUlibrary, kernel: CUkernel) -> CUresult;
+
+#[cuda_hook(proc_id = 900715)]
+fn cuLibraryGetGlobal(
+    dptr: *mut CUdeviceptr,
+    bytes: *mut usize,
+    library: CUlibrary,
+    name: *const c_char,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900716)]
+fn cuKernelGetAttribute(
+    pi: *mut c_int,
+    attrib: CUfunction_attribute,
+    kernel: CUkernel,
+    dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900717, async_api = false)]
+fn cuKernelSetAttribute(
+    attrib: CUfunction_attribute,
+    val: c_int,
+    kernel: CUkernel,
+    dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900718, async_api = false)]
+fn cuKernelSetCacheConfig(kernel: CUkernel, config: CUfunc_cache, dev: CUdevice) -> CUresult;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn cuKernelGetName(name: *mut *const c_char, hfunc: CUkernel) -> CUresult;
+
+#[cuda_hook(proc_id = 900719)]
+fn cuKernelGetParamInfo(
+    kernel: CUkernel,
+    paramIndex: usize,
+    paramOffset: *mut usize,
+    paramSize: *mut usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900720)]
+fn cuKernelGetParamCount(kernel: CUkernel, paramCount: *mut usize) -> CUresult;
 
 #[cuda_hook(proc_id = 640)]
 fn cuDriverGetVersion(driverVersion: *mut c_int) -> CUresult;
@@ -144,6 +410,9 @@ fn cuGetErrorName(error: CUresult, pStr: *mut *const c_char) -> CUresult;
 
 #[cuda_custom_hook] // local
 fn cuGetErrorString(error: CUresult, pStr: *mut *const c_char) -> CUresult;
+
+#[cuda_custom_hook] // local for NVRTC
+fn cuGetExportTable(ppExportTable: *mut *const c_void, pExportTableId: *const CUuuid) -> CUresult;
 
 #[cuda_hook(proc_id = 630, async_api = false)]
 fn cuInit(Flags: c_uint) -> CUresult;
@@ -186,7 +455,7 @@ fn cuCtxGetSharedMemConfig(pConfig: *mut CUsharedconfig) -> CUresult;
 
 #[cuda_hook(proc_id = 900307)]
 fn cuCtxGetStreamPriorityRange(leastPriority: *mut c_int, greatestPriority: *mut c_int)
-    -> CUresult;
+-> CUresult;
 
 #[cuda_hook(proc_id = 900308, async_api = false)]
 fn cuCtxSetCacheConfig(config: CUfunc_cache) -> CUresult;
@@ -219,7 +488,25 @@ fn cuDeviceComputeCapability(major: *mut c_int, minor: *mut c_int, dev: CUdevice
 fn cuDeviceGet(device: *mut CUdevice, ordinal: c_int) -> CUresult;
 
 #[cuda_hook(proc_id = 651)]
-fn cuDeviceGetAttribute(pi: *mut c_int, attrib: CUdevice_attribute, dev: CUdevice) -> CUresult;
+fn cuDeviceGetAttribute(pi: *mut c_int, attrib: CUdevice_attribute, dev: CUdevice) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let value = *pi;
+            let mut driver = DRIVER_CACHE.write().unwrap();
+            match attrib {
+                CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR => {
+                    let minor = driver.device_arch.map(|arch| arch % 10).unwrap_or(0);
+                    driver.device_arch = Some(value as u32 * 10 + minor);
+                }
+                CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR => {
+                    let major = driver.device_arch.map(|arch| arch / 10).unwrap_or(0);
+                    driver.device_arch = Some(major * 10 + value as u32);
+                }
+                _ => {}
+            }
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 900314)]
 fn cuDeviceGetByPCIBusId(dev: *mut CUdevice, pciBusId: *const c_char) -> CUresult;

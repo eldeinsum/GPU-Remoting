@@ -74,7 +74,7 @@ pub fn generate_impls(
             generate_bare_hooks(
                 &format!("{output_dir}/{unimplement_mod}.rs"),
                 &comment,
-                vec![parse_quote! { #![allow(unused_variables)] }],
+                vec![parse_quote! { #![allow(unused_imports, unused_variables)] }],
                 &imports[1..],
                 bindings,
                 |sig| {

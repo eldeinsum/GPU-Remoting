@@ -22,19 +22,21 @@ if [[ -z "${NETWORK_CONFIG:-}" ]]; then
     fi
 fi
 
-gpucr_home="${GPUCR_HOME:-"$repo_root/../GPU-CR"}"
-runtime="${GPUCR_RUNTIME:-"$gpucr_home/build-nvidia/gpucr-nvidia.so"}"
-if [[ ! -f "$runtime" ]]; then
-    runtime="$gpucr_home/rust/target/release/libgpucr_preload.so"
-fi
-if [[ ! -f "$runtime" ]]; then
-    echo "GPU-CR runtime not found. Set GPUCR_HOME or GPUCR_RUNTIME." >&2
-    exit 2
-fi
-
 export CARGO_INCREMENTAL=0
 cargo build "${cargo_args[@]}" --bin server
 bin="$repo_root/target/$profile/server"
 
-export LD_PRELOAD="$runtime${LD_PRELOAD:+:$LD_PRELOAD}"
+if [[ -n "${GPUCR_RUNTIME:-}" || "${GPU_REMOTING_USE_GPUCR:-0}" == "1" ]]; then
+    gpucr_home="${GPUCR_HOME:-"$repo_root/../GPU-CR"}"
+    runtime="${GPUCR_RUNTIME:-"$gpucr_home/build-nvidia/gpucr-nvidia.so"}"
+    if [[ ! -f "$runtime" ]]; then
+        runtime="$gpucr_home/rust/target/release/libgpucr_preload.so"
+    fi
+    if [[ ! -f "$runtime" ]]; then
+        echo "GPU-CR runtime not found. Set GPUCR_HOME or GPUCR_RUNTIME." >&2
+        exit 2
+    fi
+    export LD_PRELOAD="$runtime${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 exec "$bin" "$@"

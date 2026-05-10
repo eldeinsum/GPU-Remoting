@@ -1,5 +1,6 @@
 #![expect(non_snake_case)]
 use super::*;
+use cudasys::types::cuda::{CUdeviceptr, CUlaunchAttribute, CUlaunchConfig, CUmodule, CUresult};
 use cudasys::types::cudart::*;
 use network::type_impl::recv_slice;
 use std::cell::RefCell;
@@ -117,6 +118,7 @@ fn cuda_graph_get_node_list<T: Transportable>(
     }
 
     CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
         log::debug!(target: target, "[#{}]", client.id);
         let ClientThread {
             channel_sender,
@@ -159,6 +161,7 @@ fn cuda_graph_get_edge_list<T: Transportable>(
     }
 
     CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
         log::debug!(target: target, "[#{}]", client.id);
         let ClientThread {
             channel_sender,
@@ -253,6 +256,49 @@ fn resolve_from_array_kind(dst: *mut c_void, kind: cudaMemcpyKind) -> cudaMemcpy
     } else {
         cudaMemcpyKind::cudaMemcpyDeviceToHost
     }
+}
+
+fn ensure_runtime_device(runtime: &mut RuntimeCache) -> cudaError_t {
+    if let Some(device) = runtime.cuda_device {
+        let current_device = CLIENT_THREAD.with_borrow_mut(|client| {
+            client.ensure_current_process();
+            client.cuda_device
+        });
+        if current_device != Some(device) {
+            return cudaError_t::cudaErrorInvalidDevice;
+        }
+        return cudaError_t::cudaSuccess;
+    }
+
+    let mut device = 0;
+    let result = super::cudart_hijack::cudaGetDevice(&mut device);
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+    let result = super::cudart_hijack::cudaSetDevice(device);
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+    runtime.cuda_device = Some(device);
+    cudaError_t::cudaSuccess
+}
+
+fn load_module_for_fatbin(runtime: &mut RuntimeCache, fatCubinHandle: FatBinaryHandle) -> CUmodule {
+    *runtime
+        .loaded_modules
+        .entry(fatCubinHandle)
+        .or_insert_with(|| {
+            // See our implementation of `__cudaRegisterFatBinary`.
+            let index = (fatCubinHandle >> 4) - 1;
+            log::debug!("registering fatbin #{index}");
+            let image = runtime.lazy_fatbins[index];
+            let mut module = std::ptr::null_mut();
+            assert_eq!(
+                super::cuda_hijack::cuModuleLoadDataInternal(&raw mut module, image.cast(), true),
+                CUresult::CUDA_SUCCESS,
+            );
+            module
+        })
 }
 
 fn allocate_host(ptr_out: *mut *mut c_void, size: usize) -> cudaError_t {
@@ -727,7 +773,10 @@ pub extern "C" fn cudaMemcpy2DFromArrayAsync(
 }
 
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
-    if !CLIENT_THREAD.with_borrow(|client| client.cuda_device_init) {
+    if !CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        client.cuda_device_init
+    }) {
         // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#initialization
         assert_eq!(
             super::cudart_hijack::cudaFree(std::ptr::null_mut()),
@@ -743,49 +792,17 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     let runtime = &mut *RUNTIME_CACHE.write().unwrap();
 
     // TODO: In CUDA 12, use `cuLibrary{LoadData,GetKernel}` to avoid pinning device.
-    if let Some(device) = runtime.cuda_device {
-        assert_eq!(
-            CLIENT_THREAD.with_borrow(|client| client.cuda_device),
-            Some(device),
-            "current device (left) and registered device (right) mismatch",
-        );
-    } else {
+    if runtime.cuda_device.is_none() {
         log::info!(
             "#fatbins = {}, #functions = {}",
             runtime.lazy_fatbins.len(),
             runtime.lazy_functions.len(),
         );
-
-        let mut device = 0;
-        assert_eq!(
-            super::cudart_hijack::cudaGetDevice(&mut device),
-            Default::default()
-        );
-        assert_eq!(
-            super::cudart_hijack::cudaSetDevice(device),
-            Default::default()
-        );
-        runtime.cuda_device = Some(device);
     }
-
-    let load_module = |fatCubinHandle: &FatBinaryHandle| {
-        // See our implementation of `__cudaRegisterFatBinary`
-        let index = (*fatCubinHandle >> 4) - 1;
-        log::debug!("registering fatbin #{index}");
-        let image = runtime.lazy_fatbins[index];
-        let mut module = std::ptr::null_mut();
-        assert_eq!(
-            super::cuda_hijack::cuModuleLoadDataInternal(&raw mut module, image.cast(), true),
-            Default::default(),
-        );
-        module
-    };
+    assert_eq!(ensure_runtime_device(runtime), cudaError_t::cudaSuccess);
 
     let (fatCubinHandle, deviceName) = *runtime.lazy_functions.get(&func).unwrap();
-    let module = *runtime
-        .loaded_modules
-        .entry(fatCubinHandle)
-        .or_insert_with_key(load_module);
+    let module = load_module_for_fatbin(runtime, fatCubinHandle);
     log::debug!("registering function {:?}", unsafe {
         CStr::from_ptr(deviceName)
     });
@@ -796,6 +813,110 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     );
     runtime.loaded_functions.insert(func, cufunc);
     cufunc
+}
+
+fn write_driver_entry_point(
+    symbol: *const c_char,
+    funcPtr: *mut *mut c_void,
+    driverStatus: *mut cudaDriverEntryPointQueryResult,
+) -> cudaError_t {
+    if symbol.is_null() || funcPtr.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let func = unsafe { libc::dlsym(libc::RTLD_DEFAULT, symbol) };
+    unsafe {
+        *funcPtr = func;
+        if !driverStatus.is_null() {
+            *driverStatus = if func.is_null() {
+                cudaDriverEntryPointQueryResult::cudaDriverEntryPointSymbolNotFound
+            } else {
+                cudaDriverEntryPointQueryResult::cudaDriverEntryPointSuccess
+            };
+        }
+    }
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetDriverEntryPoint(
+    symbol: *const c_char,
+    funcPtr: *mut *mut c_void,
+    _flags: c_ulonglong,
+    driverStatus: *mut cudaDriverEntryPointQueryResult,
+) -> cudaError_t {
+    log::debug!(target: "cudaGetDriverEntryPoint", "");
+    write_driver_entry_point(symbol, funcPtr, driverStatus)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetDriverEntryPointByVersion(
+    symbol: *const c_char,
+    funcPtr: *mut *mut c_void,
+    _cudaVersion: c_uint,
+    _flags: c_ulonglong,
+    driverStatus: *mut cudaDriverEntryPointQueryResult,
+) -> cudaError_t {
+    log::debug!(target: "cudaGetDriverEntryPointByVersion", "");
+    write_driver_entry_point(symbol, funcPtr, driverStatus)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetSymbolAddress(
+    devPtr: *mut *mut c_void,
+    symbol: *const c_void,
+) -> cudaError_t {
+    log::debug!(target: "cudaGetSymbolAddress", "");
+    if devPtr.is_null() || symbol.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let runtime = &mut *RUNTIME_CACHE.write().unwrap();
+    let Some(&(fatCubinHandle, deviceName)) = runtime.lazy_variables.get(&(symbol as HostPtr))
+    else {
+        return cudaError_t::cudaErrorInvalidSymbol;
+    };
+    let result = ensure_runtime_device(runtime);
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+    let module = load_module_for_fatbin(runtime, fatCubinHandle);
+
+    let mut dptr: CUdeviceptr = 0;
+    let mut bytes: usize = 0;
+    let result =
+        super::cuda_hijack::cuModuleGetGlobal_v2(&raw mut dptr, &raw mut bytes, module, deviceName);
+    if result != CUresult::CUDA_SUCCESS {
+        return cudaError_t::cudaErrorInvalidSymbol;
+    }
+
+    unsafe {
+        *devPtr = dptr as *mut c_void;
+    }
+    cudaError_t::cudaSuccess
+}
+
+fn write_kernel_handle(kernel: *mut cudaKernel_t, entry_func_addr: MemPtr) -> cudaError_t {
+    if kernel.is_null() || entry_func_addr == 0 {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    unsafe {
+        *kernel = entry_func_addr as cudaKernel_t;
+    }
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn __cudaGetKernel(kernel: *mut cudaKernel_t, entryFuncAddr: MemPtr) -> cudaError_t {
+    log::debug!(target: "__cudaGetKernel", "");
+    write_kernel_handle(kernel, entryFuncAddr)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetKernel(kernel: *mut cudaKernel_t, entryFuncAddr: MemPtr) -> cudaError_t {
+    log::debug!(target: "cudaGetKernel", "");
+    write_kernel_handle(kernel, entryFuncAddr)
 }
 
 #[no_mangle]
@@ -822,6 +943,72 @@ pub extern "C" fn cudaLaunchKernel(
             blockDim.z,
             sharedMem.try_into().unwrap(),
             stream.cast(),
+            args,
+            std::ptr::null_mut(),
+        ))
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn __cudaLaunchKernel(
+    kernel: cudaKernel_t,
+    gridDim: dim3,
+    blockDim: dim3,
+    args: *mut *mut ::std::os::raw::c_void,
+    sharedMem: usize,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "__cudaLaunchKernel", "");
+    cudaLaunchKernel(kernel as MemPtr, gridDim, blockDim, args, sharedMem, stream)
+}
+
+#[no_mangle]
+pub extern "C" fn __cudaLaunchKernel_ptsz(
+    kernel: cudaKernel_t,
+    gridDim: dim3,
+    blockDim: dim3,
+    args: *mut *mut ::std::os::raw::c_void,
+    sharedMem: usize,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "__cudaLaunchKernel_ptsz", "");
+    cudaLaunchKernel(kernel as MemPtr, gridDim, blockDim, args, sharedMem, stream)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaLaunchKernelExC(
+    config: *const cudaLaunchConfig_t,
+    func: MemPtr,
+    args: *mut *mut ::std::os::raw::c_void,
+) -> cudaError_t {
+    log::debug!(target: "cudaLaunchKernelExC", "");
+    if config.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let config = unsafe { &*config };
+    let shared_mem = match config.dynamicSmemBytes.try_into() {
+        Ok(shared_mem) => shared_mem,
+        Err(_) => return cudaError_t::cudaErrorInvalidValue,
+    };
+    let launch_config = CUlaunchConfig {
+        gridDimX: config.gridDim.x,
+        gridDimY: config.gridDim.y,
+        gridDimZ: config.gridDim.z,
+        blockDimX: config.blockDim.x,
+        blockDimY: config.blockDim.y,
+        blockDimZ: config.blockDim.z,
+        sharedMemBytes: shared_mem,
+        hStream: config.stream.cast(),
+        attrs: config.attrs.cast::<CUlaunchAttribute>(),
+        numAttrs: config.numAttrs,
+    };
+    let cufunc = get_cufunction(func);
+
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuLaunchKernelEx(
+            &launch_config,
+            cufunc,
             args,
             std::ptr::null_mut(),
         ))
@@ -879,6 +1066,22 @@ pub extern "C" fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t {
     } else {
         cudaError_t::cudaSuccess
     }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaHostGetDevicePointer(
+    pDevice: *mut *mut c_void,
+    pHost: *mut c_void,
+    flags: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaHostGetDevicePointer", "flags = {flags}");
+    if pDevice.is_null() || pHost.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    unsafe {
+        *pDevice = std::ptr::null_mut();
+    }
+    cudaError_t::cudaErrorNotSupported
 }
 
 #[no_mangle]

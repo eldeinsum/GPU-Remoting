@@ -2,7 +2,7 @@
 
 GPU-Remoting is a CUDA API remoting runtime. Applications load a client shared library with `LD_PRELOAD`; CUDA calls are marshalled through the network layer and executed by a GPU-side server process.
 
-This fork removes the PhoenixOS/libpos integration path and targets GPU-CR for NVIDIA checkpoint and restore. The default execution path uses CUDA directly on the remoting server, and GPU-CR is applied by running the server under the GPU-CR NVIDIA runtime.
+This fork removes the PhoenixOS/libpos integration path. The default execution path uses CUDA directly on the remoting server.
 
 ## Components
 
@@ -16,20 +16,12 @@ This fork removes the PhoenixOS/libpos integration path and targets GPU-CR for N
 - Linux
 - CUDA Toolkit and NVIDIA driver
 - Rust nightly, pinned by `rust-toolchain.toml`
-- GPU-CR built with the NVIDIA runtime
-
-GPU-CR expected layout:
-
-```bash
-cd ~/Projects/GPU-CR
-cmake -S . -B build-nvidia -DGPU_VENDOR=NVIDIA -DGPUCR_BUILD_CPP=OFF -DGPUCR_BUILD_RUST=ON -DGPUCR_RUST_RELEASE=ON
-cmake --build build-nvidia -j$(nproc)
-```
 
 ## Build
 
 ```bash
-cd ~/Projects/GPU-Remoting
+git clone https://github.com/eldeinsum/GPU-Remoting
+cd GPU-Remoting
 cargo build --workspace
 ```
 
@@ -51,10 +43,9 @@ comm_type = "shm"
 
 ## Running
 
-Start the GPU-side server under GPU-CR:
+Start the GPU-side server:
 
 ```bash
-GPUCR_HOME=~/Projects/GPU-CR \
 scripts/server --release
 ```
 
@@ -62,6 +53,14 @@ Run a CUDA application through the client preload library:
 
 ```bash
 scripts/client --release ./path/to/cuda_app
+```
+
+## GPU-CR
+
+GPU-CR support is optional and not required for the default remoting path. To run the server under a GPU-CR runtime:
+
+```bash
+GPU_REMOTING_USE_GPUCR=1 GPUCR_HOME=/path/to/GPU-CR scripts/server --release
 ```
 
 Checkpoint and restore the remoting server process:
@@ -101,6 +100,7 @@ done
 New CUDA APIs are declared in `cudasys/src/hooks/*.rs`. The build scripts regenerate client hijacks and server dispatchers from those declarations.
 
 See [docs/implement_new_apis.md](docs/implement_new_apis.md).
+Coverage and workload tracing are documented in [docs/api_coverage.md](docs/api_coverage.md).
 
 ## Attribution
 

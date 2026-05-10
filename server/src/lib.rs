@@ -1,7 +1,7 @@
 mod dispatcher;
 
 use cudasys::{
-    cuda::CUmodule,
+    cuda::{CUlibrary, CUmodule},
     cudart::{cudaError_t, cudaGetDeviceCount},
 };
 use dispatcher::dispatch;
@@ -23,6 +23,7 @@ struct ServerWorker<C> {
     pub channel_sender: C,
     pub channel_receiver: C,
     pub modules: Vec<CUmodule>,
+    pub libraries: Vec<CUlibrary>,
     pub resources: BTreeMap<usize, usize>,
     opt_async_api: bool,
     opt_shadow_desc: bool,
@@ -33,6 +34,11 @@ impl<C> Drop for ServerWorker<C> {
         for module in &self.modules {
             unsafe {
                 cudasys::cuda::cuModuleUnload(*module);
+            }
+        }
+        for library in &self.libraries {
+            unsafe {
+                cudasys::cuda::cuLibraryUnload(*library);
             }
         }
     }
@@ -153,6 +159,7 @@ pub fn launch_server(
         channel_sender,
         channel_receiver,
         modules: Default::default(),
+        libraries: Default::default(),
         resources: Default::default(),
         opt_async_api: config.opt_async_api,
         opt_shadow_desc: config.opt_shadow_desc,
@@ -161,11 +168,18 @@ pub fn launch_server(
     loop {
         if let Ok(proc_id) = receive_request(&mut server.channel_receiver) {
             if proc_id == -1 {
+                info!("[#{}] received client shutdown", server.id);
                 break;
             }
+            log::debug!("[#{}] dispatching proc_id {}", server.id, proc_id);
             if !dispatch(proc_id, &mut server) {
+                error!(
+                    "[#{}] stopping after invalid proc_id {}",
+                    server.id, proc_id
+                );
                 break;
             }
+            log::debug!("[#{}] completed proc_id {}", server.id, proc_id);
         } else {
             error!(
                 "[{}:{}] failed to receive request",

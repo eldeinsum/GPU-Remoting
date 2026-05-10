@@ -299,7 +299,7 @@ int main(void) {
     
     // Test both pointer modes
     test_host_pointer_mode();
-    // test_device_pointer_mode(); // Not supported yet.
+    test_device_pointer_mode();
     
     std::cout << "\nAll tests completed successfully!" << std::endl;
     return 0;

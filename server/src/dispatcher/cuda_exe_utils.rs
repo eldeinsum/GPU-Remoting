@@ -14,16 +14,10 @@ pub fn cu_launch_kernel(
     sharedMemBytes: c_uint,
     hStream: CUstream,
     args: &[u8],
+    arg_offsets: &[u32],
 ) -> CUresult {
     unsafe {
-        let args_len = args.len();
-        let extra_array: [*mut c_void; 5] = [
-            1 as _, // CU_LAUNCH_PARAM_BUFFER_POINTER
-            args.as_ptr() as _,
-            2 as _, // CU_LAUNCH_PARAM_BUFFER_SIZE
-            &raw const args_len as _,
-            std::ptr::null_mut(), // CU_LAUNCH_PARAM_END
-        ];
+        let mut kernel_params = kernel_params_from_packed_args(args, arg_offsets);
         cuLaunchKernel(
             f,
             gridDimX,
@@ -34,10 +28,47 @@ pub fn cu_launch_kernel(
             blockDimZ,
             sharedMemBytes,
             hStream,
+            if kernel_params.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                kernel_params.as_mut_ptr()
+            },
             std::ptr::null_mut(),
-            extra_array.as_ptr().cast_mut(),
         )
     }
+}
+
+pub fn cu_launch_kernel_ex(
+    config: &CUlaunchConfig,
+    f: CUfunction,
+    args: &[u8],
+    arg_offsets: &[u32],
+) -> CUresult {
+    unsafe {
+        let mut kernel_params = kernel_params_from_packed_args(args, arg_offsets);
+        cuLaunchKernelEx(
+            config as *const _,
+            f,
+            if kernel_params.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                kernel_params.as_mut_ptr()
+            },
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+unsafe fn kernel_params_from_packed_args(args: &[u8], arg_offsets: &[u32]) -> Vec<*mut c_void> {
+    arg_offsets
+        .iter()
+        .map(|offset| unsafe {
+            args.as_ptr()
+                .add(*offset as usize)
+                .cast_mut()
+                .cast::<c_void>()
+        })
+        .collect::<Vec<_>>()
 }
 
 pub fn cu_func_get_attributes(

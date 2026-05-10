@@ -16,6 +16,7 @@ mod cudart_exe_custom;
 mod cudnn_exe;
 mod nccl_exe;
 mod nvml_exe;
+mod nvml_exe_custom;
 mod nvrtc_exe;
 
 include!("mod_exe.rs");

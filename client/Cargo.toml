@@ -19,6 +19,7 @@ lz4_flex = { version = "0.11", default-features = false }
 elf = "0.7"
 libc = { workspace = true }
 signal-hook-registry = "1.4"
+zstd = { version = "0.13", default-features = false }
 
 [build-dependencies]
 cudasys = { workspace = true }

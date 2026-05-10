@@ -3,16 +3,28 @@ use codegen::cuda_hook;
 use std::os::raw::*;
 
 #[cuda_hook(proc_id = 991000, async_api = false)]
-fn nvmlInit_v2() -> nvmlReturn_t;
+fn nvmlInit_v2() -> nvmlReturn_t {
+    'server_execution: {
+        let result = super::nvml_exe_custom::server_nvml_init_v2();
+    }
+}
 
 #[cuda_hook(proc_id = 991001)]
 fn nvmlDeviceGetCount_v2(deviceCount: *mut c_uint) -> nvmlReturn_t;
 
 #[cuda_hook(proc_id = 991002, async_api = false)]
-fn nvmlInitWithFlags(flags: c_uint) -> nvmlReturn_t;
+fn nvmlInitWithFlags(flags: c_uint) -> nvmlReturn_t {
+    'server_execution: {
+        let result = super::nvml_exe_custom::server_nvml_init_with_flags(flags);
+    }
+}
 
 #[cuda_hook(proc_id = 991003, async_api = false)]
-fn nvmlShutdown() -> nvmlReturn_t;
+fn nvmlShutdown() -> nvmlReturn_t {
+    'server_execution: {
+        let result = super::nvml_exe_custom::server_nvml_shutdown();
+    }
+}
 
 #[cuda_hook(proc_id = 991004)]
 fn nvmlDeviceGetHandleByIndex_v2(index: c_uint, device: *mut nvmlDevice_t) -> nvmlReturn_t;
@@ -38,3 +50,6 @@ fn nvmlDeviceGetP2PStatus(
     p2pIndex: nvmlGpuP2PCapsIndex_t,
     p2pStatus: *mut nvmlGpuP2PStatus_t,
 ) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991008)]
+fn nvmlDeviceGetMemoryInfo(device: nvmlDevice_t, memory: *mut nvmlMemory_t) -> nvmlReturn_t;

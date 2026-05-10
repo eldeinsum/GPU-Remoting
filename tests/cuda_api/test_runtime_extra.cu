@@ -43,7 +43,6 @@ int main()
     for (int i = 0; i < count; ++i) {
         host[i] = i * 7 + 3;
     }
-    CHECK(cudaHostRegister(host, bytes, cudaHostRegisterDefault));
     CHECK(cudaMalloc(reinterpret_cast<void **>(&device), bytes));
 
     cudaStream_t stream = nullptr;
@@ -59,7 +58,14 @@ int main()
         return 1;
     }
 
-    CHECK(cudaHostUnregister(host));
+    void *registered = nullptr;
+    if (posix_memalign(&registered, 4096, bytes) != 0) {
+        return 1;
+    }
+    CHECK(cudaHostRegister(registered, bytes, cudaHostRegisterDefault));
+    CHECK(cudaHostUnregister(registered));
+    std::free(registered);
+
     CHECK(cudaFree(device));
     CHECK(cudaEventDestroy(event));
     CHECK(cudaStreamDestroy(stream));

@@ -242,6 +242,7 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
         // #[use_thread_local(client = CLIENT_THREAD.with_borrow_mut)]
         #modifiers fn #func(#(#params),*) -> #result_ty {
         CLIENT_THREAD.with_borrow_mut(|client| {
+            client.ensure_current_process();
             log::debug!(target: #func_str, "[#{}]", client.id);
             let ClientThread { channel_sender, channel_receiver, .. } = client;
 

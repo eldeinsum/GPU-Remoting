@@ -19,6 +19,9 @@ fn ncclCommInitRank(
 #[cuda_hook(proc_id = 3203)]
 fn ncclCommDestroy(comm: ncclComm_t) -> ncclResult_t;
 
+#[cuda_hook(proc_id = 3216)]
+fn ncclCommFinalize(comm: ncclComm_t) -> ncclResult_t;
+
 #[cuda_hook(proc_id = 3204)]
 fn ncclCommAbort(comm: ncclComm_t) -> ncclResult_t;
 
@@ -83,6 +86,16 @@ fn ncclBcast(
     count: usize,
     datatype: ncclDataType_t,
     root: c_int,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3215, async_api)]
+fn ncclAllGather(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    sendcount: usize,
+    datatype: ncclDataType_t,
     comm: ncclComm_t,
     stream: cudaStream_t,
 ) -> ncclResult_t;

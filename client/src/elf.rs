@@ -6,12 +6,12 @@
 // https://github.com/llvm/llvm-project/blob/main/clang/lib/Interpreter/DeviceOffload.cpp
 
 use std::borrow::Cow;
-use std::ffi::{c_int, c_uint, c_ulonglong, c_ushort};
+use std::ffi::{c_int, c_uint, c_ulonglong, c_ushort, CStr};
 use std::{ptr, slice};
 
 use elf::endian::NativeEndian;
 use elf::ElfBytes;
-use lz4_flex::decompress;
+use lz4_flex::decompress as decompress_lz4;
 
 #[repr(C, packed)]
 #[derive(Debug)]
@@ -94,14 +94,44 @@ impl FatBinaryHeader {
 
     pub fn validate_code(&self) {
         for code in self.code_iter() {
-            validate_cubin(&code);
+            validate_cubin(&code.data);
         }
     }
 
-    pub fn find_kernel_params(&self, name: &str) -> Box<[KernelParamInfo]> {
-        let cubin = self.code_iter().next().unwrap();
-        find_kernel_params(&cubin, name)
+    pub fn find_kernel_params(
+        &self,
+        name: &str,
+        target_arch: Option<u32>,
+    ) -> Box<[KernelParamInfo]> {
+        let mut selected: Option<(u8, u32, u32, Box<[KernelParamInfo]>)> = None;
+        for cubin in self.code_iter() {
+            let Some(params) = try_find_kernel_params(&cubin.data, name) else {
+                continue;
+            };
+            let rank = match target_arch {
+                Some(target) if cubin.arch <= target => (0, target - cubin.arch),
+                Some(target) => (1, cubin.arch - target),
+                None => (0, 0),
+            };
+            let replace = selected
+                .as_ref()
+                .map(|(kind, distance, ..)| rank < (*kind, *distance))
+                .unwrap_or(true);
+            if replace {
+                selected = Some((rank.0, rank.1, cubin.arch, params));
+            }
+        }
+        let Some((_, _, arch, params)) = selected else {
+            panic!("Failed to find kernel params for {name}");
+        };
+        log::debug!("kernel {name} parameter metadata selected sm_{arch}");
+        params
     }
+}
+
+struct CodeObject {
+    arch: u32,
+    data: Cow<'static, [u8]>,
 }
 
 struct CodeIter {
@@ -110,7 +140,7 @@ struct CodeIter {
 }
 
 impl Iterator for CodeIter {
-    type Item = Cow<'static, [u8]>;
+    type Item = CodeObject;
 
     fn next(&mut self) -> Option<Self::Item> {
         let Self { payload, end } = *self;
@@ -119,7 +149,7 @@ impl Iterator for CodeIter {
             return None;
         }
         let header: &CodeHeader = unsafe { &*payload.cast() };
-        let (kind, is_compressed) = header.validate();
+        let (kind, compression) = header.validate();
         let code = payload.wrapping_add(header.header_size as usize);
         let code_size = header.code_size as usize;
         let code_end = code.wrapping_add(code_size);
@@ -130,14 +160,21 @@ impl Iterator for CodeIter {
             return self.next();
         }
         let code = unsafe { slice::from_raw_parts(code, code_size) };
-        Some(if is_compressed {
+        let data = if let Some(compression) = compression {
             let input = &code[..header.compressed_size as usize];
             let size = header.decompressed_size as usize;
-            let decompressed = decompress(input, size).unwrap();
+            let decompressed = match compression {
+                Compression::Lz4 => decompress_lz4(input, size).unwrap(),
+                Compression::Zstd => zstd::bulk::decompress(input, size).unwrap(),
+            };
             assert_eq!(decompressed.len(), size);
             Cow::Owned(decompressed)
         } else {
             Cow::Borrowed(code)
+        };
+        Some(CodeObject {
+            arch: header.arch,
+            data,
         })
     }
 }
@@ -145,6 +182,11 @@ impl Iterator for CodeIter {
 enum CodeKind {
     Ptx = 1,
     Elf = 2,
+}
+
+enum Compression {
+    Lz4,
+    Zstd,
 }
 
 #[repr(C, packed)]
@@ -173,7 +215,7 @@ pub struct CodeHeader {
 const _: () = assert!(size_of::<CodeHeader>() == 0x40);
 
 impl CodeHeader {
-    fn validate(&self) -> (CodeKind, bool) {
+    fn validate(&self) -> (CodeKind, Option<Compression>) {
         let bail = || panic!("invalid fatbin code header: {self:#x?}");
         let Self {
             __unknown02: 0x101,
@@ -192,41 +234,47 @@ impl CodeHeader {
         let kind = match self {
             Self {
                 kind: 1,
-                header_size: 0x48,
+                header_size: 0x48 | 0x50,
                 options_offset: 0x40,
                 ..
             } => CodeKind::Ptx,
             Self {
                 kind: 2,
-                header_size: 0x40 | 0x48,
-                options_offset: 0,
+                header_size: 0x40 | 0x48 | 0x70,
+                options_offset: 0 | 0x40,
                 ..
             } => CodeKind::Elf,
             _ => bail(),
         };
-        let is_compressed = match self {
+        let compression = match self {
             Self {
                 compressed_size: 0,
                 flags: 0x11,
                 decompressed_size: 0,
                 ..
-            } => false,
+            } => None,
             Self {
                 compressed_size: 1..,
                 flags: 0x2011,
                 decompressed_size: 1..,
                 ..
-            } => true,
+            } => Some(Compression::Lz4),
             // flag 0x100000 is unknown
             Self {
                 compressed_size: 1..,
                 flags: 0x102011,
                 decompressed_size: 1..,
                 ..
-            } => true,
+            } => Some(Compression::Lz4),
+            Self {
+                compressed_size: 1..,
+                flags: 0x8011 | 0x1008011,
+                decompressed_size: 1..,
+                ..
+            } => Some(Compression::Zstd),
             _ => bail(),
         };
-        (kind, is_compressed)
+        (kind, compression)
     }
 }
 
@@ -237,6 +285,19 @@ pub fn elf_len(cubin: *const u8) -> usize {
     let phend = file.ehdr.e_phoff + (file.ehdr.e_phentsize * file.ehdr.e_phnum) as u64;
     assert!(shend <= phend);
     phend as usize
+}
+
+pub fn module_image_len(image: *const u8) -> usize {
+    if FatBinaryHeader::is_fat_binary(image) {
+        let header: &FatBinaryHeader = unsafe { &*image.cast() };
+        header.entire_len()
+    } else if unsafe { slice::from_raw_parts(image, 4) } == b"\x7fELF" {
+        elf_len(image)
+    } else {
+        unsafe { CStr::from_ptr(image.cast()) }
+            .to_bytes_with_nul()
+            .len()
+    }
 }
 
 fn validate_cubin(cubin: &[u8]) {
@@ -254,22 +315,26 @@ fn validate_cubin(cubin: &[u8]) {
         let Ok((section, None)) = file.section_data(&shdr) else {
             panic!("Failed to read section or it is compressed");
         };
-        let _ = parse_params(section);
+        let _ = parse_params(section, name);
     }
 }
 
 pub fn find_kernel_params(cubin: &[u8], name: &str) -> Box<[KernelParamInfo]> {
+    try_find_kernel_params(cubin, name).unwrap_or_else(|| panic!("Failed to find section header"))
+}
+
+fn try_find_kernel_params(cubin: &[u8], name: &str) -> Option<Box<[KernelParamInfo]>> {
     let file = ElfBytes::<NativeEndian>::minimal_parse(cubin).unwrap();
     let Ok(Some(shdr)) = file.section_header_by_name(&[".nv.info.", name].concat()) else {
-        panic!("Failed to find section header");
+        return None;
     };
     let Ok((section, None)) = file.section_data(&shdr) else {
         panic!("Failed to read section or it is compressed");
     };
-    parse_params(section)
+    Some(parse_params(section, name))
 }
 
-fn parse_params(nvinfo: &[u8]) -> Box<[KernelParamInfo]> {
+fn parse_params(nvinfo: &[u8], name: &str) -> Box<[KernelParamInfo]> {
     let mut i = 0;
     let (mut param_bytes, mut is_cbank) = (0, false);
     let mut params = Vec::new();
@@ -313,7 +378,15 @@ fn parse_params(nvinfo: &[u8]) -> Box<[KernelParamInfo]> {
     let mut params = params.into_boxed_slice();
     params.sort_unstable_by_key(|param| param.ordinal);
     for (i, param) in params.iter().enumerate() {
-        debug_assert!(param.validate());
+        if !param.has_expected_encoding() {
+            log::debug!(
+                "kernel {name} uses extended parameter metadata: ordinal={} offset={} size={} raw={:#x}",
+                param.ordinal,
+                param.offset,
+                param.size(),
+                param.__rest
+            );
+        }
         assert_eq!(i, param.ordinal as usize, "{params:#x?}");
         assert_eq!(is_cbank, param.is_cbank());
         match params.get(i + 1) {
@@ -354,7 +427,7 @@ impl KernelParamInfo {
         self.__rest & (1 << 17) == 0
     }
 
-    fn validate(&self) -> bool {
+    fn has_expected_encoding(&self) -> bool {
         let log_alignment = self.__rest & 0xff;
         let space = (self.__rest >> 8) & 0x0f;
         let cbank = (self.__rest >> 12) & 0x1f;

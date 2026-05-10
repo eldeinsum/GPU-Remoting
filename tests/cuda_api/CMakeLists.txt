@@ -26,6 +26,7 @@ foreach(source IN LISTS sources)
     target_link_libraries(${source_name} PRIVATE cublasLt)
     target_link_libraries(${source_name} PRIVATE cudnn)
     target_link_libraries(${source_name} PRIVATE nvidia-ml)
+    target_link_libraries(${source_name} PRIVATE nvrtc)
     # Specify C++11 as the standard for the host compiler
     set_target_properties(${source_name} PROPERTIES
         CUDA_RUNTIME_LIBRARY Shared
