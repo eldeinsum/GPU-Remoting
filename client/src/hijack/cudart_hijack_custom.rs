@@ -882,6 +882,37 @@ pub extern "C" fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t {
 }
 
 #[no_mangle]
+pub extern "C" fn cudaLaunchHostFunc(
+    stream: cudaStream_t,
+    fn_: cudaHostFn_t,
+    userData: *mut c_void,
+) -> cudaError_t {
+    log::debug!(target: "cudaLaunchHostFunc", "");
+    let Some(callback) = fn_ else {
+        return cudaError_t::cudaErrorInvalidValue;
+    };
+    let result = super::cudart_hijack::cudaStreamSynchronize(stream);
+    if result.is_error() {
+        return result;
+    }
+    unsafe {
+        callback(userData);
+    }
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaLaunchHostFunc_v2(
+    stream: cudaStream_t,
+    fn_: cudaHostFn_t,
+    userData: *mut c_void,
+    syncMode: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaLaunchHostFunc_v2", "syncMode = {syncMode}");
+    cudaLaunchHostFunc(stream, fn_, userData)
+}
+
+#[no_mangle]
 pub extern "C" fn cudaGraphGetNodes(
     graph: cudaGraph_t,
     nodes: *mut cudaGraphNode_t,

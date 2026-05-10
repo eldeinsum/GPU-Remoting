@@ -217,6 +217,21 @@ fn cudaPeekAtLastError() -> cudaError_t;
 #[cuda_hook(proc_id = 178, async_api = false)]
 fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t;
 
+#[cuda_custom_hook]
+fn cudaLaunchHostFunc(
+    stream: cudaStream_t,
+    fn_: cudaHostFn_t,
+    userData: *mut c_void,
+) -> cudaError_t;
+
+#[cuda_custom_hook]
+fn cudaLaunchHostFunc_v2(
+    stream: cudaStream_t,
+    fn_: cudaHostFn_t,
+    userData: *mut c_void,
+    syncMode: c_uint,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900100)]
 fn cudaStreamCreate(pStream: *mut cudaStream_t) -> cudaError_t;
 
