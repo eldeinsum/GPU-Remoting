@@ -14,6 +14,18 @@ fn cuArrayGetDescriptor_v2(
     hArray: CUarray,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900490)]
+fn cuArray3DCreate_v2(
+    pHandle: *mut CUarray,
+    #[host(len = 1)] pAllocateArray: *const CUDA_ARRAY3D_DESCRIPTOR,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900491)]
+fn cuArray3DGetDescriptor_v2(
+    pArrayDescriptor: *mut CUDA_ARRAY3D_DESCRIPTOR,
+    hArray: CUarray,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900463, async_api = false)]
 fn cuArrayDestroy(hArray: CUarray) -> CUresult;
 
@@ -296,6 +308,15 @@ fn cuPointerGetAttribute(
 #[cuda_hook(proc_id = 900201)]
 fn cuMemAlloc_v2(dptr: *mut CUdeviceptr, bytesize: usize) -> CUresult;
 
+#[cuda_hook(proc_id = 900492)]
+fn cuMemAllocPitch_v2(
+    dptr: *mut CUdeviceptr,
+    pPitch: *mut usize,
+    WidthInBytes: usize,
+    Height: usize,
+    ElementSizeBytes: c_uint,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900401)]
 fn cuMemAllocAsync(dptr: *mut CUdeviceptr, bytesize: usize, hStream: CUstream) -> CUresult;
 
@@ -474,6 +495,63 @@ fn cuMemsetD8Async(dstDevice: CUdeviceptr, uc: c_uchar, N: usize, hStream: CUstr
 
 #[cuda_hook(proc_id = 900410, async_api)]
 fn cuMemsetD32Async(dstDevice: CUdeviceptr, ui: c_uint, N: usize, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900493, async_api)]
+fn cuMemsetD2D8_v2(
+    dstDevice: CUdeviceptr,
+    dstPitch: usize,
+    uc: c_uchar,
+    Width: usize,
+    Height: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900494, async_api)]
+fn cuMemsetD2D16_v2(
+    dstDevice: CUdeviceptr,
+    dstPitch: usize,
+    us: c_ushort,
+    Width: usize,
+    Height: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900495, async_api)]
+fn cuMemsetD2D32_v2(
+    dstDevice: CUdeviceptr,
+    dstPitch: usize,
+    ui: c_uint,
+    Width: usize,
+    Height: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900496, async_api)]
+fn cuMemsetD2D8Async(
+    dstDevice: CUdeviceptr,
+    dstPitch: usize,
+    uc: c_uchar,
+    Width: usize,
+    Height: usize,
+    hStream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900497, async_api)]
+fn cuMemsetD2D16Async(
+    dstDevice: CUdeviceptr,
+    dstPitch: usize,
+    us: c_ushort,
+    Width: usize,
+    Height: usize,
+    hStream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900498, async_api)]
+fn cuMemsetD2D32Async(
+    dstDevice: CUdeviceptr,
+    dstPitch: usize,
+    ui: c_uint,
+    Width: usize,
+    Height: usize,
+    hStream: CUstream,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900208)]
 fn cuStreamCreate(phStream: *mut CUstream, Flags: c_uint) -> CUresult;

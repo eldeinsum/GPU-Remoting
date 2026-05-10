@@ -22,6 +22,9 @@ fn cudaArrayGetInfo(
     array: cudaArray_t,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900481)]
+fn cudaGetChannelDesc(desc: *mut cudaChannelFormatDesc, array: cudaArray_const_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900470, async_api = false)]
 fn cudaFreeArray(array: cudaArray_t) -> cudaError_t;
 
@@ -141,6 +144,18 @@ fn cudaDeviceSetLimit(limit: cudaLimit, value: usize) -> cudaError_t;
 #[cuda_hook(proc_id = 900358, async_api = false)]
 fn cudaDeviceSetSharedMemConfig(config: cudaSharedMemConfig) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900499, async_api = false)]
+fn cudaSetDeviceFlags(flags: c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900500, async_api = false)]
+fn cudaSetValidDevices(
+    #[host(input, len = len as usize)] device_arr: *mut c_int,
+    len: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900501, async_api = false)]
+fn cudaInitDevice(device: c_int, deviceFlags: c_uint, flags: c_uint) -> cudaError_t;
+
 #[cuda_hook(proc_id = 152, async_api = false)]
 fn cudaGetLastError() -> cudaError_t;
 
@@ -189,6 +204,17 @@ fn cudaMallocPitch(
     pitch: *mut usize,
     width: usize,
     height: usize,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900482)]
+fn cudaMalloc3D(pitchedDevPtr: *mut cudaPitchedPtr, extent: cudaExtent) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900483)]
+fn cudaMalloc3DArray(
+    array: *mut cudaArray_t,
+    #[host(len = 1)] desc: *const cudaChannelFormatDesc,
+    extent: cudaExtent,
+    flags: c_uint,
 ) -> cudaError_t;
 
 #[cuda_custom_hook] // calls one of the following internal APIs
@@ -488,6 +514,31 @@ fn cudaMemcpy2DFromArrayAsync(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900484)]
+fn cudaMemcpyArrayToArray(
+    dst: cudaArray_t,
+    wOffsetDst: usize,
+    hOffsetDst: usize,
+    src: cudaArray_const_t,
+    wOffsetSrc: usize,
+    hOffsetSrc: usize,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900485)]
+fn cudaMemcpy2DArrayToArray(
+    dst: cudaArray_t,
+    wOffsetDst: usize,
+    hOffsetDst: usize,
+    src: cudaArray_const_t,
+    wOffsetSrc: usize,
+    hOffsetSrc: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 253, async_api)]
 fn cudaFree(#[device] devPtr: *mut c_void) -> cudaError_t;
 
@@ -591,6 +642,36 @@ fn cudaMemsetAsync(
     #[device] devPtr: *mut c_void,
     value: c_int,
     count: usize,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900486, async_api)]
+fn cudaMemset2D(
+    #[device] devPtr: *mut c_void,
+    pitch: usize,
+    value: c_int,
+    width: usize,
+    height: usize,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900487, async_api)]
+fn cudaMemset2DAsync(
+    #[device] devPtr: *mut c_void,
+    pitch: usize,
+    value: c_int,
+    width: usize,
+    height: usize,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900488, async_api)]
+fn cudaMemset3D(pitchedDevPtr: cudaPitchedPtr, value: c_int, extent: cudaExtent) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900489, async_api)]
+fn cudaMemset3DAsync(
+    pitchedDevPtr: cudaPitchedPtr,
+    value: c_int,
+    extent: cudaExtent,
     stream: cudaStream_t,
 ) -> cudaError_t;
 
@@ -727,6 +808,12 @@ fn cudaMemset(#[device] devPtr: *mut c_void, value: c_int, count: usize) -> cuda
 
 #[cuda_hook(proc_id = 114, async_api = false)]
 fn cudaDeviceReset() -> cudaError_t;
+
+#[cuda_hook(proc_id = 900502, async_api = false)]
+fn cudaProfilerStart() -> cudaError_t;
+
+#[cuda_hook(proc_id = 900503, async_api = false)]
+fn cudaProfilerStop() -> cudaError_t;
 
 #[cuda_hook(proc_id = 900427, async_api = false)]
 fn cudaCtxResetPersistingL2Cache() -> cudaError_t;
