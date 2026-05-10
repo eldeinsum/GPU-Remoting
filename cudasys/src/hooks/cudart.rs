@@ -1008,6 +1008,52 @@ fn cudaGraphAddChildGraphNode(
 #[cuda_hook(proc_id = 900516)]
 fn cudaGraphChildGraphNodeGetGraph(node: cudaGraphNode_t, pGraph: *mut cudaGraph_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900532)]
+fn cudaGraphAddEventRecordNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    event: cudaEvent_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900533)]
+fn cudaGraphEventRecordNodeGetEvent(
+    node: cudaGraphNode_t,
+    event_out: *mut cudaEvent_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900534)]
+fn cudaGraphEventRecordNodeSetEvent(node: cudaGraphNode_t, event: cudaEvent_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900535)]
+fn cudaGraphAddEventWaitNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    event: cudaEvent_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900536)]
+fn cudaGraphEventWaitNodeGetEvent(
+    node: cudaGraphNode_t,
+    event_out: *mut cudaEvent_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900537)]
+fn cudaGraphEventWaitNodeSetEvent(node: cudaGraphNode_t, event: cudaEvent_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 545, async_api = false)]
 fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
 
@@ -1127,6 +1173,20 @@ fn cudaGraphExecUpdate(
     hGraphExec: cudaGraphExec_t,
     hGraph: cudaGraph_t,
     resultInfo: *mut cudaGraphExecUpdateResultInfo,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900538)]
+fn cudaGraphExecEventRecordNodeSetEvent(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    event: cudaEvent_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900539)]
+fn cudaGraphExecEventWaitNodeSetEvent(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    event: cudaEvent_t,
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900514, async_api)]

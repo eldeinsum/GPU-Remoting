@@ -202,6 +202,50 @@ int main()
     }
     CHECK_CUDA(cudaGraphDestroy(child_graph));
 
+    cudaEvent_t event_initial = nullptr;
+    cudaEvent_t event_replacement = nullptr;
+    cudaEvent_t event = nullptr;
+    CHECK_CUDA(cudaEventCreate(&event_initial));
+    CHECK_CUDA(cudaEventCreate(&event_replacement));
+
+    cudaGraphNode_t event_record_node = nullptr;
+    cudaGraphNode_t event_wait_node = nullptr;
+    CHECK_CUDA(cudaGraphAddEventRecordNode(&event_record_node, manual_graph,
+                                           nullptr, 0, event_initial));
+    CHECK_CUDA(cudaGraphEventRecordNodeGetEvent(event_record_node, &event));
+    if (event != event_initial) {
+        std::fprintf(stderr, "event record node returned unexpected event\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphEventRecordNodeSetEvent(event_record_node,
+                                                event_replacement));
+    CHECK_CUDA(cudaGraphEventRecordNodeGetEvent(event_record_node, &event));
+    if (event != event_replacement) {
+        std::fprintf(stderr, "event record node set unexpected event\n");
+        return 1;
+    }
+
+    CHECK_CUDA(cudaGraphAddEventWaitNode(&event_wait_node, manual_graph,
+                                         nullptr, 0, event_replacement));
+    CHECK_CUDA(cudaGraphEventWaitNodeGetEvent(event_wait_node, &event));
+    if (event != event_replacement) {
+        std::fprintf(stderr, "event wait node returned unexpected event\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphEventWaitNodeSetEvent(event_wait_node, event_initial));
+    CHECK_CUDA(cudaGraphEventWaitNodeGetEvent(event_wait_node, &event));
+    if (event != event_initial) {
+        std::fprintf(stderr, "event wait node set unexpected event\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphEventWaitNodeSetEvent(event_wait_node,
+                                              event_replacement));
+
+    cudaGraphNode_t event_from[] = {event_record_node};
+    cudaGraphNode_t event_to[] = {event_wait_node};
+    CHECK_CUDA(cudaGraphAddDependencies(manual_graph, event_from, event_to,
+                                        nullptr, 1));
+
     exec = nullptr;
     CHECK_CUDA(cudaGraphInstantiate(&exec, manual_graph, 0));
     cudaGraphExecUpdateResultInfo update_info = {};
@@ -218,11 +262,17 @@ int main()
     }
     unsigned int exec_id = 0;
     CHECK_CUDA(cudaGraphExecGetId(exec, &exec_id));
+    CHECK_CUDA(cudaGraphExecEventRecordNodeSetEvent(exec, event_record_node,
+                                                    event_initial));
+    CHECK_CUDA(cudaGraphExecEventWaitNodeSetEvent(exec, event_wait_node,
+                                                  event_initial));
     CHECK_CUDA(cudaGraphUpload(exec, stream));
     CHECK_CUDA(cudaGraphLaunch(exec, stream));
     CHECK_CUDA(cudaStreamSynchronize(stream));
     CHECK_CUDA(cudaGraphExecDestroy(exec));
 
+    CHECK_CUDA(cudaGraphRemoveDependencies(manual_graph, event_from, event_to,
+                                           nullptr, 1));
     CHECK_CUDA(cudaGraphRemoveDependencies(manual_graph, from, to, nullptr, 1));
     edges = 1;
     CHECK_CUDA(cudaGraphGetEdges(manual_graph, nullptr, nullptr, nullptr, &edges));
@@ -232,6 +282,10 @@ int main()
     }
     CHECK_CUDA(cudaGraphDestroyNode(node_b));
     CHECK_CUDA(cudaGraphDestroyNode(child_graph_node));
+    CHECK_CUDA(cudaGraphDestroyNode(event_wait_node));
+    CHECK_CUDA(cudaGraphDestroyNode(event_record_node));
+    CHECK_CUDA(cudaEventDestroy(event_replacement));
+    CHECK_CUDA(cudaEventDestroy(event_initial));
     nodes = 0;
     CHECK_CUDA(cudaGraphGetNodes(manual_graph, nullptr, &nodes));
     if (nodes != 1) {
