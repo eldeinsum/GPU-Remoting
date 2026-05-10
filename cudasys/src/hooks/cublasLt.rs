@@ -349,3 +349,31 @@ fn cublasLtMatrixLayoutGetAttribute(
     sizeInBytes: usize,
     sizeWritten: *mut usize,
 ) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1538)]
+fn cublasLtMatrixTransformDescCreate(
+    transformDesc: *mut cublasLtMatrixTransformDesc_t,
+    scaleType: cudaDataType,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1539)]
+fn cublasLtMatrixTransformDescDestroy(
+    transformDesc: cublasLtMatrixTransformDesc_t,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1540)]
+fn cublasLtMatrixTransformDescSetAttribute(
+    transformDesc: cublasLtMatrixTransformDesc_t,
+    attr: cublasLtMatrixTransformDescAttributes_t,
+    #[host(len = sizeInBytes)] buf: *const c_void,
+    sizeInBytes: usize,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1541)]
+fn cublasLtMatrixTransformDescGetAttribute(
+    transformDesc: cublasLtMatrixTransformDesc_t,
+    attr: cublasLtMatrixTransformDescAttributes_t,
+    #[host(output, len = sizeInBytes)] buf: *mut c_void,
+    sizeInBytes: usize,
+    sizeWritten: *mut usize,
+) -> cublasStatus_t;
