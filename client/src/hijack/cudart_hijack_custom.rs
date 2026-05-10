@@ -2,13 +2,31 @@
 use super::*;
 use cudasys::types::cudart::*;
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::*;
 use std::sync::{Mutex, OnceLock};
 
 fn host_allocations() -> &'static Mutex<BTreeSet<usize>> {
     static ALLOCATIONS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
     ALLOCATIONS.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn cuda_error_text(error: cudaError_t, include_code: bool) -> *const c_char {
+    static ERROR_TEXTS: OnceLock<Mutex<BTreeMap<(c_int, bool), CString>>> = OnceLock::new();
+    let error_code = error as c_int;
+    let mut texts = ERROR_TEXTS
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .unwrap();
+    let text = texts.entry((error_code, include_code)).or_insert_with(|| {
+        let text = if include_code {
+            format!("{error:?} ({error_code})")
+        } else {
+            format!("{error:?}")
+        };
+        CString::new(text).unwrap()
+    });
+    text.as_ptr()
 }
 
 fn classify_pointer(ptr: *const c_void) -> Option<cudaMemoryType> {
@@ -705,16 +723,13 @@ pub extern "C" fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t {
 #[no_mangle]
 pub extern "C" fn cudaGetErrorString(cudaError: cudaError_t) -> *const ::std::os::raw::c_char {
     log::debug!(target: "cudaGetErrorString", "{cudaError:?}");
-    let result = format!("{cudaError:?} ({})", cudaError as u32);
-    let result = CString::new(result).unwrap();
-    result.into_raw() // leaking the string as the program is about to fail anyway
+    cuda_error_text(cudaError, true)
 }
 
 #[no_mangle]
 pub extern "C" fn cudaGetErrorName(cudaError: cudaError_t) -> *const ::std::os::raw::c_char {
     log::debug!(target: "cudaGetErrorName", "{cudaError:?}");
-    let result = CString::new(format!("{cudaError:?}")).unwrap();
-    result.into_raw()
+    cuda_error_text(cudaError, false)
 }
 
 #[no_mangle]
