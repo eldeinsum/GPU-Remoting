@@ -28,6 +28,51 @@ fn cudaGetChannelDesc(desc: *mut cudaChannelFormatDesc, array: cudaArray_const_t
 #[cuda_hook(proc_id = 900470, async_api = false)]
 fn cudaFreeArray(array: cudaArray_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900569)]
+fn cudaMallocMipmappedArray(
+    mipmappedArray: *mut cudaMipmappedArray_t,
+    #[host(len = 1)] desc: *const cudaChannelFormatDesc,
+    extent: cudaExtent,
+    numLevels: c_uint,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900570)]
+fn cudaGetMipmappedArrayLevel(
+    levelArray: *mut cudaArray_t,
+    mipmappedArray: cudaMipmappedArray_const_t,
+    level: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900571, async_api = false)]
+fn cudaFreeMipmappedArray(mipmappedArray: cudaMipmappedArray_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900572)]
+fn cudaArrayGetMemoryRequirements(
+    memoryRequirements: *mut cudaArrayMemoryRequirements,
+    array: cudaArray_t,
+    device: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900573)]
+fn cudaMipmappedArrayGetMemoryRequirements(
+    memoryRequirements: *mut cudaArrayMemoryRequirements,
+    mipmap: cudaMipmappedArray_t,
+    device: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900574)]
+fn cudaArrayGetSparseProperties(
+    sparseProperties: *mut cudaArraySparseProperties,
+    array: cudaArray_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900575)]
+fn cudaMipmappedArrayGetSparseProperties(
+    sparseProperties: *mut cudaArraySparseProperties,
+    mipmap: cudaMipmappedArray_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 120)]
 fn cudaGetDevice(device: *mut c_int) -> cudaError_t {
     'client_before_send: {
