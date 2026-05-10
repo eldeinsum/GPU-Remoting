@@ -199,6 +199,26 @@ fn cuDeviceGetUuid_v2(uuid: *mut CUuuid, dev: CUdevice) -> CUresult;
 #[cuda_hook(proc_id = 900319)]
 fn cuDeviceTotalMem_v2(bytes: *mut usize, dev: CUdevice) -> CUresult;
 
+#[cuda_hook(proc_id = 900322)]
+fn cuDeviceGetProperties(prop: *mut CUdevprop, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900323)]
+fn cuDeviceGetP2PAttribute(
+    value: *mut c_int,
+    attrib: CUdevice_P2PAttribute,
+    srcDevice: CUdevice,
+    dstDevice: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900324)]
+fn cuDeviceGetP2PAtomicCapabilities(
+    #[host(output, len = count as usize)] capabilities: *mut c_uint,
+    #[host(len = count as usize)] operations: *const CUatomicOperation,
+    count: c_uint,
+    srcDevice: CUdevice,
+    dstDevice: CUdevice,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900320)]
 fn cuDevicePrimaryCtxRetain(pctx: *mut CUcontext, dev: CUdevice) -> CUresult;
 

@@ -43,6 +43,23 @@ fn cudaDeviceCanAccessPeer(
     peerDevice: c_int,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900447)]
+fn cudaDeviceGetP2PAttribute(
+    value: *mut c_int,
+    attr: cudaDeviceP2PAttr,
+    srcDevice: c_int,
+    dstDevice: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900448)]
+fn cudaDeviceGetP2PAtomicCapabilities(
+    #[host(output, len = count as usize)] capabilities: *mut c_uint,
+    #[host(len = count as usize)] operations: *const cudaAtomicOperation,
+    count: c_uint,
+    srcDevice: c_int,
+    dstDevice: c_int,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900440)]
 fn cudaDeviceGetDefaultMemPool(memPool: *mut cudaMemPool_t, device: c_int) -> cudaError_t;
 
