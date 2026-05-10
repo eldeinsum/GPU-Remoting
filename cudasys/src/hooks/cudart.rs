@@ -1080,6 +1080,37 @@ fn cudaGraphMemsetNodeSetParams(
     #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900544)]
+fn cudaGraphAddMemcpyNode1D(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t, // null
+    numDependencies: usize,
+    #[device] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        assert_eq!(kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
+#[cuda_hook(proc_id = 900545)]
+fn cudaGraphMemcpyNodeSetParams1D(
+    node: cudaGraphNode_t,
+    #[device] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    'client_before_send: {
+        assert_eq!(kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
 #[cuda_hook(proc_id = 545, async_api = false)]
 fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
 
@@ -1221,6 +1252,20 @@ fn cudaGraphExecMemsetNodeSetParams(
     node: cudaGraphNode_t,
     #[host(len = 1)] pNodeParams: *const cudaMemsetParams,
 ) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900546)]
+fn cudaGraphExecMemcpyNodeSetParams1D(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    #[device] dst: *mut c_void,
+    #[device] src: *const c_void,
+    count: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    'client_before_send: {
+        assert_eq!(kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
 
 #[cuda_hook(proc_id = 900514, async_api)]
 fn cudaGraphUpload(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;

@@ -153,6 +153,50 @@ int main()
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(memset_graph));
 
+    unsigned char *copy_src = nullptr;
+    unsigned char *copy_dst = nullptr;
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&copy_src), kBytes));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&copy_dst), kBytes));
+    CHECK_CUDA(cudaMemset(copy_src, 0x11, kBytes));
+    CHECK_CUDA(cudaMemset(copy_dst, 0, kBytes));
+
+    cudaGraph_t memcpy_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&memcpy_graph, 0));
+    cudaGraphNode_t memcpy_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemcpyNode1D(&memcpy_node, memcpy_graph, nullptr,
+                                        0, copy_dst, copy_src, kBytes,
+                                        cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaGraphMemcpyNodeSetParams1D(memcpy_node, copy_dst,
+                                              copy_src, kBytes,
+                                              cudaMemcpyDeviceToDevice));
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, memcpy_graph, 0));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x11) != 0) {
+        return 1;
+    }
+
+    CHECK_CUDA(cudaMemset(copy_dst, 0, kBytes));
+    CHECK_CUDA(cudaGraphExecMemcpyNodeSetParams1D(exec, memcpy_node,
+                                                  copy_dst, device, kBytes,
+                                                  cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), copy_dst, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x7f) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(memcpy_graph));
+    CHECK_CUDA(cudaFree(copy_dst));
+    CHECK_CUDA(cudaFree(copy_src));
+
     CHECK_CUDA(cudaStreamDestroy(stream));
     CHECK_CUDA(cudaFree(device));
 
