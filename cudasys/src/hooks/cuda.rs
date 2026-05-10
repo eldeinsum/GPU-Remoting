@@ -109,11 +109,20 @@ fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_ch
 #[cuda_hook(proc_id = 640)]
 fn cuDriverGetVersion(driverVersion: *mut c_int) -> CUresult;
 
+#[cuda_custom_hook] // local
+fn cuGetErrorName(error: CUresult, pStr: *mut *const c_char) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuGetErrorString(error: CUresult, pStr: *mut *const c_char) -> CUresult;
+
 #[cuda_hook(proc_id = 630, async_api = false)]
 fn cuInit(Flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 684)]
 fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900200, async_api = false)]
+fn cuCtxSynchronize() -> CUresult;
 
 #[cuda_hook(proc_id = 650)]
 fn cuDeviceGet(device: *mut CUdevice, ordinal: c_int) -> CUresult;
@@ -130,6 +139,56 @@ fn cuPointerGetAttribute(
     attribute: CUpointer_attribute,
     ptr: CUdeviceptr,
 ) -> CUresult;
+
+#[cuda_hook(proc_id = 900201)]
+fn cuMemAlloc_v2(dptr: *mut CUdeviceptr, bytesize: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900202, async_api = false)]
+fn cuMemFree_v2(dptr: CUdeviceptr) -> CUresult;
+
+#[cuda_hook(proc_id = 900203, async_api)]
+fn cuMemcpyHtoD_v2(
+    dstDevice: CUdeviceptr,
+    #[host(len = ByteCount)] srcHost: *const c_void,
+    ByteCount: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900204)]
+fn cuMemcpyDtoH_v2(
+    #[host(output, len = ByteCount)] dstHost: *mut c_void,
+    srcDevice: CUdeviceptr,
+    ByteCount: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900205, async_api)]
+fn cuMemcpyDtoD_v2(dstDevice: CUdeviceptr, srcDevice: CUdeviceptr, ByteCount: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900206, async_api)]
+fn cuMemsetD8_v2(dstDevice: CUdeviceptr, uc: c_uchar, N: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900207, async_api)]
+fn cuMemsetD32_v2(dstDevice: CUdeviceptr, ui: c_uint, N: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900208)]
+fn cuStreamCreate(phStream: *mut CUstream, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900209, async_api = false)]
+fn cuStreamDestroy_v2(hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900210, async_api = false)]
+fn cuStreamSynchronize(hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900211)]
+fn cuEventCreate(phEvent: *mut CUevent, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900212, async_api)]
+fn cuEventRecord(hEvent: CUevent, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900213, async_api = false)]
+fn cuEventSynchronize(hEvent: CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900214, async_api = false)]
+fn cuEventDestroy_v2(hEvent: CUevent) -> CUresult;
 
 #[cuda_hook(proc_id = 1002)]
 fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(

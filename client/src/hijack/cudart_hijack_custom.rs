@@ -2,7 +2,79 @@
 use super::*;
 use cudasys::types::cudart::*;
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::ffi::*;
+use std::sync::{Mutex, OnceLock};
+
+fn host_allocations() -> &'static Mutex<BTreeSet<usize>> {
+    static ALLOCATIONS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
+    ALLOCATIONS.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn classify_pointer(ptr: *const c_void) -> Option<cudaMemoryType> {
+    if ptr.is_null() {
+        return None;
+    }
+
+    let mut attributes = std::mem::MaybeUninit::<cudaPointerAttributes>::uninit();
+    let result = super::cudart_hijack::cudaPointerGetAttributes(attributes.as_mut_ptr(), ptr);
+    if result == cudaError_t::cudaSuccess {
+        Some(unsafe { attributes.assume_init() }.type_)
+    } else {
+        None
+    }
+}
+
+fn is_device_pointer(ptr: *const c_void) -> bool {
+    matches!(
+        classify_pointer(ptr),
+        Some(cudaMemoryType::cudaMemoryTypeDevice | cudaMemoryType::cudaMemoryTypeManaged)
+    )
+}
+
+fn resolve_memcpy_kind(
+    dst: *mut c_void,
+    src: *const c_void,
+    kind: cudaMemcpyKind,
+) -> cudaMemcpyKind {
+    if kind != cudaMemcpyKind::cudaMemcpyDefault {
+        return kind;
+    }
+
+    match (
+        is_device_pointer(dst as *const c_void),
+        is_device_pointer(src),
+    ) {
+        (true, true) => cudaMemcpyKind::cudaMemcpyDeviceToDevice,
+        (true, false) => cudaMemcpyKind::cudaMemcpyHostToDevice,
+        (false, true) => cudaMemcpyKind::cudaMemcpyDeviceToHost,
+        (false, false) => cudaMemcpyKind::cudaMemcpyHostToHost,
+    }
+}
+
+fn allocate_host(ptr_out: *mut *mut c_void, size: usize) -> cudaError_t {
+    if ptr_out.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    if size == 0 {
+        unsafe {
+            *ptr_out = std::ptr::null_mut();
+        }
+        return cudaError_t::cudaSuccess;
+    }
+
+    let ptr = unsafe { libc::malloc(size) };
+    if ptr.is_null() {
+        return cudaError_t::cudaErrorMemoryAllocation;
+    }
+
+    host_allocations().lock().unwrap().insert(ptr as usize);
+    unsafe {
+        *ptr_out = ptr;
+    }
+    cudaError_t::cudaSuccess
+}
 
 #[no_mangle]
 pub extern "C" fn cudaMemcpy(
@@ -12,10 +84,15 @@ pub extern "C" fn cudaMemcpy(
     kind: cudaMemcpyKind,
 ) -> cudaError_t {
     log::debug!(target: "cudaMemcpy", "kind = {kind:?}");
+    if count > 0 && (dst.is_null() || src.is_null()) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let kind = resolve_memcpy_kind(dst, src, kind);
     match kind {
         cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
             std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
-            return cudaError_t::cudaSuccess;
+            cudaError_t::cudaSuccess
         },
         cudaMemcpyKind::cudaMemcpyHostToDevice => {
             super::cudart_hijack::cudaMemcpyHtod(dst, src.cast(), count, kind)
@@ -26,7 +103,7 @@ pub extern "C" fn cudaMemcpy(
         cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
             super::cudart_hijack::cudaMemcpyDtod(dst, src, count, kind)
         }
-        cudaMemcpyKind::cudaMemcpyDefault => todo!("cudaMemcpyDefault is not supported yet"),
+        cudaMemcpyKind::cudaMemcpyDefault => unreachable!(),
     }
 }
 
@@ -39,11 +116,16 @@ pub extern "C" fn cudaMemcpyAsync(
     stream: cudaStream_t,
 ) -> cudaError_t {
     log::debug!(target: "cudaMemcpyAsync", "kind = {kind:?}");
+    if count > 0 && (dst.is_null() || src.is_null()) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let kind = resolve_memcpy_kind(dst, src, kind);
     match kind {
         cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
             super::cudart_hijack::cudaStreamSynchronize(stream);
             std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
-            return cudaError_t::cudaSuccess;
+            cudaError_t::cudaSuccess
         },
         cudaMemcpyKind::cudaMemcpyHostToDevice => {
             super::cudart_hijack::cudaMemcpyAsyncHtod(dst, src.cast(), count, kind, stream)
@@ -54,8 +136,49 @@ pub extern "C" fn cudaMemcpyAsync(
         cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
             super::cudart_hijack::cudaMemcpyAsyncDtod(dst, src, count, kind, stream)
         }
-        cudaMemcpyKind::cudaMemcpyDefault => todo!("cudaMemcpyDefault is not supported yet"),
+        cudaMemcpyKind::cudaMemcpyDefault => unreachable!(),
     }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpy2D(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(
+        target: "cudaMemcpy2D",
+        "width = {width}, height = {height}, kind = {kind:?}",
+    );
+
+    if height == 0 || width == 0 {
+        return cudaError_t::cudaSuccess;
+    }
+
+    if dst.is_null() || src.is_null() || width > dpitch || width > spitch {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    for row in 0..height {
+        let Some(dst_offset) = row.checked_mul(dpitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let Some(src_offset) = row.checked_mul(spitch) else {
+            return cudaError_t::cudaErrorInvalidValue;
+        };
+        let row_dst = unsafe { (dst as *mut u8).add(dst_offset).cast() };
+        let row_src = unsafe { (src as *const u8).add(src_offset).cast() };
+        let result = cudaMemcpy(row_dst, row_src, width, kind);
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    cudaError_t::cudaSuccess
 }
 
 fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
@@ -163,14 +286,50 @@ pub extern "C" fn cudaHostAlloc(
     flags: c_uint,
 ) -> cudaError_t {
     log::debug!(target: "cudaHostAlloc", "size = {size}, flags = {flags}");
-    assert_eq!(flags, cudaHostAllocDefault);
-    // TODO: handle pinned memory at server side in a better way
-    // FIXME: some GPU kernels might write to pinned memory directly; currently CUDA will report illegal memory access
-    let ptr = Box::into_raw(Box::<[u8]>::new_uninit_slice(size));
+    allocate_host(pHost, size)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMallocHost(ptr: *mut *mut c_void, size: usize) -> cudaError_t {
+    log::debug!(target: "cudaMallocHost", "size = {size}");
+    allocate_host(ptr, size)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaFreeHost(ptr: *mut c_void) -> cudaError_t {
+    log::debug!(target: "cudaFreeHost", "");
+    if ptr.is_null() {
+        return cudaError_t::cudaSuccess;
+    }
+
+    if !host_allocations().lock().unwrap().remove(&(ptr as usize)) {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
     unsafe {
-        *pHost = ptr as _;
+        libc::free(ptr);
     }
     cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaHostRegister(ptr: *mut c_void, size: usize, flags: c_uint) -> cudaError_t {
+    log::debug!(target: "cudaHostRegister", "size = {size}, flags = {flags}");
+    if ptr.is_null() {
+        cudaError_t::cudaErrorInvalidValue
+    } else {
+        cudaError_t::cudaSuccess
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t {
+    log::debug!(target: "cudaHostUnregister", "");
+    if ptr.is_null() {
+        cudaError_t::cudaErrorInvalidValue
+    } else {
+        cudaError_t::cudaSuccess
+    }
 }
 
 #[no_mangle]

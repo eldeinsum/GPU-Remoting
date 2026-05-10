@@ -45,8 +45,22 @@ fn cudaPeekAtLastError() -> cudaError_t;
 #[cuda_hook(proc_id = 178, async_api = false)]
 fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900100)]
+fn cudaStreamCreate(pStream: *mut cudaStream_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900101, async_api = false)]
+fn cudaStreamDestroy(stream: cudaStream_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 265)]
 fn cudaMalloc(devPtr: *mut *mut c_void, size: usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900102)]
+fn cudaMallocPitch(
+    devPtr: *mut *mut c_void,
+    pitch: *mut usize,
+    width: usize,
+    height: usize,
+) -> cudaError_t;
 
 #[cuda_custom_hook] // calls one of the following internal APIs
 fn cudaMemcpy(
@@ -132,6 +146,17 @@ fn cudaMemcpyAsyncDtod(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // calls cudaMemcpy row by row
+fn cudaMemcpy2D(
+    dst: *mut c_void,
+    dpitch: usize,
+    src: *const c_void,
+    spitch: usize,
+    width: usize,
+    height: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 253, async_api)]
 fn cudaFree(#[device] devPtr: *mut c_void) -> cudaError_t;
 
@@ -152,6 +177,18 @@ fn cudaPointerGetAttributes(
 
 #[cuda_custom_hook] // local
 fn cudaHostAlloc(pHost: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaMallocHost(ptr: *mut *mut c_void, size: usize) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaFreeHost(ptr: *mut c_void) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaHostRegister(ptr: *mut c_void, size: usize, flags: c_uint) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t;
 
 #[cuda_custom_hook] // calls the internal API below
 fn cudaFuncGetAttributes(attr: *mut cudaFuncAttributes, func: *const c_void) -> cudaError_t;
@@ -255,8 +292,14 @@ fn cudaStreamCreateWithPriority(
 #[cuda_hook(proc_id = 201)]
 fn cudaEventCreateWithFlags(event: *mut cudaEvent_t, flags: c_uint) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900103)]
+fn cudaEventCreate(event: *mut cudaEvent_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 205)]
 fn cudaEventRecord(event: cudaEvent_t, stream: cudaStream_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900104, async_api = false)]
+fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 180, async_api = false)]
 fn cudaStreamWaitEvent(stream: cudaStream_t, event: cudaEvent_t, flags: c_uint) -> cudaError_t;
