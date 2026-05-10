@@ -1,5 +1,5 @@
 use crate::types::cublasLt::*;
-use codegen::cuda_hook;
+use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
 
 #[cuda_hook(proc_id = 1500)]
@@ -7,6 +7,18 @@ fn cublasLtCreate(lightHandle: *mut cublasLtHandle_t) -> cublasStatus_t;
 
 #[cuda_hook(proc_id = 1501)]
 fn cublasLtDestroy(lightHandle: cublasLtHandle_t) -> cublasStatus_t;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn cublasLtGetStatusName(status: cublasStatus_t) -> *const c_char;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn cublasLtGetStatusString(status: cublasStatus_t) -> *const c_char;
+
+#[cuda_custom_hook] // local: derived from remoted property queries
+fn cublasLtGetVersion() -> usize;
+
+#[cuda_custom_hook] // local: derived from remoted runtime version query
+fn cublasLtGetCudartVersion() -> usize;
 
 #[cuda_hook(proc_id = 1502)]
 fn cublasLtGetProperty(type_: libraryPropertyType, value: *mut c_int) -> cublasStatus_t;

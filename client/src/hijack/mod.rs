@@ -1,6 +1,7 @@
 #![expect(non_snake_case)]
 
 mod cublasLt_hijack;
+mod cublasLt_hijack_custom;
 mod cublasLt_unimplement;
 mod cublas_hijack;
 mod cublas_unimplement;

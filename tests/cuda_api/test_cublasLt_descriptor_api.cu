@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void check_cublas(cublasStatus_t status, const char *expr, const char *file, int line) {
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -37,6 +38,20 @@ static void test_property_queries() {
     CHECK_TRUE(patch >= 0);
 
     printf("cuBLASLt version property: %d.%d.%d\n", major, minor, patch);
+}
+
+static void test_version_and_status_helpers() {
+    size_t version = cublasLtGetVersion();
+    size_t cudart_version = cublasLtGetCudartVersion();
+    CHECK_TRUE(version > 0);
+    CHECK_TRUE(cudart_version > 0);
+
+    const char *success_name = cublasLtGetStatusName(CUBLAS_STATUS_SUCCESS);
+    const char *invalid_value_text = cublasLtGetStatusString(CUBLAS_STATUS_INVALID_VALUE);
+    CHECK_TRUE(success_name != NULL);
+    CHECK_TRUE(invalid_value_text != NULL);
+    CHECK_TRUE(strstr(success_name, "SUCCESS") != NULL);
+    CHECK_TRUE(strlen(invalid_value_text) > 0);
 }
 
 static void test_heuristics_cache_capacity() {
@@ -185,6 +200,7 @@ static void test_matrix_layout_attributes() {
 
 int main() {
     test_property_queries();
+    test_version_and_status_helpers();
     test_heuristics_cache_capacity();
     test_matmul_desc_attributes();
     test_matmul_preference_attributes();
