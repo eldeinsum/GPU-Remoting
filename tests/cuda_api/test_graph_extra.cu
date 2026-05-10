@@ -110,6 +110,72 @@ int main()
     CHECK_CUDA(cudaStreamDestroy(stream));
     CHECK_CUDA(cudaFree(device));
 
+    CHECK_CUDA(cudaStreamCreate(&stream));
+    cudaGraph_t manual_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&manual_graph, 0));
+    if (manual_graph == nullptr) {
+        std::fprintf(stderr, "cudaGraphCreate returned a null graph\n");
+        return 1;
+    }
+
+    cudaGraphNode_t node_a = nullptr;
+    cudaGraphNode_t node_b = nullptr;
+    CHECK_CUDA(cudaGraphAddEmptyNode(&node_a, manual_graph, nullptr, 0));
+    CHECK_CUDA(cudaGraphAddEmptyNode(&node_b, manual_graph, nullptr, 0));
+
+    cudaGraphNode_t from[] = {node_a};
+    cudaGraphNode_t to[] = {node_b};
+    CHECK_CUDA(cudaGraphAddDependencies(manual_graph, from, to, nullptr, 1));
+
+    size_t root_nodes = 0;
+    CHECK_CUDA(cudaGraphGetRootNodes(manual_graph, nullptr, &root_nodes));
+    if (root_nodes != 1) {
+        std::fprintf(stderr, "unexpected root node count: %zu\n", root_nodes);
+        return 1;
+    }
+
+    size_t edges = 0;
+    CHECK_CUDA(cudaGraphGetEdges(manual_graph, nullptr, nullptr, nullptr, &edges));
+    if (edges != 1) {
+        std::fprintf(stderr, "unexpected edge count: %zu\n", edges);
+        return 1;
+    }
+
+    unsigned int graph_id = 0;
+    CHECK_CUDA(cudaGraphGetId(manual_graph, &graph_id));
+
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, manual_graph, 0));
+    unsigned long long exec_flags = 1;
+    CHECK_CUDA(cudaGraphExecGetFlags(exec, &exec_flags));
+    if (exec_flags != 0) {
+        std::fprintf(stderr, "unexpected graph exec flags: %llu\n", exec_flags);
+        return 1;
+    }
+    unsigned int exec_id = 0;
+    CHECK_CUDA(cudaGraphExecGetId(exec, &exec_id));
+    CHECK_CUDA(cudaGraphUpload(exec, stream));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+
+    CHECK_CUDA(cudaGraphRemoveDependencies(manual_graph, from, to, nullptr, 1));
+    edges = 1;
+    CHECK_CUDA(cudaGraphGetEdges(manual_graph, nullptr, nullptr, nullptr, &edges));
+    if (edges != 0) {
+        std::fprintf(stderr, "dependency removal left %zu edges\n", edges);
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroyNode(node_b));
+    nodes = 0;
+    CHECK_CUDA(cudaGraphGetNodes(manual_graph, nullptr, &nodes));
+    if (nodes != 1) {
+        std::fprintf(stderr, "unexpected node count after destroy: %zu\n", nodes);
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroy(manual_graph));
+    CHECK_CUDA(cudaStreamDestroy(stream));
+
     std::puts("graph API test passed");
     return 0;
 }
