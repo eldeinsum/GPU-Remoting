@@ -459,11 +459,29 @@ int main()
         std::fprintf(stderr, "unexpected root node count: %zu\n", root_nodes);
         return 1;
     }
+    cudaGraphNode_t root_node_list[1] = {};
+    size_t root_node_capacity = 1;
+    CHECK_CUDA(cudaGraphGetRootNodes(manual_graph, root_node_list,
+                                     &root_node_capacity));
+    if (root_node_capacity != 1 || root_node_list[0] != node_a) {
+        std::fprintf(stderr, "unexpected root node query result\n");
+        return 1;
+    }
 
     size_t edges = 0;
     CHECK_CUDA(cudaGraphGetEdges(manual_graph, nullptr, nullptr, nullptr, &edges));
     if (edges != 1) {
         std::fprintf(stderr, "unexpected edge count: %zu\n", edges);
+        return 1;
+    }
+    cudaGraphNode_t edge_from[1] = {};
+    cudaGraphNode_t edge_to[1] = {};
+    cudaGraphEdgeData edge_data[1] = {};
+    size_t edge_capacity = 1;
+    CHECK_CUDA(cudaGraphGetEdges(manual_graph, edge_from, edge_to, edge_data,
+                                 &edge_capacity));
+    if (edge_capacity != 1 || edge_from[0] != node_a || edge_to[0] != node_b) {
+        std::fprintf(stderr, "unexpected edge query result\n");
         return 1;
     }
 
@@ -494,11 +512,31 @@ int main()
         std::fprintf(stderr, "unexpected dependency count: %zu\n", dependency_count);
         return 1;
     }
+    cudaGraphNode_t dependencies[1] = {};
+    cudaGraphEdgeData dependency_edge_data[1] = {};
+    size_t dependency_capacity = 1;
+    CHECK_CUDA(cudaGraphNodeGetDependencies(node_b, dependencies,
+                                            dependency_edge_data,
+                                            &dependency_capacity));
+    if (dependency_capacity != 1 || dependencies[0] != node_a) {
+        std::fprintf(stderr, "unexpected dependency query result\n");
+        return 1;
+    }
 
     size_t dependent_count = 0;
     CHECK_CUDA(cudaGraphNodeGetDependentNodes(node_a, nullptr, nullptr, &dependent_count));
     if (dependent_count != 1) {
         std::fprintf(stderr, "unexpected dependent count: %zu\n", dependent_count);
+        return 1;
+    }
+    cudaGraphNode_t dependents[1] = {};
+    cudaGraphEdgeData dependent_edge_data[1] = {};
+    size_t dependent_capacity = 1;
+    CHECK_CUDA(cudaGraphNodeGetDependentNodes(node_a, dependents,
+                                              dependent_edge_data,
+                                              &dependent_capacity));
+    if (dependent_capacity != 1 || dependents[0] != node_b) {
+        std::fprintf(stderr, "unexpected dependent query result\n");
         return 1;
     }
 
@@ -524,6 +562,14 @@ int main()
     CHECK_CUDA(cudaGraphGetNodes(containing_graph, nullptr, &child_nodes));
     if (child_nodes != 1) {
         std::fprintf(stderr, "unexpected child graph node count: %zu\n", child_nodes);
+        return 1;
+    }
+    cudaGraphNode_t child_node_list[1] = {};
+    size_t child_node_capacity = 1;
+    CHECK_CUDA(cudaGraphGetNodes(containing_graph, child_node_list,
+                                 &child_node_capacity));
+    if (child_node_capacity != 1 || child_node_list[0] == nullptr) {
+        std::fprintf(stderr, "unexpected child graph node query result\n");
         return 1;
     }
     CHECK_CUDA(cudaGraphDestroy(child_graph));
@@ -624,6 +670,14 @@ int main()
     CHECK_CUDA(cudaGraphGetNodes(manual_graph, nullptr, &nodes));
     if (nodes != 1) {
         std::fprintf(stderr, "unexpected node count after destroy: %zu\n", nodes);
+        return 1;
+    }
+    cudaGraphNode_t remaining_nodes[1] = {};
+    size_t remaining_node_capacity = 1;
+    CHECK_CUDA(cudaGraphGetNodes(manual_graph, remaining_nodes,
+                                 &remaining_node_capacity));
+    if (remaining_node_capacity != 1 || remaining_nodes[0] != node_a) {
+        std::fprintf(stderr, "unexpected remaining node query result\n");
         return 1;
     }
     char dot_path[128] = {};

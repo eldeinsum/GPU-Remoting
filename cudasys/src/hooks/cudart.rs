@@ -1410,42 +1410,28 @@ fn cudaGraphMemcpyNodeSetParams1D(
 #[cuda_hook(proc_id = 545, async_api = false)]
 fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
 
-#[cuda_hook(proc_id = 563)]
+#[cuda_custom_hook(proc_id = 563)]
 fn cudaGraphGetNodes(
     graph: cudaGraph_t,
-    #[device] nodes: *mut cudaGraphNode_t, // null
+    nodes: *mut cudaGraphNode_t,
     numNodes: *mut usize,
-) -> cudaError_t {
-    'client_before_send: {
-        assert!(nodes.is_null());
-    }
-}
+) -> cudaError_t;
 
-#[cuda_hook(proc_id = 900509)]
+#[cuda_custom_hook(proc_id = 900509)]
 fn cudaGraphGetRootNodes(
     graph: cudaGraph_t,
-    #[device] pRootNodes: *mut cudaGraphNode_t, // null
+    pRootNodes: *mut cudaGraphNode_t,
     pNumRootNodes: *mut usize,
-) -> cudaError_t {
-    'client_before_send: {
-        assert!(pRootNodes.is_null());
-    }
-}
+) -> cudaError_t;
 
-#[cuda_hook(proc_id = 900510)]
+#[cuda_custom_hook(proc_id = 900510)]
 fn cudaGraphGetEdges(
     graph: cudaGraph_t,
-    #[device] from: *mut cudaGraphNode_t,       // null
-    #[device] to: *mut cudaGraphNode_t,         // null
-    #[device] edgeData: *mut cudaGraphEdgeData, // null
+    from: *mut cudaGraphNode_t,
+    to: *mut cudaGraphNode_t,
+    edgeData: *mut cudaGraphEdgeData,
     numEdges: *mut usize,
-) -> cudaError_t {
-    'client_before_send: {
-        assert!(from.is_null());
-        assert!(to.is_null());
-        assert!(edgeData.is_null());
-    }
-}
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900511)]
 fn cudaGraphGetId(hGraph: cudaGraph_t, graphID: *mut c_uint) -> cudaError_t;
@@ -1475,31 +1461,21 @@ fn cudaGraphNodeGetLocalId(hNode: cudaGraphNode_t, nodeId: *mut c_uint) -> cudaE
 #[cuda_hook(proc_id = 900522)]
 fn cudaGraphNodeGetToolsId(hNode: cudaGraphNode_t, toolsNodeId: *mut c_ulonglong) -> cudaError_t;
 
-#[cuda_hook(proc_id = 900523)]
+#[cuda_custom_hook(proc_id = 900523)]
 fn cudaGraphNodeGetDependencies(
     node: cudaGraphNode_t,
-    #[device] pDependencies: *mut cudaGraphNode_t, // null
-    #[device] edgeData: *mut cudaGraphEdgeData,    // null
+    pDependencies: *mut cudaGraphNode_t,
+    edgeData: *mut cudaGraphEdgeData,
     pNumDependencies: *mut usize,
-) -> cudaError_t {
-    'client_before_send: {
-        assert!(pDependencies.is_null());
-        assert!(edgeData.is_null());
-    }
-}
+) -> cudaError_t;
 
-#[cuda_hook(proc_id = 900524)]
+#[cuda_custom_hook(proc_id = 900524)]
 fn cudaGraphNodeGetDependentNodes(
     node: cudaGraphNode_t,
-    #[device] pDependentNodes: *mut cudaGraphNode_t, // null
-    #[device] edgeData: *mut cudaGraphEdgeData,      // null
+    pDependentNodes: *mut cudaGraphNode_t,
+    edgeData: *mut cudaGraphEdgeData,
     pNumDependentNodes: *mut usize,
-) -> cudaError_t {
-    'client_before_send: {
-        assert!(pDependentNodes.is_null());
-        assert!(edgeData.is_null());
-    }
-}
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 567, min_cuda_version = 12)]
 fn cudaGraphInstantiate(
