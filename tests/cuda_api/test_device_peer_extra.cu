@@ -63,6 +63,75 @@ int main()
         CHECK_CUDA(cudaDeviceGetP2PAtomicCapabilities(
             runtime_caps, runtime_ops, 2, 0, 1));
 
+        if (runtime_peer_attr) {
+            constexpr int kCount = 8;
+            constexpr size_t kBytes = kCount * sizeof(int);
+            int input[kCount] = {0, 1, 2, 3, 4, 5, 6, 7};
+            int output[kCount] = {};
+
+            int *device0_data = nullptr;
+            int *device1_data = nullptr;
+
+            CHECK_CUDA(cudaSetDevice(0));
+            cudaError_t enable_01 = cudaDeviceEnablePeerAccess(1, 0);
+            if (enable_01 != cudaSuccess &&
+                enable_01 != cudaErrorPeerAccessAlreadyEnabled) {
+                std::fprintf(stderr, "cudaDeviceEnablePeerAccess(1) failed: %s (%d)\n",
+                             cudaGetErrorString(enable_01),
+                             static_cast<int>(enable_01));
+                return 1;
+            }
+            CHECK_CUDA(cudaMalloc(&device0_data, kBytes));
+            CHECK_CUDA(cudaMemcpy(device0_data, input, kBytes,
+                                  cudaMemcpyHostToDevice));
+
+            CHECK_CUDA(cudaSetDevice(1));
+            int current_device = -1;
+            CHECK_CUDA(cudaGetDevice(&current_device));
+            if (current_device != 1) {
+                std::fprintf(stderr, "cudaSetDevice(1) left current device %d\n",
+                             current_device);
+                return 1;
+            }
+            cudaError_t enable_10 = cudaDeviceEnablePeerAccess(0, 0);
+            if (enable_10 != cudaSuccess &&
+                enable_10 != cudaErrorPeerAccessAlreadyEnabled) {
+                std::fprintf(stderr, "cudaDeviceEnablePeerAccess(0) failed: %s (%d)\n",
+                             cudaGetErrorString(enable_10),
+                             static_cast<int>(enable_10));
+                return 1;
+            }
+            CHECK_CUDA(cudaMalloc(&device1_data, kBytes));
+            CHECK_CUDA(cudaMemcpyPeer(device1_data, 1, device0_data, 0,
+                                      kBytes));
+            CHECK_CUDA(cudaMemcpy(output, device1_data, kBytes,
+                                  cudaMemcpyDeviceToHost));
+            if (std::memcmp(input, output, kBytes) != 0) {
+                std::fprintf(stderr, "cudaMemcpyPeer copied unexpected data\n");
+                return 1;
+            }
+
+            CHECK_CUDA(cudaMemset(device1_data, 0, kBytes));
+            cudaStream_t peer_stream = nullptr;
+            CHECK_CUDA(cudaStreamCreate(&peer_stream));
+            CHECK_CUDA(cudaMemcpyPeerAsync(device1_data, 1, device0_data, 0,
+                                           kBytes, peer_stream));
+            CHECK_CUDA(cudaStreamSynchronize(peer_stream));
+            CHECK_CUDA(cudaStreamDestroy(peer_stream));
+            std::memset(output, 0, kBytes);
+            CHECK_CUDA(cudaMemcpy(output, device1_data, kBytes,
+                                  cudaMemcpyDeviceToHost));
+            if (std::memcmp(input, output, kBytes) != 0) {
+                std::fprintf(stderr,
+                             "cudaMemcpyPeerAsync copied unexpected data\n");
+                return 1;
+            }
+
+            CHECK_CUDA(cudaFree(device1_data));
+            CHECK_CUDA(cudaSetDevice(0));
+            CHECK_CUDA(cudaFree(device0_data));
+        }
+
         CUdevice peer = 0;
         CHECK_DRV(cuDeviceGet(&peer, 1));
         int driver_peer_attr = 0;

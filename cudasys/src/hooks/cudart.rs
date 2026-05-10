@@ -539,6 +539,60 @@ fn cudaMemcpy2DArrayToArray(
     kind: cudaMemcpyKind,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900530)]
+fn cudaMemcpyPeer(
+    #[device] dst: *mut c_void,
+    dstDevice: c_int,
+    #[device] src: *const c_void,
+    srcDevice: c_int,
+    count: usize,
+) -> cudaError_t {
+    'server_execution: {
+        let _ = dstDevice;
+        let set_result = unsafe { cudasys::cudart::cudaSetDevice(srcDevice) };
+        let result = if set_result == cudaError_t::cudaSuccess {
+            unsafe {
+                cudasys::cudart::cudaMemcpy(
+                    dst,
+                    src,
+                    count,
+                    cudaMemcpyKind::cudaMemcpyDeviceToDevice,
+                )
+            }
+        } else {
+            set_result
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900531, async_api)]
+fn cudaMemcpyPeerAsync(
+    #[device] dst: *mut c_void,
+    dstDevice: c_int,
+    #[device] src: *const c_void,
+    srcDevice: c_int,
+    count: usize,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'server_execution: {
+        let _ = dstDevice;
+        let set_result = unsafe { cudasys::cudart::cudaSetDevice(srcDevice) };
+        let result = if set_result == cudaError_t::cudaSuccess {
+            unsafe {
+                cudasys::cudart::cudaMemcpyAsync(
+                    dst,
+                    src,
+                    count,
+                    cudaMemcpyKind::cudaMemcpyDeviceToDevice,
+                    stream,
+                )
+            }
+        } else {
+            set_result
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 253, async_api)]
 fn cudaFree(#[device] devPtr: *mut c_void) -> cudaError_t;
 
