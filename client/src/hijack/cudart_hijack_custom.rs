@@ -582,6 +582,10 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
             super::cudart_hijack::cudaGetDevice(&mut device),
             Default::default()
         );
+        assert_eq!(
+            super::cudart_hijack::cudaSetDevice(device),
+            Default::default()
+        );
         runtime.cuda_device = Some(device);
     }
 
@@ -805,6 +809,40 @@ extern "C" fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
 }
 
 #[no_mangle]
+extern "C" fn cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+    numBlocks: *mut c_int,
+    func: *const c_void,
+    blockSize: c_int,
+    dynamicSMemSize: usize,
+) -> cudaError_t {
+    log::debug!(target: "cudaOccupancyMaxActiveBlocksPerMultiprocessor", "");
+    let result = super::cuda_hijack::cuOccupancyMaxActiveBlocksPerMultiprocessor(
+        numBlocks,
+        get_cufunction(func as HostPtr),
+        blockSize,
+        dynamicSMemSize,
+    );
+    unsafe { std::mem::transmute(result) }
+}
+
+#[no_mangle]
+extern "C" fn cudaOccupancyAvailableDynamicSMemPerBlock(
+    dynamicSmemSize: *mut usize,
+    func: *const c_void,
+    numBlocks: c_int,
+    blockSize: c_int,
+) -> cudaError_t {
+    log::debug!(target: "cudaOccupancyAvailableDynamicSMemPerBlock", "");
+    let result = super::cuda_hijack::cuOccupancyAvailableDynamicSMemPerBlock(
+        dynamicSmemSize,
+        get_cufunction(func as HostPtr),
+        numBlocks,
+        blockSize,
+    );
+    unsafe { std::mem::transmute(result) }
+}
+
+#[no_mangle]
 extern "C" fn cudaFuncSetAttribute(
     func: *const c_void,
     attr: cudaFuncAttribute,
@@ -817,6 +855,36 @@ extern "C" fn cudaFuncSetAttribute(
             get_cufunction(func as _),
             std::mem::transmute(attr),
             value,
+        ))
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudaFuncSetCacheConfig(
+    func: *const c_void,
+    cacheConfig: cudaFuncCache,
+) -> cudaError_t {
+    log::debug!(target: "cudaFuncSetCacheConfig", "");
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuFuncSetCacheConfig(
+            get_cufunction(func as _),
+            std::mem::transmute(cacheConfig),
+        ))
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudaFuncSetSharedMemConfig(
+    func: *const c_void,
+    config: cudaSharedMemConfig,
+) -> cudaError_t {
+    log::debug!(target: "cudaFuncSetSharedMemConfig", "");
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuFuncSetSharedMemConfig(
+            get_cufunction(func as _),
+            std::mem::transmute(config),
         ))
     }
 }

@@ -775,6 +775,22 @@ fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     flags: c_uint,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // calls driver API
+fn cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+    numBlocks: *mut c_int,
+    func: *const c_void,
+    blockSize: c_int,
+    dynamicSMemSize: usize,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaOccupancyAvailableDynamicSMemPerBlock(
+    dynamicSmemSize: *mut usize,
+    func: *const c_void,
+    numBlocks: c_int,
+    blockSize: c_int,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 126)]
 fn cudaIpcGetMemHandle(
     handle: *mut cudaIpcMemHandle_t,
@@ -796,6 +812,12 @@ fn cudaDeviceSynchronize() -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
 fn cudaFuncSetAttribute(func: *const c_void, attr: cudaFuncAttribute, value: c_int) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncSetCacheConfig(func: *const c_void, cacheConfig: cudaFuncCache) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncSetSharedMemConfig(func: *const c_void, config: cudaSharedMemConfig) -> cudaError_t;
 
 #[cuda_hook(proc_id = 203)]
 fn cudaEventElapsedTime(ms: *mut f32, start: cudaEvent_t, end: cudaEvent_t) -> cudaError_t;

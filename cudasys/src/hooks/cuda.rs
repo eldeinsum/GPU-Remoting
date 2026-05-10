@@ -622,6 +622,28 @@ fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
 #[cuda_hook(proc_id = 912, async_api = false)]
 fn cuFuncSetAttribute(hfunc: CUfunction, attrib: CUfunction_attribute, value: c_int) -> CUresult;
 
+#[cuda_hook(proc_id = 900526, async_api = false)]
+fn cuFuncSetCacheConfig(hfunc: CUfunction, config: CUfunc_cache) -> CUresult;
+
+#[cuda_hook(proc_id = 900527, async_api = false)]
+fn cuFuncSetSharedMemConfig(hfunc: CUfunction, config: CUsharedconfig) -> CUresult;
+
+#[cuda_hook(proc_id = 900528)]
+fn cuOccupancyMaxActiveBlocksPerMultiprocessor(
+    numBlocks: *mut c_int,
+    func: CUfunction,
+    blockSize: c_int,
+    dynamicSMemSize: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900529)]
+fn cuOccupancyAvailableDynamicSMemPerBlock(
+    dynamicSmemSize: *mut usize,
+    func: CUfunction,
+    numBlocks: c_int,
+    blockSize: c_int,
+) -> CUresult;
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

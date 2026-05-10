@@ -3,6 +3,16 @@
 #include <chrono>
 #include <iostream>
 
+#define CHECK_CUDA(expr)                                                                                               \
+    do {                                                                                                               \
+        cudaError_t result = (expr);                                                                                   \
+        if (result != cudaSuccess) {                                                                                   \
+            std::cerr << #expr << " failed: " << cudaGetErrorString(result) << " (" << static_cast<int>(result)        \
+                      << ")" << std::endl;                                                                            \
+            return 1;                                                                                                  \
+        }                                                                                                              \
+    } while (0)
+
 __global__ void addKernel(int *c, const int *a, const int *b, int size)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -26,11 +36,31 @@ int main(int argc, char **argv)
     }
     std::cout << std::endl;
 
+    CHECK_CUDA(cudaFuncSetCacheConfig(addKernel, cudaFuncCachePreferNone));
+    CHECK_CUDA(cudaFuncSetSharedMemConfig(addKernel, cudaSharedMemBankSizeDefault));
+
+    int active_blocks = 0;
+    CHECK_CUDA(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, addKernel, 128, 0));
+    if (active_blocks <= 0) {
+        std::cerr << "invalid occupancy block count: " << active_blocks << std::endl;
+        return 1;
+    }
+
+    int active_blocks_with_flags = 0;
+    CHECK_CUDA(cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(&active_blocks_with_flags, addKernel, 128, 0, 0));
+    if (active_blocks_with_flags <= 0) {
+        std::cerr << "invalid occupancy block count with flags: " << active_blocks_with_flags << std::endl;
+        return 1;
+    }
+
+    size_t dynamic_smem = 0;
+    CHECK_CUDA(cudaOccupancyAvailableDynamicSMemPerBlock(&dynamic_smem, addKernel, active_blocks, 128));
+
     // Allocate GPU buffers for three vectors (two input, one output)
-    cudaMalloc((void **)&dev_a, size * sizeof(int));
+    CHECK_CUDA(cudaMalloc((void **)&dev_a, size * sizeof(int)));
 
     // Copy input vectors from host memory to GPU buffers.
-    cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
+    CHECK_CUDA(cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice));
 
     // remove initial overhead
     for (int i = 0; i < 10; i++) {
@@ -49,6 +79,7 @@ int main(int argc, char **argv)
     }
     // cudaDeviceSynchronize();
     auto end = std::chrono::high_resolution_clock::now();
+    CHECK_CUDA(cudaGetLastError());
     // Calculate the elapsed time in milliseconds
     std::chrono::duration<double, std::milli> elapsed = end - start;
 
@@ -61,8 +92,8 @@ int main(int argc, char **argv)
     std::cout << "Average elapsed time: " << averageElapsedTime << " ms" << std::endl;
 
     // Copy output vector from GPU buffer to host memory.
-    cudaMemcpy(a, dev_a, size * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaFree(dev_a);
+    CHECK_CUDA(cudaMemcpy(a, dev_a, size * sizeof(int), cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaFree(dev_a));
 
     for (int i = 0; i < 10; i++) {
         std::cout << a[i] << " ";
