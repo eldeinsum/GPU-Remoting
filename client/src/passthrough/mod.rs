@@ -11,7 +11,10 @@ struct State {
 }
 
 #[thread_local]
-static mut __STATE: State = State { depth: 0, functions: BTreeSet::new() };
+static mut __STATE: State = State {
+    depth: 0,
+    functions: BTreeSet::new(),
+};
 
 fn begin(name: &'static str) {
     unsafe {

@@ -13,9 +13,11 @@ impl NsTimestamp {
     }
     pub fn now() -> NsTimestamp {
         let now_time = std::time::SystemTime::now();
-        let duration_since_epoch = now_time.duration_since(UNIX_EPOCH).expect("Time went backwards");
+        let duration_since_epoch = now_time
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
         let sec = duration_since_epoch.as_secs() as i64;
-        let ns = duration_since_epoch.subsec_nanos(); 
+        let ns = duration_since_epoch.subsec_nanos();
         NsTimestamp {
             sec_timestamp: sec,
             ns_timestamp: ns,

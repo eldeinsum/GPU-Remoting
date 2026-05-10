@@ -54,7 +54,10 @@ pub extern "C" fn __cudaRegisterFunction(
     // Some kernels are registered multiple times from different fatbins
     // e.g. "void cub::EmptyKernel<void>()"
     let mut runtime = RUNTIME_CACHE.write().unwrap();
-    runtime.lazy_functions.entry(hostFun).or_insert((fatCubinHandle, deviceName));
+    runtime
+        .lazy_functions
+        .entry(hostFun)
+        .or_insert((fatCubinHandle, deviceName));
 }
 
 #[no_mangle]
@@ -77,5 +80,8 @@ pub extern "C" fn __cudaRegisterVar(
     }
 
     let mut runtime = RUNTIME_CACHE.write().unwrap();
-    runtime.lazy_variables.entry(hostVar).or_insert((fatCubinHandle, deviceName));
+    runtime
+        .lazy_variables
+        .entry(hostVar)
+        .or_insert((fatCubinHandle, deviceName));
 }

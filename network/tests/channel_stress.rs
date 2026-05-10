@@ -43,8 +43,8 @@ fn test_ring_buffer_producer_consumer() {
             let mut recv_memory = RawMemoryMut::new(&mut buffer, len);
             match consumer_channel.get_bytes(&mut recv_memory) {
                 Ok(size) => {
-                    for i in 0..size {
-                        assert_eq!(buffer[i], (received % 256) as u8);
+                    for byte in buffer.iter().take(size) {
+                        assert_eq!(*byte, (received % 256) as u8);
                     }
 
                     received += 1;

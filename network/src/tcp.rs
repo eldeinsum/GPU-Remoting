@@ -8,7 +8,11 @@ use crate::{
     CommChannel, CommChannelError, CommChannelInnerIO, NetworkConfig, RawMemory, RawMemoryMut,
 };
 
-pub fn new_server(config: &NetworkConfig, id: i32, barrier: &Barrier) -> Result<(TcpReceiver, TcpSender), Error> {
+pub fn new_server(
+    config: &NetworkConfig,
+    id: i32,
+    barrier: &Barrier,
+) -> Result<(TcpReceiver, TcpSender), Error> {
     let mut addr: SocketAddr = config.receiver_socket.parse().unwrap();
     addr.set_port(addr.port() + id as u16);
     let listener = TcpListener::bind(addr)?;

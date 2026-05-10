@@ -33,7 +33,8 @@ impl HookAttrs {
     pub fn from_attr(attr: &Attribute) -> Result<Self> {
         let mut raw = RawAttrs::default();
         attr.parse_nested_meta(|meta| raw.parse(meta))?;
-        raw.validate().ok_or_else(|| Error::new_spanned(attr, Self::ERROR))
+        raw.validate()
+            .ok_or_else(|| Error::new_spanned(attr, Self::ERROR))
     }
 }
 
@@ -164,7 +165,14 @@ impl Parse for HookFnItem {
             return Err(Error::new_spanned(block, "replace empty block with `;`"));
         }
         for stmt in block.stmts {
-            let Stmt::Expr(Expr::Block(ExprBlock { attrs, label: Some(label), block }), _) = stmt
+            let Stmt::Expr(
+                Expr::Block(ExprBlock {
+                    attrs,
+                    label: Some(label),
+                    block,
+                }),
+                _,
+            ) = stmt
             else {
                 return Err(Error::new_spanned(stmt, "expected 'section: { ... }"));
             };
@@ -241,7 +249,10 @@ pub fn check_max_attributes(attrs: &[Attribute], max: usize) -> Result<()> {
     } else {
         let mut tokens = TokenStream::new();
         tokens.append_all(&attrs[max..]);
-        Err(Error::new_spanned(tokens, format!("too many attributes, expected {max}")))
+        Err(Error::new_spanned(
+            tokens,
+            format!("too many attributes, expected {max}"),
+        ))
     }
 }
 

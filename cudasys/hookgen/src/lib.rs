@@ -55,7 +55,12 @@ pub fn generate_impls(
             println!("cargo:warning=`mod {output_mod};` is missing from `mod.rs`");
         }
         if unimplement_suffix.is_none() {
-            for Hook { proc_id, name, is_custom } in hooks {
+            for Hook {
+                proc_id,
+                name,
+                is_custom,
+            } in hooks
+            {
                 if is_custom {
                     all_hooks.push((proc_id, format!("{output_mod}_custom::{name}Exe")));
                 } else {
@@ -137,8 +142,13 @@ fn parse_bindings_dir(bindings_dir: &str) -> Vec<(String, BTreeMap<String, Signa
         .expect("failed to read bindings directory")
         .map(|entry| {
             let path = entry.unwrap().path();
-            let (module, extension) =
-                path.file_name().unwrap().to_str().unwrap().split_once('.').unwrap();
+            let (module, extension) = path
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split_once('.')
+                .unwrap();
             assert_eq!(extension, "rs");
             (module.to_string(), parse_bindings(&path))
         })
@@ -151,9 +161,13 @@ fn parse_bindings(path: &Path) -> BTreeMap<String, Signature> {
     let file = syn::parse_file(&bindings).unwrap();
     let mut result = BTreeMap::new();
     for item in file.items {
-        let Item::ForeignMod(foreign) = item else { panic!() };
+        let Item::ForeignMod(foreign) = item else {
+            panic!()
+        };
         for item in foreign.items {
-            let ForeignItem::Fn(func) = item else { panic!() };
+            let ForeignItem::Fn(func) = item else {
+                panic!()
+            };
             let name = func.sig.ident.to_string();
             result.insert(name, func.sig);
         }
@@ -278,7 +292,15 @@ fn check_sig_replace_attr(
     }
 
     let attr = &mut attrs[0];
-    match attr.path().segments.last().unwrap().ident.to_string().as_str() {
+    match attr
+        .path()
+        .segments
+        .last()
+        .unwrap()
+        .ident
+        .to_string()
+        .as_str()
+    {
         "cuda_hook" => {}
         "cuda_custom_hook" => {
             bindings.remove(&sig.ident.to_string());

@@ -33,7 +33,11 @@ extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void {
         return DLOPEN_ORIG(filename, flags);
     }
     log::debug!(target: "dlopen", "{name} (flags: {flags:#x})");
-    if name.contains("libcuda") || name.contains("libnvrtc.so") || name.contains("libnvidia-ml") || name.contains("libnccl.so") {
+    if name.contains("libcuda")
+        || name.contains("libnvrtc.so")
+        || name.contains("libnvidia-ml")
+        || name.contains("libnccl.so")
+    {
         if cfg!(feature = "passthrough") {
             assert!(!DLOPEN_ORIG(filename, 0x101).is_null());
         }

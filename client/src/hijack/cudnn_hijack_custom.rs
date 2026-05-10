@@ -2,9 +2,7 @@ use cudasys::types::cudnn::*;
 use std::os::raw::*;
 
 #[no_mangle]
-pub extern "C" fn cudnnGetErrorString(
-    error_status: cudnnStatus_t,
-) -> *const c_char {
+pub extern "C" fn cudnnGetErrorString(error_status: cudnnStatus_t) -> *const c_char {
     log::debug!(target: "cudnnGetErrorString", "{error_status:?}");
     let result = format!("{error_status:?} ({})", error_status as u32);
     let c_str = std::ffi::CString::new(result).unwrap();

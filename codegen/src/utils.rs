@@ -3,9 +3,8 @@ use quote::{format_ident, quote_spanned, ToTokens};
 use syn::spanned::Spanned as _;
 use syn::{Expr, Ident, Type, TypePtr};
 
-/// - "type", - "*mut type"
-/// the former is input to native function,
-/// the latter is output from native function
+/// - `type`: input to native function.
+/// - `*mut type`: output from native function.
 #[derive(PartialEq, Eq)]
 pub enum ElementMode {
     Input,
@@ -30,7 +29,10 @@ impl Element {
 pub enum PassBy {
     InputValue,
     SinglePtr,
-    ArrayPtr { len: Box<Expr>, cap: Option<Box<Expr>> },
+    ArrayPtr {
+        len: Box<Expr>,
+        cap: Option<Box<Expr>>,
+    },
     InputCStr,
 }
 
@@ -51,7 +53,8 @@ pub fn is_async_return_type(ty: &Type) -> bool {
         "cudnnStatus_t",
         "nvmlReturn_t",
         "ncclResult_t",
-    ].contains(&ty.to_token_stream().to_string().as_str())
+    ]
+    .contains(&ty.to_token_stream().to_string().as_str())
 }
 
 pub fn is_void_ptr(ptr: &TypePtr) -> bool {

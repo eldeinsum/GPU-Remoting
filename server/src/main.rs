@@ -5,8 +5,8 @@ use std::sync::{Arc, Barrier};
 use std::time::Duration;
 use std::{ptr, thread};
 
-use server::*;
 use network::NetworkConfig;
+use server::*;
 
 fn main() {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));

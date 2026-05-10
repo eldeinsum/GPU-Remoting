@@ -2,6 +2,7 @@ use std::os::raw::*;
 
 use cudasys::cuda::*;
 
+#[allow(clippy::too_many_arguments)]
 pub fn cu_launch_kernel(
     f: CUfunction,
     gridDimX: c_uint,

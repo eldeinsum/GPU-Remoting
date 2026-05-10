@@ -32,9 +32,7 @@ pub fn cuda_custom_hook(args: TokenStream, input: TokenStream) -> TokenStream {
         .into()
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// The derive macros for auto trait impl.
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// The derive macros for auto trait impl.
 
 /// The derive procedural macro to generate `Transportable` trait implementation for a *fixed-size* type.
 ///
@@ -62,9 +60,7 @@ pub fn transportable_derive(input: TokenStream) -> TokenStream {
     gen.into()
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// The collection of the procedural macro to generate Rust functions for client usage.
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// The collection of the procedural macro to generate Rust functions for client usage.
 
 /// The procedural macro to generate hijack functions for client intercepting application calls.
 ///
@@ -304,9 +300,7 @@ pub fn use_thread_local(args: TokenStream, input: TokenStream) -> TokenStream {
     use_thread_local::use_thread_local(args.into(), input.into()).into()
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// The collection of the procedural macro to generate Rust functions for server usage.
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// The collection of the procedural macro to generate Rust functions for server usage.
 
 /// The procedural macro to generate execution functions for the server dispatcher.
 ///

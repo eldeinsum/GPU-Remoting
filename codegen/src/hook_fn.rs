@@ -31,7 +31,12 @@ impl HookFn {
     }
 
     fn new(
-        HookAttrs { proc_id, is_async_api, parent, .. }: HookAttrs,
+        HookAttrs {
+            proc_id,
+            is_async_api,
+            parent,
+            ..
+        }: HookAttrs,
         HookFnItem { sig, injections }: HookFnItem,
     ) -> Result<Self> {
         if let Some(true) = is_async_api {
@@ -92,7 +97,11 @@ impl HookFn {
             && check_async_api(&sig.output, &self.injections).is_ok()
             && self.params.iter().all(|x| x.mode == ElementMode::Input)
         {
-            sig.ident.span().unwrap().note("this function can be `async_api`").emit();
+            sig.ident
+                .span()
+                .unwrap()
+                .note("this function can be `async_api`")
+                .emit();
         }
 
         for arg in sig.inputs.iter_mut() {
@@ -109,12 +118,16 @@ impl HookFn {
 
 fn check_async_api(output: &ReturnType, injections: &HookInjections) -> Result<()> {
     if let Some(stmt) = injections.stmt_after_async_api_return() {
-        return Err(Error::new_spanned(stmt, "`async_api` cannot have `after` injections"));
+        return Err(Error::new_spanned(
+            stmt,
+            "`async_api` cannot have `after` injections",
+        ));
     }
     match output {
-        ReturnType::Type(_, ty) if !is_async_return_type(ty) => {
-            Err(Error::new_spanned(output, "unsupported `async_api` return type"))
-        }
+        ReturnType::Type(_, ty) if !is_async_return_type(ty) => Err(Error::new_spanned(
+            output,
+            "unsupported `async_api` return type",
+        )),
         _ => Ok(()),
     }
 }
@@ -142,7 +155,10 @@ fn parse_param(arg: &FnArg, is_async_api: Option<bool>) -> Result<Element> {
         } else if is_const_cstr(ptr) {
             (ElementMode::Input, PassBy::InputCStr)
         } else if ptr.const_token.is_some() || is_void_ptr(ptr) {
-            return Err(Error::new_spanned(arg, "expected #[device] or #[host(...)]"));
+            return Err(Error::new_spanned(
+                arg,
+                "expected #[device] or #[host(...)]",
+            ));
         } else {
             (ElementMode::Output, PassBy::SinglePtr)
         }
@@ -156,14 +172,17 @@ fn parse_param(arg: &FnArg, is_async_api: Option<bool>) -> Result<Element> {
     };
 
     if let (ElementMode::Output, Some(true)) = (&mode, is_async_api) {
-        return Err(Error::new_spanned(arg, "output parameter is not allowed for async_api"));
+        return Err(Error::new_spanned(
+            arg,
+            "output parameter is not allowed for async_api",
+        ));
     }
 
     let mut ty = ty.clone();
     let is_void_ptr = match (&pass_by, &mut ty) {
         (PassBy::InputValue, _) => false,
         (_, Type::Ptr(ref mut ptr)) if is_void_ptr(ptr) => {
-            ptr.elem = Box::new(parse_quote!(u8));
+            *ptr.elem = parse_quote!(u8);
             true
         }
         _ => false,
@@ -227,7 +246,10 @@ fn parse_param_attr(attr: &Attribute, ptr: &TypePtr) -> Result<(ElementMode, Pas
         } else if !is_void_ptr {
             PassBy::SinglePtr
         } else {
-            return Err(Error::new_spanned(attr, "len property is required for void pointer"));
+            return Err(Error::new_spanned(
+                attr,
+                "len property is required for void pointer",
+            ));
         };
 
         Ok((mode, pass_by))
@@ -236,7 +258,10 @@ fn parse_param_attr(attr: &Attribute, ptr: &TypePtr) -> Result<(ElementMode, Pas
     } else if location == "skip" && matches!(attr.meta, Meta::Path(_)) {
         Ok((ElementMode::Skip, PassBy::InputValue))
     } else {
-        Err(Error::new_spanned(attr, "expected #[device] or #[host(...)]"))
+        Err(Error::new_spanned(
+            attr,
+            "expected #[device] or #[host(...)]",
+        ))
     }
 }
 

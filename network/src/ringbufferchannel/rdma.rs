@@ -65,24 +65,39 @@ impl RDMAChannel {
 
         let mut handler = Arc::into_inner(cm).unwrap().into_handler();
         let registered_mr = &mut handler.registered_mr.inner;
-        let remote_mr = Arc::into_inner(handler.remote_mr).unwrap().into_inner().unwrap();
+        let remote_mr = Arc::into_inner(handler.remote_mr)
+            .unwrap()
+            .into_inner()
+            .unwrap();
         let qp = {
-            let registered_rc =
-                Arc::into_inner(handler.registered_rc).unwrap().into_inner().unwrap();
+            let registered_rc = Arc::into_inner(handler.registered_rc)
+                .unwrap()
+                .into_inner()
+                .unwrap();
             assert_eq!(registered_rc.len(), 1);
             registered_rc.into_values().next().unwrap()
         };
 
         (
             Self::new(
-                registered_mr.remove(config.ctos_channel_name.as_str()).unwrap(),
+                registered_mr
+                    .remove(config.ctos_channel_name.as_str())
+                    .unwrap(),
                 Arc::clone(&qp),
-                *remote_mr.inner().get(config.ctos_channel_name.as_str()).unwrap(),
+                *remote_mr
+                    .inner()
+                    .get(config.ctos_channel_name.as_str())
+                    .unwrap(),
             ),
             Self::new(
-                registered_mr.remove(config.stoc_channel_name.as_str()).unwrap(),
+                registered_mr
+                    .remove(config.stoc_channel_name.as_str())
+                    .unwrap(),
                 qp,
-                *remote_mr.inner().get(config.stoc_channel_name.as_str()).unwrap(),
+                *remote_mr
+                    .inner()
+                    .get(config.stoc_channel_name.as_str())
+                    .unwrap(),
             ),
         )
     }
@@ -136,14 +151,26 @@ impl RDMAChannel {
 
         (
             Self::new(
-                mr_wrapper.inner.remove(config.ctos_channel_name.as_str()).unwrap(),
+                mr_wrapper
+                    .inner
+                    .remove(config.ctos_channel_name.as_str())
+                    .unwrap(),
                 Arc::clone(&qp),
-                *mr_infos.inner().get(config.ctos_channel_name.as_str()).unwrap(),
+                *mr_infos
+                    .inner()
+                    .get(config.ctos_channel_name.as_str())
+                    .unwrap(),
             ),
             Self::new(
-                mr_wrapper.inner.remove(config.stoc_channel_name.as_str()).unwrap(),
+                mr_wrapper
+                    .inner
+                    .remove(config.stoc_channel_name.as_str())
+                    .unwrap(),
                 qp,
-                *mr_infos.inner().get(config.stoc_channel_name.as_str()).unwrap(),
+                *mr_infos
+                    .inner()
+                    .get(config.stoc_channel_name.as_str())
+                    .unwrap(),
             ),
         )
     }

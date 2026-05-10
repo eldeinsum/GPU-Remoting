@@ -64,7 +64,10 @@ fn cublasLtMatmulDescSetAttribute(
     sizeInBytes: usize,
 ) -> cublasStatus_t {
     'client_before_send: {
-        assert_ne!(attr, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_POINTER_MODE);
+        assert_ne!(
+            attr,
+            cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_POINTER_MODE
+        );
     }
 }
 

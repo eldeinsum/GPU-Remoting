@@ -25,8 +25,18 @@ pub struct FatBinaryWrapper {
 impl FatBinaryWrapper {
     pub fn unwrap(&self) -> *const FatBinaryHeader {
         match self {
-            Self { magic: 0x466243B1, version: 1, filename_or_fatbins: 0, .. } => {}
-            Self { magic: 0x466243B1, version: 2, filename_or_fatbins: 1.., .. } => {}
+            Self {
+                magic: 0x466243B1,
+                version: 1,
+                filename_or_fatbins: 0,
+                ..
+            } => {}
+            Self {
+                magic: 0x466243B1,
+                version: 2,
+                filename_or_fatbins: 1..,
+                ..
+            } => {}
             _ => panic!("invalid fatbin wrapper: {self:#x?}"),
         }
         self.data.cast()
@@ -46,14 +56,28 @@ const _: () = assert!(size_of::<FatBinaryHeader>() == 16);
 
 impl FatBinaryHeader {
     fn validate(&self) {
-        let Self { magic: 0xBA55ED50, version: 1, header_size: 16, .. } = self else {
+        let Self {
+            magic: 0xBA55ED50,
+            version: 1,
+            header_size: 16,
+            ..
+        } = self
+        else {
             panic!("invalid fatbin header: {self:#x?}");
         };
     }
 
     pub fn is_fat_binary(image: *const u8) -> bool {
         let header: &Self = unsafe { &*image.cast() };
-        matches!(header, Self { magic: 0xBA55ED50, version: 1, header_size: 16, .. })
+        matches!(
+            header,
+            Self {
+                magic: 0xBA55ED50,
+                version: 1,
+                header_size: 16,
+                ..
+            }
+        )
     }
 
     pub fn entire_len(&self) -> usize {
@@ -166,15 +190,40 @@ impl CodeHeader {
             bail()
         };
         let kind = match self {
-            Self { kind: 1, header_size: 0x48, options_offset: 0x40, .. } => CodeKind::Ptx,
-            Self { kind: 2, header_size: 0x40 | 0x48, options_offset: 0, .. } => CodeKind::Elf,
+            Self {
+                kind: 1,
+                header_size: 0x48,
+                options_offset: 0x40,
+                ..
+            } => CodeKind::Ptx,
+            Self {
+                kind: 2,
+                header_size: 0x40 | 0x48,
+                options_offset: 0,
+                ..
+            } => CodeKind::Elf,
             _ => bail(),
         };
         let is_compressed = match self {
-            Self { compressed_size: 0, flags: 0x11, decompressed_size: 0, .. } => false,
-            Self { compressed_size: 1.., flags: 0x2011, decompressed_size: 1.., .. } => true,
+            Self {
+                compressed_size: 0,
+                flags: 0x11,
+                decompressed_size: 0,
+                ..
+            } => false,
+            Self {
+                compressed_size: 1..,
+                flags: 0x2011,
+                decompressed_size: 1..,
+                ..
+            } => true,
             // flag 0x100000 is unknown
-            Self { compressed_size: 1.., flags: 0x102011, decompressed_size: 1.., .. } => true,
+            Self {
+                compressed_size: 1..,
+                flags: 0x102011,
+                decompressed_size: 1..,
+                ..
+            } => true,
             _ => bail(),
         };
         (kind, is_compressed)
@@ -196,7 +245,9 @@ fn validate_cubin(cubin: &[u8]) {
         panic!("failed to parse section headers and string table")
     };
     for shdr in shdrs.iter() {
-        let name = strtab.get(shdr.sh_name as usize).expect("Failed to get section name");
+        let name = strtab
+            .get(shdr.sh_name as usize)
+            .expect("Failed to get section name");
         if !name.starts_with(".nv.info.") {
             continue;
         }
@@ -224,7 +275,9 @@ fn parse_params(nvinfo: &[u8]) -> Box<[KernelParamInfo]> {
     let mut params = Vec::new();
     while i < nvinfo.len() {
         debug_assert!(i % 4 == 0);
-        let [format, attr, b0, b1] = nvinfo[i..i + 4] else { unreachable!() };
+        let [format, attr, b0, b1] = nvinfo[i..i + 4] else {
+            unreachable!()
+        };
         i += 4;
         match format {
             EIFMT_NVAL => {
@@ -244,7 +297,7 @@ fn parse_params(nvinfo: &[u8]) -> Box<[KernelParamInfo]> {
             }
             EIFMT_SVAL => {
                 let len = u16::from_le_bytes([b0, b1]) as usize;
-                debug_assert!(len % 4 == 0);
+                debug_assert!(len.is_multiple_of(4));
                 if attr == EIATTR_KPARAM_INFO {
                     assert_eq!(len, size_of::<KernelParamInfo>());
                     assert!(i + len <= nvinfo.len());

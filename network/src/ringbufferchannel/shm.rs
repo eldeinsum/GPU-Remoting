@@ -29,8 +29,14 @@ impl SHMChannel {
 
     pub fn new_server_with_id(config: &NetworkConfig, id: i32) -> IOResult<(Self, Self)> {
         Ok((
-            Self::new_server(&format!("{}_{}", config.ctos_channel_name, id), config.buf_size)?,
-            Self::new_server(&format!("{}_{}", config.stoc_channel_name, id), config.buf_size)?,
+            Self::new_server(
+                &format!("{}_{}", config.ctos_channel_name, id),
+                config.buf_size,
+            )?,
+            Self::new_server(
+                &format!("{}_{}", config.stoc_channel_name, id),
+                config.buf_size,
+            )?,
         ))
     }
 
@@ -45,8 +51,14 @@ impl SHMChannel {
 
     pub fn new_client_with_id(config: &NetworkConfig, id: i32) -> IOResult<(Self, Self)> {
         Ok((
-            Self::new_client(&format!("{}_{}", config.ctos_channel_name, id), config.buf_size)?,
-            Self::new_client(&format!("{}_{}", config.stoc_channel_name, id), config.buf_size)?,
+            Self::new_client(
+                &format!("{}_{}", config.ctos_channel_name, id),
+                config.buf_size,
+            )?,
+            Self::new_client(
+                &format!("{}_{}", config.stoc_channel_name, id),
+                config.buf_size,
+            )?,
         ))
     }
 

@@ -22,23 +22,19 @@ fn rdma_channel_buffer_manager() {
     // remote info like raddr and rkey.
 
     let (r, s) = std::thread::scope(|scope| {
-        let s_handler = scope.spawn(
-            || match RDMAChannel::new_server(&config, 0) {
-                (server, _) => {
-                    println!("Server created successfully");
-                    server
-                }
-            },
-        );
+        let s_handler = scope.spawn(|| match RDMAChannel::new_server(&config, 0) {
+            (server, _) => {
+                println!("Server created successfully");
+                server
+            }
+        });
 
-        let c_handler = scope.spawn(
-            || match RDMAChannel::new_client(&config, 0) {
-                (client, _) => {
-                    println!("Client created successfully");
-                    client
-                }
-            },
-        );
+        let c_handler = scope.spawn(|| match RDMAChannel::new_client(&config, 0) {
+            (client, _) => {
+                println!("Client created successfully");
+                client
+            }
+        });
 
         (s_handler.join().unwrap(), c_handler.join().unwrap())
     });

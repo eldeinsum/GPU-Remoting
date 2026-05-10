@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::super::META_AREA;
     use super::super::LocalChannel;
+    use super::super::META_AREA;
     use crate::{CommChannelInnerIO, RawMemory, RawMemoryMut};
 
     #[test]

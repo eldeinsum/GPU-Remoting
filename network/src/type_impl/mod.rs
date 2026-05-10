@@ -132,55 +132,55 @@ mod tests {
     /// Test bool Transportable impl
     #[test]
     fn test_bool_io() {
-        let mut channel = Channel::new(Box::new(LocalChannel::new(10 + META_AREA)));
+        let channel = Channel::new(Box::new(LocalChannel::new(10 + META_AREA)));
         let a = true;
         let mut b = false;
-        a.send(&mut channel).unwrap();
-        b.recv(&mut channel).unwrap();
+        a.send(&channel).unwrap();
+        b.recv(&channel).unwrap();
         assert_eq!(a, b);
     }
 
     /// Test i32 Transportable impl
     #[test]
     fn test_i32_io() {
-        let mut channel = Channel::new(Box::new(LocalChannel::new(10 + META_AREA)));
+        let channel = Channel::new(Box::new(LocalChannel::new(10 + META_AREA)));
         let a = 123;
         let mut b = 0;
-        a.send(&mut channel).unwrap();
-        b.recv(&mut channel).unwrap();
+        a.send(&channel).unwrap();
+        b.recv(&channel).unwrap();
         assert_eq!(a, b);
     }
 
     /// Test [u8] Transportable impl
     #[test]
     fn test_u8_array_io() {
-        let mut channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
+        let channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
         let a = [1u8, 2, 3, 4, 5];
         let mut b = [0u8; 5];
-        a.send(&mut channel).unwrap();
-        b.recv(&mut channel).unwrap();
+        a.send(&channel).unwrap();
+        b.recv(&channel).unwrap();
         assert_eq!(a, b);
     }
 
     /// Test [i32] Transportable impl
     #[test]
     fn test_i32_array_io() {
-        let mut channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
+        let channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
         let a = [1i32, 2, 3, 4, 5];
         let mut b = [0i32; 5];
-        a.send(&mut channel).unwrap();
-        b.recv(&mut channel).unwrap();
+        a.send(&channel).unwrap();
+        b.recv(&channel).unwrap();
         assert_eq!(a, b);
     }
 
     /// Test Vec<i32> Transportable impl
     #[test]
     fn test_vec_io() {
-        let mut channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
+        let channel = Channel::new(Box::new(LocalChannel::new(50 + META_AREA)));
         let a = vec![1, 2, 3, 4, 5];
         let mut b = vec![0; 5];
-        a.send(&mut channel).unwrap();
-        b.recv(&mut channel).unwrap();
+        a.send(&channel).unwrap();
+        b.recv(&channel).unwrap();
         assert_eq!(a, b);
     }
 }

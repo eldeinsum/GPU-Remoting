@@ -9,8 +9,10 @@ fn test_cudaerror() {
     let shm_name = "/stoc";
     let shm_len = 1024;
 
-    let mut consumer_channel = Channel::new(Box::new(SHMChannel::new_server(shm_name, shm_len).unwrap()));
-    let mut producer_channel = Channel::new(Box::new(SHMChannel::new_client(shm_name, shm_len).unwrap()));
+    let consumer_channel =
+        Channel::new(Box::new(SHMChannel::new_server(shm_name, shm_len).unwrap()));
+    let producer_channel =
+        Channel::new(Box::new(SHMChannel::new_client(shm_name, shm_len).unwrap()));
 
     let barrier = Arc::new(Barrier::new(2)); // Set up a barrier for 2 threads
     let producer_barrier = barrier.clone();
@@ -27,7 +29,7 @@ fn test_cudaerror() {
                 Some(v) => v,
                 None => panic!("failed to convert from u32"),
             };
-            var.send(&mut producer_channel).unwrap();
+            var.send(&producer_channel).unwrap();
             producer_channel.flush_out().unwrap();
         }
 
@@ -46,7 +48,7 @@ fn test_cudaerror() {
                 None => panic!("failed to convert from u32"),
             };
             let mut var = cudaError_t::cudaSuccess;
-            var.recv(&mut consumer_channel).unwrap();
+            var.recv(&consumer_channel).unwrap();
             assert_eq!(var, test);
             received += 1;
         }

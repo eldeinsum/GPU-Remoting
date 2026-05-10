@@ -6,20 +6,15 @@ fn main() {
 
         let shm_name = "/stoc";
         let shm_len = 1024;
-        let mut channel = Channel::new(Box::new(SHMChannel::new_server(shm_name, shm_len).unwrap()));
+        let channel = Channel::new(Box::new(SHMChannel::new_server(shm_name, shm_len).unwrap()));
 
-        loop {
-            let mut dst = [0u8; 5];
-            let res = dst.recv(&mut channel);
-            match res {
-                Ok(()) => {
-                    println!("Received {:?}", dst);
-                    break;
-                }
-                Err(e) => {
-                    println!("Error {}", e);
-                    assert!(false);
-                }
+        let mut dst = [0u8; 5];
+        let res = dst.recv(&channel);
+        match res {
+            Ok(()) => println!("Received {:?}", dst),
+            Err(e) => {
+                println!("Error {}", e);
+                panic!("failed to receive from channel: {e}");
             }
         }
     }

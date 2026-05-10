@@ -2,11 +2,11 @@
 #![expect(unused_variables)]
 #![expect(clippy::too_many_arguments)]
 
-mod cuda;
-mod cudart;
-mod nvml;
-mod cudnn;
 mod cublas;
 mod cublasLt;
-mod nvrtc;
+mod cuda;
+mod cudart;
+mod cudnn;
 mod nccl;
+mod nvml;
+mod nvrtc;
