@@ -324,6 +324,33 @@ fn cudaMemcpy2DAsync(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900565)]
+fn cudaMemcpy3D(#[host(len = 1)] p: *const cudaMemcpy3DParms) -> cudaError_t {
+    'client_before_send: {
+        let params = unsafe { &*p };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+        assert_eq!(params.kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
+#[cuda_hook(proc_id = 900566, async_api)]
+fn cudaMemcpy3DAsync(
+    #[host(len = 1)] p: *const cudaMemcpy3DParms,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        let params = unsafe { &*p };
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(!params.srcPtr.ptr.is_null());
+        assert!(!params.dstPtr.ptr.is_null());
+        assert_eq!(params.kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+    }
+}
+
 #[cuda_custom_hook] // calls one of the following internal APIs
 fn cudaMemcpyToArray(
     dst: cudaArray_t,
