@@ -2889,6 +2889,134 @@ fn cublasGemmBatchedEx_64(
     }
 }
 
+#[cuda_hook(proc_id = 1270, async_api)]
+fn cublasSgemmGroupedBatched(
+    handle: cublasHandle_t,
+    #[host(len = group_count as usize)] transa_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] transb_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] m_array: *const c_int,
+    #[host(len = group_count as usize)] n_array: *const c_int,
+    #[host(len = group_count as usize)] k_array: *const c_int,
+    #[host(len = group_count as usize)] alpha_array: *const f32,
+    #[device] Aarray: *const *const f32,
+    #[host(len = group_count as usize)] lda_array: *const c_int,
+    #[device] Barray: *const *const f32,
+    #[host(len = group_count as usize)] ldb_array: *const c_int,
+    #[host(len = group_count as usize)] beta_array: *const f32,
+    #[device] Carray: *const *mut f32,
+    #[host(len = group_count as usize)] ldc_array: *const c_int,
+    group_count: c_int,
+    #[host(len = group_count as usize)] group_size: *const c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1271, async_api)]
+fn cublasSgemmGroupedBatched_64(
+    handle: cublasHandle_t,
+    #[host(len = group_count as usize)] transa_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] transb_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] m_array: *const i64,
+    #[host(len = group_count as usize)] n_array: *const i64,
+    #[host(len = group_count as usize)] k_array: *const i64,
+    #[host(len = group_count as usize)] alpha_array: *const f32,
+    #[device] Aarray: *const *const f32,
+    #[host(len = group_count as usize)] lda_array: *const i64,
+    #[device] Barray: *const *const f32,
+    #[host(len = group_count as usize)] ldb_array: *const i64,
+    #[host(len = group_count as usize)] beta_array: *const f32,
+    #[device] Carray: *const *mut f32,
+    #[host(len = group_count as usize)] ldc_array: *const i64,
+    group_count: i64,
+    #[host(len = group_count as usize)] group_size: *const i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1272, async_api)]
+fn cublasDgemmGroupedBatched(
+    handle: cublasHandle_t,
+    #[host(len = group_count as usize)] transa_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] transb_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] m_array: *const c_int,
+    #[host(len = group_count as usize)] n_array: *const c_int,
+    #[host(len = group_count as usize)] k_array: *const c_int,
+    #[host(len = group_count as usize)] alpha_array: *const f64,
+    #[device] Aarray: *const *const f64,
+    #[host(len = group_count as usize)] lda_array: *const c_int,
+    #[device] Barray: *const *const f64,
+    #[host(len = group_count as usize)] ldb_array: *const c_int,
+    #[host(len = group_count as usize)] beta_array: *const f64,
+    #[device] Carray: *const *mut f64,
+    #[host(len = group_count as usize)] ldc_array: *const c_int,
+    group_count: c_int,
+    #[host(len = group_count as usize)] group_size: *const c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1273, async_api)]
+fn cublasDgemmGroupedBatched_64(
+    handle: cublasHandle_t,
+    #[host(len = group_count as usize)] transa_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] transb_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] m_array: *const i64,
+    #[host(len = group_count as usize)] n_array: *const i64,
+    #[host(len = group_count as usize)] k_array: *const i64,
+    #[host(len = group_count as usize)] alpha_array: *const f64,
+    #[device] Aarray: *const *const f64,
+    #[host(len = group_count as usize)] lda_array: *const i64,
+    #[device] Barray: *const *const f64,
+    #[host(len = group_count as usize)] ldb_array: *const i64,
+    #[host(len = group_count as usize)] beta_array: *const f64,
+    #[device] Carray: *const *mut f64,
+    #[host(len = group_count as usize)] ldc_array: *const i64,
+    group_count: i64,
+    #[host(len = group_count as usize)] group_size: *const i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1274, async_api)]
+fn cublasGemmGroupedBatchedEx(
+    handle: cublasHandle_t,
+    #[host(len = group_count as usize)] transa_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] transb_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] m_array: *const c_int,
+    #[host(len = group_count as usize)] n_array: *const c_int,
+    #[host(len = group_count as usize)] k_array: *const c_int,
+    #[host(len = group_count as usize * std::mem::size_of::<f32>())] alpha_array: *const c_void,
+    #[device] Aarray: *const *const c_void,
+    Atype: cudaDataType_t,
+    #[host(len = group_count as usize)] lda_array: *const c_int,
+    #[device] Barray: *const *const c_void,
+    Btype: cudaDataType_t,
+    #[host(len = group_count as usize)] ldb_array: *const c_int,
+    #[host(len = group_count as usize * std::mem::size_of::<f32>())] beta_array: *const c_void,
+    #[device] Carray: *const *mut c_void,
+    Ctype: cudaDataType_t,
+    #[host(len = group_count as usize)] ldc_array: *const c_int,
+    group_count: c_int,
+    #[host(len = group_count as usize)] group_size: *const c_int,
+    computeType: cublasComputeType_t,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1275, async_api)]
+fn cublasGemmGroupedBatchedEx_64(
+    handle: cublasHandle_t,
+    #[host(len = group_count as usize)] transa_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] transb_array: *const cublasOperation_t,
+    #[host(len = group_count as usize)] m_array: *const i64,
+    #[host(len = group_count as usize)] n_array: *const i64,
+    #[host(len = group_count as usize)] k_array: *const i64,
+    #[host(len = group_count as usize * std::mem::size_of::<f32>())] alpha_array: *const c_void,
+    #[device] Aarray: *const *const c_void,
+    Atype: cudaDataType_t,
+    #[host(len = group_count as usize)] lda_array: *const i64,
+    #[device] Barray: *const *const c_void,
+    Btype: cudaDataType_t,
+    #[host(len = group_count as usize)] ldb_array: *const i64,
+    #[host(len = group_count as usize * std::mem::size_of::<f32>())] beta_array: *const c_void,
+    #[device] Carray: *const *mut c_void,
+    Ctype: cudaDataType_t,
+    #[host(len = group_count as usize)] ldc_array: *const i64,
+    group_count: i64,
+    #[host(len = group_count as usize)] group_size: *const i64,
+    computeType: cublasComputeType_t,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1257, async_api)]
 fn cublasCgemmEx(
     handle: cublasHandle_t,

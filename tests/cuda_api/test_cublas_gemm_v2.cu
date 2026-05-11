@@ -88,6 +88,7 @@ template <> struct Ops<cuDoubleComplex> {
 template <typename T> struct Gemm;
 template <typename T> struct StridedGemm;
 template <typename T> struct BatchedGemm;
+template <typename T> struct GroupedGemm;
 template <typename T> struct TypedGemmEx;
 template <typename T> struct DataType;
 
@@ -157,6 +158,31 @@ template <> struct BatchedGemm<float> {
     return cublasSgemmBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
                                  alpha, a, lda, b, ldb, beta, c, ldc,
                                  batch_count);
+  }
+};
+
+template <> struct GroupedGemm<float> {
+  static cublasStatus_t call32(
+      cublasHandle_t handle, const cublasOperation_t *transa,
+      const cublasOperation_t *transb, const int *m, const int *n,
+      const int *k, const float *alpha, const float *const *a,
+      const int *lda, const float *const *b, const int *ldb,
+      const float *beta, float *const *c, const int *ldc, int group_count,
+      const int *group_size) {
+    return cublasSgemmGroupedBatched(handle, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc, group_count,
+                                     group_size);
+  }
+  static cublasStatus_t call64(
+      cublasHandle_t handle, const cublasOperation_t *transa,
+      const cublasOperation_t *transb, const int64_t *m, const int64_t *n,
+      const int64_t *k, const float *alpha, const float *const *a,
+      const int64_t *lda, const float *const *b, const int64_t *ldb,
+      const float *beta, float *const *c, const int64_t *ldc,
+      int64_t group_count, const int64_t *group_size) {
+    return cublasSgemmGroupedBatched_64(
+        handle, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+        group_count, group_size);
   }
 };
 
@@ -239,6 +265,31 @@ template <> struct BatchedGemm<double> {
     return cublasDgemmBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
                                  alpha, a, lda, b, ldb, beta, c, ldc,
                                  batch_count);
+  }
+};
+
+template <> struct GroupedGemm<double> {
+  static cublasStatus_t call32(
+      cublasHandle_t handle, const cublasOperation_t *transa,
+      const cublasOperation_t *transb, const int *m, const int *n,
+      const int *k, const double *alpha, const double *const *a,
+      const int *lda, const double *const *b, const int *ldb,
+      const double *beta, double *const *c, const int *ldc, int group_count,
+      const int *group_size) {
+    return cublasDgemmGroupedBatched(handle, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc, group_count,
+                                     group_size);
+  }
+  static cublasStatus_t call64(
+      cublasHandle_t handle, const cublasOperation_t *transa,
+      const cublasOperation_t *transb, const int64_t *m, const int64_t *n,
+      const int64_t *k, const double *alpha, const double *const *a,
+      const int64_t *lda, const double *const *b, const int64_t *ldb,
+      const double *beta, double *const *c, const int64_t *ldc,
+      int64_t group_count, const int64_t *group_size) {
+    return cublasDgemmGroupedBatched_64(
+        handle, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+        group_count, group_size);
   }
 };
 
@@ -749,6 +800,152 @@ static void run_batched_case(cublasHandle_t handle, const char *name,
 }
 
 template <typename T>
+static void run_grouped_case(cublasHandle_t handle, const char *name,
+                             bool use_64) {
+  const int m = 2;
+  const int n = 2;
+  const int k = 3;
+  const int group_count = 2;
+  const int problem_count = 2;
+  const long long stride_a = m * k;
+  const long long stride_b = k * n;
+  const long long stride_c = m * n;
+  std::vector<T> a(problem_count * stride_a);
+  std::vector<T> b(problem_count * stride_b);
+  std::vector<T> c(problem_count * stride_c);
+  for (size_t i = 0; i < a.size(); ++i) {
+    int phase = static_cast<int>(i % 4) - 1;
+    a[i] = Ops<T>::value(static_cast<float>(i + 1),
+                         static_cast<float>(phase) * 0.125f);
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    int phase = static_cast<int>(i % 3) - 1;
+    b[i] = Ops<T>::value(static_cast<float>(i + 3),
+                         static_cast<float>(phase) * -0.25f);
+  }
+  for (size_t i = 0; i < c.size(); ++i) {
+    int phase = static_cast<int>(i % 5) - 2;
+    c[i] = Ops<T>::value(static_cast<float>(phase),
+                         static_cast<float>(i % 2) * 0.5f);
+  }
+
+  std::vector<cublasOperation_t> transa(group_count, CUBLAS_OP_N);
+  std::vector<cublasOperation_t> transb(group_count, CUBLAS_OP_N);
+  std::vector<int> m32(group_count, m);
+  std::vector<int> n32(group_count, n);
+  std::vector<int> k32(group_count, k);
+  std::vector<int> lda32(group_count, m);
+  std::vector<int> ldb32(group_count, k);
+  std::vector<int> ldc32(group_count, m);
+  std::vector<int> group_size32(group_count, 1);
+  std::vector<int64_t> m64(m32.begin(), m32.end());
+  std::vector<int64_t> n64(n32.begin(), n32.end());
+  std::vector<int64_t> k64(k32.begin(), k32.end());
+  std::vector<int64_t> lda64(lda32.begin(), lda32.end());
+  std::vector<int64_t> ldb64(ldb32.begin(), ldb32.end());
+  std::vector<int64_t> ldc64(ldc32.begin(), ldc32.end());
+  std::vector<int64_t> group_size64(group_size32.begin(), group_size32.end());
+  std::vector<T> alpha = {Ops<T>::alpha(), Ops<T>::value(0.5f, 0.0f)};
+  std::vector<T> beta = {Ops<T>::beta(), Ops<T>::value(-0.25f, 0.0f)};
+
+  std::vector<T> expected(c.size());
+  int problem = 0;
+  for (int group = 0; group < group_count; ++group) {
+    for (int local = 0; local < group_size32[group]; ++local) {
+      const long long a_base = problem * stride_a;
+      const long long b_base = problem * stride_b;
+      const long long c_base = problem * stride_c;
+      for (int col = 0; col < n; ++col) {
+        for (int row = 0; row < m; ++row) {
+          T sum = Ops<T>::zero();
+          for (int inner = 0; inner < k; ++inner) {
+            sum = Ops<T>::add(
+                sum, Ops<T>::mul(a[a_base + row + inner * m],
+                                 b[b_base + inner + col * k]));
+          }
+          expected[c_base + row + col * m] =
+              Ops<T>::add(Ops<T>::mul(alpha[group], sum),
+                          Ops<T>::mul(beta[group],
+                                      c[c_base + row + col * m]));
+        }
+      }
+      ++problem;
+    }
+  }
+
+  T *d_a = nullptr;
+  T *d_b = nullptr;
+  T *d_c = nullptr;
+  const T **d_a_array = nullptr;
+  const T **d_b_array = nullptr;
+  T **d_c_array = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_a, a.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_b, b.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_c, c.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_a_array, problem_count * sizeof(T *)));
+  CHECK_CUDA(cudaMalloc(&d_b_array, problem_count * sizeof(T *)));
+  CHECK_CUDA(cudaMalloc(&d_c_array, problem_count * sizeof(T *)));
+  CHECK_CUDA(cudaMemcpy(d_a, a.data(), a.size() * sizeof(T),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b, b.data(), b.size() * sizeof(T),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c, c.data(), c.size() * sizeof(T),
+                        cudaMemcpyHostToDevice));
+
+  std::vector<const T *> a_ptrs(problem_count);
+  std::vector<const T *> b_ptrs(problem_count);
+  std::vector<T *> c_ptrs(problem_count);
+  for (int batch = 0; batch < problem_count; ++batch) {
+    a_ptrs[batch] = d_a + batch * stride_a;
+    b_ptrs[batch] = d_b + batch * stride_b;
+    c_ptrs[batch] = d_c + batch * stride_c;
+  }
+  CHECK_CUDA(cudaMemcpy(d_a_array, a_ptrs.data(),
+                        a_ptrs.size() * sizeof(a_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b_array, b_ptrs.data(),
+                        b_ptrs.size() * sizeof(b_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c_array, c_ptrs.data(),
+                        c_ptrs.size() * sizeof(c_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+
+  CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  if (use_64) {
+    CHECK_CUBLAS(GroupedGemm<T>::call64(
+        handle, transa.data(), transb.data(), m64.data(), n64.data(),
+        k64.data(), alpha.data(), d_a_array, lda64.data(), d_b_array,
+        ldb64.data(), beta.data(), d_c_array, ldc64.data(), group_count,
+        group_size64.data()));
+  } else {
+    CHECK_CUBLAS(GroupedGemm<T>::call32(
+        handle, transa.data(), transb.data(), m32.data(), n32.data(),
+        k32.data(), alpha.data(), d_a_array, lda32.data(), d_b_array,
+        ldb32.data(), beta.data(), d_c_array, ldc32.data(), group_count,
+        group_size32.data()));
+  }
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  std::vector<T> out(c.size());
+  CHECK_CUDA(cudaMemcpy(out.data(), d_c, out.size() * sizeof(T),
+                        cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < out.size(); ++i) {
+    if (!Ops<T>::near(out[i], expected[i])) {
+      std::printf("%s grouped mismatch index %zu use_64=%d\n", name, i,
+                  use_64 ? 1 : 0);
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  cudaFree(d_c_array);
+  cudaFree(d_b_array);
+  cudaFree(d_a_array);
+  cudaFree(d_c);
+  cudaFree(d_b);
+  cudaFree(d_a);
+}
+
+template <typename T>
 static void run_typed_ex_case(cublasHandle_t handle, const char *name,
                               bool use_64, bool device_scalars) {
   const int m = 2;
@@ -1029,6 +1226,143 @@ static void run_generic_batched_ex_case(cublasHandle_t handle, bool use_64,
   cudaFree(d_a);
 }
 
+static void run_generic_grouped_ex_case(cublasHandle_t handle, bool use_64) {
+  const int m = 2;
+  const int n = 2;
+  const int k = 3;
+  const int group_count = 2;
+  const int problem_count = 2;
+  const long long stride_a = m * k;
+  const long long stride_b = k * n;
+  const long long stride_c = m * n;
+  std::vector<float> a(problem_count * stride_a);
+  std::vector<float> b(problem_count * stride_b);
+  std::vector<float> c(problem_count * stride_c);
+  for (size_t i = 0; i < a.size(); ++i) {
+    a[i] = static_cast<float>(i + 1);
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    b[i] = static_cast<float>(i + 3);
+  }
+  for (size_t i = 0; i < c.size(); ++i) {
+    c[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
+  }
+
+  std::vector<cublasOperation_t> transa(group_count, CUBLAS_OP_N);
+  std::vector<cublasOperation_t> transb(group_count, CUBLAS_OP_N);
+  std::vector<int> m32(group_count, m);
+  std::vector<int> n32(group_count, n);
+  std::vector<int> k32(group_count, k);
+  std::vector<int> lda32(group_count, m);
+  std::vector<int> ldb32(group_count, k);
+  std::vector<int> ldc32(group_count, m);
+  std::vector<int> group_size32(group_count, 1);
+  std::vector<int64_t> m64(m32.begin(), m32.end());
+  std::vector<int64_t> n64(n32.begin(), n32.end());
+  std::vector<int64_t> k64(k32.begin(), k32.end());
+  std::vector<int64_t> lda64(lda32.begin(), lda32.end());
+  std::vector<int64_t> ldb64(ldb32.begin(), ldb32.end());
+  std::vector<int64_t> ldc64(ldc32.begin(), ldc32.end());
+  std::vector<int64_t> group_size64(group_size32.begin(), group_size32.end());
+  std::vector<float> alpha = {Ops<float>::alpha(), 0.5f};
+  std::vector<float> beta = {Ops<float>::beta(), -0.25f};
+
+  std::vector<float> expected(c.size());
+  int problem = 0;
+  for (int group = 0; group < group_count; ++group) {
+    for (int local = 0; local < group_size32[group]; ++local) {
+      const long long a_base = problem * stride_a;
+      const long long b_base = problem * stride_b;
+      const long long c_base = problem * stride_c;
+      for (int col = 0; col < n; ++col) {
+        for (int row = 0; row < m; ++row) {
+          float sum = 0.0f;
+          for (int inner = 0; inner < k; ++inner) {
+            sum += a[a_base + row + inner * m] *
+                   b[b_base + inner + col * k];
+          }
+          expected[c_base + row + col * m] =
+              alpha[group] * sum + beta[group] * c[c_base + row + col * m];
+        }
+      }
+      ++problem;
+    }
+  }
+
+  float *d_a = nullptr;
+  float *d_b = nullptr;
+  float *d_c = nullptr;
+  const void **d_a_array = nullptr;
+  const void **d_b_array = nullptr;
+  void **d_c_array = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_a, a.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_b, b.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_c, c.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_a_array, problem_count * sizeof(void *)));
+  CHECK_CUDA(cudaMalloc(&d_b_array, problem_count * sizeof(void *)));
+  CHECK_CUDA(cudaMalloc(&d_c_array, problem_count * sizeof(void *)));
+  CHECK_CUDA(cudaMemcpy(d_a, a.data(), a.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b, b.data(), b.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c, c.data(), c.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  std::vector<const void *> a_ptrs(problem_count);
+  std::vector<const void *> b_ptrs(problem_count);
+  std::vector<void *> c_ptrs(problem_count);
+  for (int batch = 0; batch < problem_count; ++batch) {
+    a_ptrs[batch] = d_a + batch * stride_a;
+    b_ptrs[batch] = d_b + batch * stride_b;
+    c_ptrs[batch] = d_c + batch * stride_c;
+  }
+  CHECK_CUDA(cudaMemcpy(d_a_array, a_ptrs.data(),
+                        a_ptrs.size() * sizeof(a_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b_array, b_ptrs.data(),
+                        b_ptrs.size() * sizeof(b_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c_array, c_ptrs.data(),
+                        c_ptrs.size() * sizeof(c_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+
+  CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  if (use_64) {
+    CHECK_CUBLAS(cublasGemmGroupedBatchedEx_64(
+        handle, transa.data(), transb.data(), m64.data(), n64.data(),
+        k64.data(), alpha.data(), d_a_array, CUDA_R_32F, lda64.data(),
+        d_b_array, CUDA_R_32F, ldb64.data(), beta.data(), d_c_array,
+        CUDA_R_32F, ldc64.data(), group_count, group_size64.data(),
+        CUBLAS_COMPUTE_32F));
+  } else {
+    CHECK_CUBLAS(cublasGemmGroupedBatchedEx(
+        handle, transa.data(), transb.data(), m32.data(), n32.data(),
+        k32.data(), alpha.data(), d_a_array, CUDA_R_32F, lda32.data(),
+        d_b_array, CUDA_R_32F, ldb32.data(), beta.data(), d_c_array,
+        CUDA_R_32F, ldc32.data(), group_count, group_size32.data(),
+        CUBLAS_COMPUTE_32F));
+  }
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  std::vector<float> out(c.size());
+  CHECK_CUDA(cudaMemcpy(out.data(), d_c, out.size() * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < out.size(); ++i) {
+    if (!Ops<float>::near(out[i], expected[i])) {
+      std::printf("generic grouped Ex mismatch index %zu use_64=%d\n", i,
+                  use_64 ? 1 : 0);
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  cudaFree(d_c_array);
+  cudaFree(d_b_array);
+  cudaFree(d_a_array);
+  cudaFree(d_c);
+  cudaFree(d_b);
+  cudaFree(d_a);
+}
+
 static void run_generic_strided_ex_case(cublasHandle_t handle, bool use_64,
                                         bool device_scalars) {
   const int m = 2;
@@ -1142,6 +1476,10 @@ int main() {
   run_type<double>(handle, "dgemm");
   run_type<cuComplex>(handle, "cgemm");
   run_type<cuDoubleComplex>(handle, "zgemm");
+  run_grouped_case<float>(handle, "sgemm", false);
+  run_grouped_case<float>(handle, "sgemm", true);
+  run_grouped_case<double>(handle, "dgemm", false);
+  run_grouped_case<double>(handle, "dgemm", true);
   run_typed_ex_case<float>(handle, "sgemm", false, false);
   run_typed_ex_case<float>(handle, "sgemm", false, true);
   run_typed_ex_case<float>(handle, "sgemm", true, false);
@@ -1158,6 +1496,8 @@ int main() {
   run_generic_batched_ex_case(handle, false, true);
   run_generic_batched_ex_case(handle, true, false);
   run_generic_batched_ex_case(handle, true, true);
+  run_generic_grouped_ex_case(handle, false);
+  run_generic_grouped_ex_case(handle, true);
   run_generic_strided_ex_case(handle, false, false);
   run_generic_strided_ex_case(handle, false, true);
   run_generic_strided_ex_case(handle, true, false);
