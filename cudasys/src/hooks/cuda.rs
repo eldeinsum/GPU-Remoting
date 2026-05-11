@@ -3262,6 +3262,15 @@ fn cuStreamBeginCaptureToGraph(
 #[cuda_hook(proc_id = 900868)]
 fn cuStreamEndCapture(hStream: CUstream, phGraph: *mut CUgraph) -> CUresult;
 
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuStreamBeginCaptureToCig(
+    hStream: CUstream,
+    streamCigCaptureParams: *mut CUstreamCigCaptureParams,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901190)]
+fn cuStreamEndCaptureToCig(hStream: CUstream) -> CUresult;
+
 #[cuda_hook(proc_id = 900869)]
 fn cuStreamIsCapturing(hStream: CUstream, captureStatus: *mut CUstreamCaptureStatus) -> CUresult;
 

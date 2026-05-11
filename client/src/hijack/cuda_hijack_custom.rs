@@ -2409,6 +2409,24 @@ pub extern "C" fn cuLaunchHostFunc_v2(
 }
 
 #[no_mangle]
+pub extern "C" fn cuStreamBeginCaptureToCig(
+    hStream: CUstream,
+    streamCigCaptureParams: *mut CUstreamCigCaptureParams,
+) -> CUresult {
+    log::debug!(target: "cuStreamBeginCaptureToCig", "");
+    if hStream.is_null() || streamCigCaptureParams.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let params = unsafe { *streamCigCaptureParams };
+    if params.streamCigParams.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
 extern "C" fn cuUserObjectCreate(
     object_out: *mut CUuserObject,
     ptr: *mut c_void,
