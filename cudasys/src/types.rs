@@ -96,6 +96,50 @@ pub mod cuda {
             size_of::<u64>()
         }
     }
+
+    impl std::fmt::Debug for CUDA_MEM_ALLOC_NODE_PARAMS_v1_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let location_id = unsafe { self.poolProps.location.__bindgen_anon_1.id };
+            f.debug_struct("CUDA_MEM_ALLOC_NODE_PARAMS_v1_st")
+                .field("poolProps.allocType", &self.poolProps.allocType)
+                .field("poolProps.handleTypes", &self.poolProps.handleTypes)
+                .field("poolProps.location.type_", &self.poolProps.location.type_)
+                .field("poolProps.location.id", &location_id)
+                .field(
+                    "poolProps.win32SecurityAttributes",
+                    &self.poolProps.win32SecurityAttributes,
+                )
+                .field("poolProps.maxSize", &self.poolProps.maxSize)
+                .field("poolProps.usage", &self.poolProps.usage)
+                .field("accessDescs", &self.accessDescs)
+                .field("accessDescCount", &self.accessDescCount)
+                .field("bytesize", &self.bytesize)
+                .field("dptr", &self.dptr)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for CUDA_MEM_ALLOC_NODE_PARAMS_v2_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let location_id = unsafe { self.poolProps.location.__bindgen_anon_1.id };
+            f.debug_struct("CUDA_MEM_ALLOC_NODE_PARAMS_v2_st")
+                .field("poolProps.allocType", &self.poolProps.allocType)
+                .field("poolProps.handleTypes", &self.poolProps.handleTypes)
+                .field("poolProps.location.type_", &self.poolProps.location.type_)
+                .field("poolProps.location.id", &location_id)
+                .field(
+                    "poolProps.win32SecurityAttributes",
+                    &self.poolProps.win32SecurityAttributes,
+                )
+                .field("poolProps.maxSize", &self.poolProps.maxSize)
+                .field("poolProps.usage", &self.poolProps.usage)
+                .field("accessDescs", &self.accessDescs)
+                .field("accessDescCount", &self.accessDescCount)
+                .field("bytesize", &self.bytesize)
+                .field("dptr", &self.dptr)
+                .finish()
+        }
+    }
 }
 
 pub mod cudart {

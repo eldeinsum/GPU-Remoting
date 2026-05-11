@@ -1289,6 +1289,85 @@ fn cuGraphExecMemcpyNodeSetParams(
     }
 }
 
+#[cuda_hook(proc_id = 900849)]
+fn cuGraphNodeSetEnabled(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    isEnabled: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900850)]
+fn cuGraphNodeGetEnabled(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    isEnabled: *mut c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900851)]
+fn cuGraphAddMemAllocNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    #[host(input, len = 1)] nodeParams: *mut CUDA_MEM_ALLOC_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        let params = unsafe { &*nodeParams };
+        assert!(params.accessDescs.is_null());
+        assert_eq!(params.accessDescCount, 0);
+        assert_eq!(
+            params.poolProps.allocType,
+            CUmemAllocationType::CU_MEM_ALLOCATION_TYPE_PINNED
+        );
+        assert_eq!(
+            params.poolProps.handleTypes,
+            CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_NONE
+        );
+        assert_eq!(
+            params.poolProps.location.type_,
+            CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE
+        );
+        assert!(params.poolProps.win32SecurityAttributes.is_null());
+    }
+    'client_after_recv: {
+        let mut node_params_out: CUDA_MEM_ALLOC_NODE_PARAMS = unsafe { std::mem::zeroed() };
+        node_params_out.recv(channel_receiver).unwrap();
+        unsafe {
+            std::ptr::write(nodeParams.as_ptr().cast_mut(), node_params_out);
+        }
+    }
+    'server_after_send: {
+        nodeParams[0].send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+    }
+}
+
+#[cuda_hook(proc_id = 900852)]
+fn cuGraphMemAllocNodeGetParams(
+    hNode: CUgraphNode,
+    #[host(output, len = 1)] params_out: *mut CUDA_MEM_ALLOC_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900853)]
+fn cuGraphAddMemFreeNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    dptr: CUdeviceptr,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        assert_ne!(dptr, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900854)]
+fn cuGraphMemFreeNodeGetParams(hNode: CUgraphNode, dptr_out: *mut CUdeviceptr) -> CUresult;
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

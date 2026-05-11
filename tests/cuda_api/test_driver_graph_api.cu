@@ -317,6 +317,37 @@ static int check_memory_graph(CUstream stream, CUcontext context)
                                              context));
     CHECK_DRV(cuGraphExecMemcpyNodeSetParams(exec, copy_node, &copy_params,
                                              context));
+
+    unsigned int node_enabled = 0;
+    CHECK_DRV(cuGraphNodeGetEnabled(exec, copy_node, &node_enabled));
+    if (node_enabled != 1) {
+        std::fprintf(stderr, "unexpected graph node enabled state: %u\n",
+                     node_enabled);
+        return 1;
+    }
+    CHECK_DRV(cuGraphNodeSetEnabled(exec, copy_node, 0));
+    CHECK_DRV(cuGraphNodeGetEnabled(exec, copy_node, &node_enabled));
+    if (node_enabled != 0) {
+        std::fprintf(stderr, "graph node disable did not persist\n");
+        return 1;
+    }
+    CHECK_DRV(cuMemsetD8(device_b, 0, bytes));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+    unsigned char disabled_output[bytes];
+    CHECK_DRV(cuMemcpyDtoH(disabled_output, device_b, bytes));
+    for (size_t i = 0; i < bytes; ++i) {
+        if (disabled_output[i] != 0) {
+            std::fprintf(stderr, "disabled graph memcpy wrote byte %zu\n", i);
+            return 1;
+        }
+    }
+    CHECK_DRV(cuGraphNodeSetEnabled(exec, copy_node, 1));
+    CHECK_DRV(cuGraphNodeGetEnabled(exec, copy_node, &node_enabled));
+    if (node_enabled != 1) {
+        std::fprintf(stderr, "graph node enable did not persist\n");
+        return 1;
+    }
     CHECK_DRV(cuGraphLaunch(exec, stream));
     CHECK_DRV(cuStreamSynchronize(stream));
 
@@ -333,6 +364,96 @@ static int check_memory_graph(CUstream stream, CUcontext context)
     CHECK_DRV(cuGraphDestroy(graph));
     CHECK_DRV(cuMemFree(device_b));
     CHECK_DRV(cuMemFree(device_a));
+
+    return 0;
+}
+
+static int check_mem_alloc_graph(CUstream stream, CUcontext context)
+{
+    const size_t bytes = 64;
+    CUdeviceptr copy_dst = 0;
+    CHECK_DRV(cuMemAlloc(&copy_dst, bytes));
+    CHECK_DRV(cuMemsetD8(copy_dst, 0, bytes));
+
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    CUDA_MEM_ALLOC_NODE_PARAMS alloc_params = {};
+    alloc_params.poolProps.allocType = CU_MEM_ALLOCATION_TYPE_PINNED;
+    alloc_params.poolProps.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
+    alloc_params.poolProps.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    alloc_params.poolProps.location.id = 0;
+    alloc_params.bytesize = bytes;
+
+    CUgraphNode alloc_node = nullptr;
+    CHECK_DRV(cuGraphAddMemAllocNode(&alloc_node, graph, nullptr, 0,
+                                     &alloc_params));
+    if (alloc_params.dptr == 0) {
+        std::fprintf(stderr, "graph alloc node returned null allocation\n");
+        return 1;
+    }
+
+    CUDA_MEM_ALLOC_NODE_PARAMS queried_alloc = {};
+    CHECK_DRV(cuGraphMemAllocNodeGetParams(alloc_node, &queried_alloc));
+    if (queried_alloc.dptr != alloc_params.dptr ||
+        queried_alloc.bytesize != bytes) {
+        std::fprintf(stderr, "unexpected graph alloc node params\n");
+        return 1;
+    }
+
+    CUDA_MEMSET_NODE_PARAMS memset_params = {};
+    memset_params.dst = alloc_params.dptr;
+    memset_params.value = 0x4d;
+    memset_params.elementSize = 1;
+    memset_params.width = bytes;
+    memset_params.height = 1;
+    CUgraphNode memset_node = nullptr;
+    CHECK_DRV(cuGraphAddMemsetNode(&memset_node, graph, nullptr, 0,
+                                   &memset_params, context));
+
+    CUDA_MEMCPY3D copy_params = {};
+    copy_params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+    copy_params.srcDevice = alloc_params.dptr;
+    copy_params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+    copy_params.dstDevice = copy_dst;
+    copy_params.WidthInBytes = bytes;
+    copy_params.Height = 1;
+    copy_params.Depth = 1;
+    CUgraphNode copy_node = nullptr;
+    CHECK_DRV(cuGraphAddMemcpyNode(&copy_node, graph, nullptr, 0,
+                                   &copy_params, context));
+
+    CUgraphNode free_node = nullptr;
+    CHECK_DRV(cuGraphAddMemFreeNode(&free_node, graph, nullptr, 0,
+                                    alloc_params.dptr));
+    CUdeviceptr queried_free = 0;
+    CHECK_DRV(cuGraphMemFreeNodeGetParams(free_node, &queried_free));
+    if (queried_free != alloc_params.dptr) {
+        std::fprintf(stderr, "unexpected graph free node pointer\n");
+        return 1;
+    }
+
+    CUgraphNode from[3] = {alloc_node, memset_node, copy_node};
+    CUgraphNode to[3] = {memset_node, copy_node, free_node};
+    CHECK_DRV(cuGraphAddDependencies(graph, from, to, nullptr, 3));
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    unsigned char output[bytes];
+    CHECK_DRV(cuMemcpyDtoH(output, copy_dst, bytes));
+    for (size_t i = 0; i < bytes; ++i) {
+        if (output[i] != 0x4d) {
+            std::fprintf(stderr, "graph alloc output mismatch at %zu\n", i);
+            return 1;
+        }
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(graph));
+    CHECK_DRV(cuMemFree(copy_dst));
 
     return 0;
 }
@@ -373,6 +494,9 @@ int main()
         return 1;
     }
     if (check_memory_graph(stream, context) != 0) {
+        return 1;
+    }
+    if (check_mem_alloc_graph(stream, context) != 0) {
         return 1;
     }
 
