@@ -164,6 +164,124 @@ fn cu_graph_get_edge_list<T: Transportable>(
 }
 
 #[no_mangle]
+extern "C" fn cuMemPrefetchAsync_v2(
+    devPtr: CUdeviceptr,
+    count: usize,
+    location: CUmemLocation,
+    flags: c_uint,
+    hStream: CUstream,
+) -> CUresult {
+    if devPtr == 0 || count == 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPrefetchAsync_v2", "[#{}]", client.id);
+
+        900984.send(&client.channel_sender).unwrap();
+        devPtr.send(&client.channel_sender).unwrap();
+        count.send(&client.channel_sender).unwrap();
+        location.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        hStream.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result("cuMemPrefetchAsync_v2", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemAdvise_v2(
+    devPtr: CUdeviceptr,
+    count: usize,
+    advice: CUmem_advise,
+    location: CUmemLocation,
+) -> CUresult {
+    if devPtr == 0 || count == 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemAdvise_v2", "[#{}]", client.id);
+
+        900985.send(&client.channel_sender).unwrap();
+        devPtr.send(&client.channel_sender).unwrap();
+        count.send(&client.channel_sender).unwrap();
+        advice.send(&client.channel_sender).unwrap();
+        location.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result("cuMemAdvise_v2", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemRangeGetAttributes(
+    data: *mut *mut c_void,
+    dataSizes: *mut usize,
+    attributes: *mut CUmem_range_attribute,
+    numAttributes: usize,
+    devPtr: CUdeviceptr,
+    count: usize,
+) -> CUresult {
+    if data.is_null()
+        || dataSizes.is_null()
+        || attributes.is_null()
+        || numAttributes == 0
+        || devPtr == 0
+        || count == 0
+    {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let data_sizes = unsafe { std::slice::from_raw_parts(dataSizes, numAttributes) };
+    let attrs = unsafe { std::slice::from_raw_parts(attributes, numAttributes) };
+    for (idx, size) in data_sizes.iter().enumerate() {
+        if *size == 0 || unsafe { *data.add(idx) }.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemRangeGetAttributes", "[#{}]", client.id);
+
+        900987.send(&client.channel_sender).unwrap();
+        send_slice(data_sizes, &client.channel_sender).unwrap();
+        send_slice(attrs, &client.channel_sender).unwrap();
+        devPtr.send(&client.channel_sender).unwrap();
+        count.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut local_error = None;
+        for (idx, capacity) in data_sizes.iter().copied().enumerate() {
+            let bytes = recv_slice::<u8, _>(&client.channel_receiver).unwrap();
+            if bytes.len() > capacity {
+                log::error!(
+                    target: "cuMemRangeGetAttributes",
+                    "server returned {} bytes for client capacity {}",
+                    bytes.len(),
+                    capacity,
+                );
+                local_error = Some(CUresult::CUDA_ERROR_INVALID_VALUE);
+                continue;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr().cast(), *data.add(idx), bytes.len());
+            }
+        }
+        let result = recv_cu_result(
+            "cuMemRangeGetAttributes",
+            client.id,
+            &client.channel_receiver,
+        );
+        local_error.unwrap_or(result)
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuTexObjectCreate(
     pTexObject: *mut CUtexObject,
     pResDesc: *const CUDA_RESOURCE_DESC,

@@ -599,8 +599,19 @@ fn cudaStreamGetDevResource(
 #[cuda_hook(proc_id = 900425, async_api = false)]
 fn cudaStreamQuery(stream: cudaStream_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900989, async_api)]
+fn cudaStreamAttachMemAsync(
+    stream: cudaStream_t,
+    #[device] devPtr: *mut c_void,
+    length: usize,
+    flags: c_uint,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 265)]
 fn cudaMalloc(devPtr: *mut *mut c_void, size: usize) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900990)]
+fn cudaMallocManaged(devPtr: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900420)]
 fn cudaMallocAsync(devPtr: *mut *mut c_void, size: usize, hStream: cudaStream_t) -> cudaError_t;
@@ -1273,6 +1284,42 @@ fn cudaGetSymbolAddress(devPtr: *mut *mut c_void, symbol: *const c_void) -> cuda
 
 #[cuda_custom_hook] // calls driver API
 fn cudaGetSymbolSize(size: *mut usize, symbol: *const c_void) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900991, async_api)]
+fn cudaMemPrefetchAsync(
+    #[device] devPtr: *const c_void,
+    count: usize,
+    location: cudaMemLocation,
+    flags: c_uint,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900992)]
+fn cudaMemAdvise(
+    #[device] devPtr: *const c_void,
+    count: usize,
+    advice: cudaMemoryAdvise,
+    location: cudaMemLocation,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900993)]
+fn cudaMemRangeGetAttribute(
+    #[host(output, len = dataSize)] data: *mut c_void,
+    dataSize: usize,
+    attribute: cudaMemRangeAttribute,
+    #[device] devPtr: *const c_void,
+    count: usize,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900994)]
+fn cudaMemRangeGetAttributes(
+    data: *mut *mut c_void,
+    dataSizes: *mut usize,
+    attributes: *mut cudaMemRangeAttribute,
+    numAttributes: usize,
+    devPtr: *const c_void,
+    count: usize,
+) -> cudaError_t;
 
 #[cuda_custom_hook] // calls cudaMemcpy
 fn cudaMemcpyToSymbol(

@@ -1087,6 +1087,9 @@ fn cuPointerGetAttribute(
 #[cuda_hook(proc_id = 900201)]
 fn cuMemAlloc_v2(dptr: *mut CUdeviceptr, bytesize: usize) -> CUresult;
 
+#[cuda_hook(proc_id = 900983)]
+fn cuMemAllocManaged(dptr: *mut CUdeviceptr, bytesize: usize, flags: c_uint) -> CUresult;
+
 #[cuda_hook(proc_id = 900492)]
 fn cuMemAllocPitch_v2(
     dptr: *mut CUdeviceptr,
@@ -1107,6 +1110,42 @@ fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
 
 #[cuda_hook(proc_id = 900403)]
 fn cuMemGetInfo_v2(free: *mut usize, total: *mut usize) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900984)]
+fn cuMemPrefetchAsync_v2(
+    devPtr: CUdeviceptr,
+    count: usize,
+    location: CUmemLocation,
+    flags: c_uint,
+    hStream: CUstream,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900985)]
+fn cuMemAdvise_v2(
+    devPtr: CUdeviceptr,
+    count: usize,
+    advice: CUmem_advise,
+    location: CUmemLocation,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900986)]
+fn cuMemRangeGetAttribute(
+    #[host(output, len = dataSize)] data: *mut c_void,
+    dataSize: usize,
+    attribute: CUmem_range_attribute,
+    devPtr: CUdeviceptr,
+    count: usize,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900987)]
+fn cuMemRangeGetAttributes(
+    data: *mut *mut c_void,
+    dataSizes: *mut usize,
+    attributes: *mut CUmem_range_attribute,
+    numAttributes: usize,
+    devPtr: CUdeviceptr,
+    count: usize,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900436, async_api = false)]
 fn cuMemPoolTrimTo(pool: CUmemoryPool, minBytesToKeep: usize) -> CUresult;
@@ -1638,6 +1677,14 @@ fn cuStreamCreateWithPriority(phStream: *mut CUstream, flags: c_uint, priority: 
 
 #[cuda_hook(proc_id = 900209, async_api = false)]
 fn cuStreamDestroy_v2(hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900988, async_api)]
+fn cuStreamAttachMemAsync(
+    hStream: CUstream,
+    dptr: CUdeviceptr,
+    length: usize,
+    flags: c_uint,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900412)]
 fn cuStreamGetFlags(hStream: CUstream, flags: *mut c_uint) -> CUresult;

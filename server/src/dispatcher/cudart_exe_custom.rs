@@ -4,7 +4,7 @@ use super::*;
 use cudasys::cudart::*;
 use cudasys::types::cuda::{CUDA_KERNEL_NODE_PARAMS, CUgraph, CUgraphExec, CUgraphNode, CUresult};
 use std::collections::BTreeMap;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_void};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Default)]
@@ -45,6 +45,58 @@ fn output_len(requested: bool, result: cudaError_t, count: usize, capacity: usiz
     } else {
         0
     }
+}
+
+pub fn cudaMemRangeGetAttributesExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaMemRangeGetAttributes", "[#{}]", server.id);
+
+    let mut data_sizes = recv_slice::<usize, _>(channel_receiver).unwrap();
+    let mut attributes = recv_slice::<cudaMemRangeAttribute, _>(channel_receiver).unwrap();
+    let mut dev_ptr = std::mem::MaybeUninit::<*const c_void>::uninit();
+    dev_ptr.recv(channel_receiver).unwrap();
+    let dev_ptr = unsafe { dev_ptr.assume_init() };
+    let mut count = 0usize;
+    count.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut data = data_sizes
+        .iter()
+        .map(|size| vec![0u8; *size])
+        .collect::<Vec<_>>();
+    let mut data_ptrs = data
+        .iter_mut()
+        .map(|buffer| buffer.as_mut_ptr().cast::<c_void>())
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        cudaMemRangeGetAttributes(
+            data_ptrs.as_mut_ptr(),
+            data_sizes.as_mut_ptr(),
+            attributes.as_mut_ptr(),
+            attributes.len(),
+            dev_ptr,
+            count,
+        )
+    };
+
+    for buffer in data {
+        let len = if result == cudaError_t::cudaSuccess {
+            buffer.len()
+        } else {
+            0
+        };
+        send_slice(&buffer[..len], channel_sender).unwrap();
+    }
+    send_result(
+        "cudaMemRangeGetAttributes",
+        server.id,
+        result,
+        channel_sender,
+    );
 }
 
 pub fn cudaCreateTextureObjectExe<C: CommChannel>(server: &mut ServerWorker<C>) {

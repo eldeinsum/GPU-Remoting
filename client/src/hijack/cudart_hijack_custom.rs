@@ -55,6 +55,70 @@ fn recv_cuda_result<C: CommChannel>(
 }
 
 #[no_mangle]
+pub extern "C" fn cudaMemRangeGetAttributes(
+    data: *mut *mut c_void,
+    dataSizes: *mut usize,
+    attributes: *mut cudaMemRangeAttribute,
+    numAttributes: usize,
+    devPtr: *const c_void,
+    count: usize,
+) -> cudaError_t {
+    if data.is_null()
+        || dataSizes.is_null()
+        || attributes.is_null()
+        || numAttributes == 0
+        || devPtr.is_null()
+        || count == 0
+    {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let data_sizes = unsafe { std::slice::from_raw_parts(dataSizes, numAttributes) };
+    let attrs = unsafe { std::slice::from_raw_parts(attributes, numAttributes) };
+    for (idx, size) in data_sizes.iter().enumerate() {
+        if *size == 0 || unsafe { *data.add(idx) }.is_null() {
+            return cudaError_t::cudaErrorInvalidValue;
+        }
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaMemRangeGetAttributes", "[#{}]", client.id);
+
+        900994.send(&client.channel_sender).unwrap();
+        send_slice(data_sizes, &client.channel_sender).unwrap();
+        send_slice(attrs, &client.channel_sender).unwrap();
+        devPtr.send(&client.channel_sender).unwrap();
+        count.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut local_error = None;
+        for (idx, capacity) in data_sizes.iter().copied().enumerate() {
+            let bytes = recv_slice::<u8, _>(&client.channel_receiver).unwrap();
+            if bytes.len() > capacity {
+                log::error!(
+                    target: "cudaMemRangeGetAttributes",
+                    "server returned {} bytes for client capacity {}",
+                    bytes.len(),
+                    capacity,
+                );
+                local_error = Some(cudaError_t::cudaErrorInvalidValue);
+                continue;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr().cast(), *data.add(idx), bytes.len());
+            }
+        }
+        let result = recv_cuda_result(
+            "cudaMemRangeGetAttributes",
+            client.id,
+            &client.channel_receiver,
+        );
+        local_error.unwrap_or(result)
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn cudaCreateTextureObject(
     pTexObject: *mut cudaTextureObject_t,
     pResDesc: *const cudaResourceDesc,

@@ -5,7 +5,7 @@ use cudasys::cuda::*;
 use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_void};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Default)]
@@ -52,6 +52,101 @@ fn make_edge_data_buffer(capacity: usize) -> Vec<CUgraphEdgeData> {
     (0..capacity)
         .map(|_| unsafe { std::mem::zeroed() })
         .collect()
+}
+
+pub fn cuMemPrefetchAsync_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemPrefetchAsync_v2", "[#{}]", server.id);
+
+    let mut dev_ptr = 0;
+    dev_ptr.recv(channel_receiver).unwrap();
+    let mut count = 0usize;
+    count.recv(channel_receiver).unwrap();
+    let mut location = std::mem::MaybeUninit::<CUmemLocation>::uninit();
+    location.recv(channel_receiver).unwrap();
+    let location = unsafe { location.assume_init() };
+    let mut flags = 0u32;
+    flags.recv(channel_receiver).unwrap();
+    let mut stream = std::mem::MaybeUninit::<CUstream>::uninit();
+    stream.recv(channel_receiver).unwrap();
+    let stream = unsafe { stream.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let result = unsafe { cuMemPrefetchAsync_v2(dev_ptr, count, location, flags, stream) };
+    send_result("cuMemPrefetchAsync_v2", server.id, result, channel_sender);
+}
+
+pub fn cuMemAdvise_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemAdvise_v2", "[#{}]", server.id);
+
+    let mut dev_ptr = 0;
+    dev_ptr.recv(channel_receiver).unwrap();
+    let mut count = 0usize;
+    count.recv(channel_receiver).unwrap();
+    let mut advice = CUmem_advise::CU_MEM_ADVISE_SET_READ_MOSTLY;
+    advice.recv(channel_receiver).unwrap();
+    let mut location = std::mem::MaybeUninit::<CUmemLocation>::uninit();
+    location.recv(channel_receiver).unwrap();
+    let location = unsafe { location.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let result = unsafe { cuMemAdvise_v2(dev_ptr, count, advice, location) };
+    send_result("cuMemAdvise_v2", server.id, result, channel_sender);
+}
+
+pub fn cuMemRangeGetAttributesExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemRangeGetAttributes", "[#{}]", server.id);
+
+    let mut data_sizes = recv_slice::<usize, _>(channel_receiver).unwrap();
+    let mut attributes = recv_slice::<CUmem_range_attribute, _>(channel_receiver).unwrap();
+    let mut dev_ptr = 0;
+    dev_ptr.recv(channel_receiver).unwrap();
+    let mut count = 0usize;
+    count.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut data = data_sizes
+        .iter()
+        .map(|size| vec![0u8; *size])
+        .collect::<Vec<_>>();
+    let mut data_ptrs = data
+        .iter_mut()
+        .map(|buffer| buffer.as_mut_ptr().cast::<c_void>())
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        cuMemRangeGetAttributes(
+            data_ptrs.as_mut_ptr(),
+            data_sizes.as_mut_ptr(),
+            attributes.as_mut_ptr(),
+            attributes.len(),
+            dev_ptr,
+            count,
+        )
+    };
+
+    for buffer in data {
+        let len = if result == CUresult::CUDA_SUCCESS {
+            buffer.len()
+        } else {
+            0
+        };
+        send_slice(&buffer[..len], channel_sender).unwrap();
+    }
+    send_result("cuMemRangeGetAttributes", server.id, result, channel_sender);
 }
 
 pub fn cuTexObjectCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
