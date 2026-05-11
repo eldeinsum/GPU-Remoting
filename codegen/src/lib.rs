@@ -147,39 +147,56 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         });
 
-    // receive vars
-    let recv_statements = vars.iter().map(|var| {
+    // bind caller output pointers before receiving the status so follow-up injections
+    // can keep using dereferenced output names even when a failed call has no payload.
+    let recv_def_statements = vars.iter().map(|var| {
         let name = &var.name;
-        let name_str = name.to_string();
-        let deref = match &var.pass_by {
+        match &var.pass_by {
             PassBy::InputValue | PassBy::InputCStr => unreachable!(),
             PassBy::SinglePtr => quote! {
                 assert!(!#name.is_null());
                 let #name = unsafe { &mut *#name };
+            },
+            PassBy::ArrayPtr { len, cap } => {
+                let cap_expr = cap.as_ref().unwrap_or(len);
+                let cap_ident = format_ident!("{}_cap", name);
+                let mut tokens = define_usize_from(&cap_ident, cap_expr);
+                let span = name.span();
+                quote_each_token_spanned! {tokens span
+                    assert!(!#name.is_null());
+                    let #name = unsafe { std::slice::from_raw_parts_mut(#name, #cap_ident) };
+                };
+                tokens
+            }
+        }
+    });
+
+    // receive vars
+    let recv_statements = vars.iter().map(|var| {
+        let name = &var.name;
+        let name_str = name.to_string();
+        match &var.pass_by {
+            PassBy::InputValue | PassBy::InputCStr => unreachable!(),
+            PassBy::SinglePtr => quote_spanned! {name.span()=>
+                match #name.recv(channel_receiver) {
+                    Ok(()) => {}
+                    Err(e) => panic!("failed to receive {}: {}", #name_str, e),
+                }
+                log::trace!(target: #func_str, "[#{}] (output) {} = {:?}", client.id, #name_str, #name);
             },
             PassBy::ArrayPtr { len, .. } => {
                 let len_ident = format_ident!("{}_len", name);
                 let mut tokens = define_usize_from(&len_ident, len);
                 let span = name.span();
                 quote_each_token_spanned! {tokens span
-                    assert!(!#name.is_null());
-                    let #name = unsafe { std::slice::from_raw_parts_mut(#name, #len_ident) };
-                    match recv_slice_to(#name, channel_receiver) {
+                    match recv_slice_to(&mut #name[..#len_ident], channel_receiver) {
                         Ok(()) => {}
-                        Err(e) => panic!("failed to send {}: {}", #name_str, e),
+                        Err(e) => panic!("failed to receive {}: {}", #name_str, e),
                     }
+                    log::trace!(target: #func_str, "[#{}] (output) {} = {:?}", client.id, #name_str, #name);
                 };
-                return tokens;
+                tokens
             }
-        };
-        quote_spanned! {name.span()=>
-            // FIXME: allocate space for null pointers
-            #deref
-            match #name.recv(channel_receiver) {
-                Ok(()) => {}
-                Err(e) => panic!("failed to receive {}: {}", #name_str, e),
-            }
-            log::trace!(target: #func_str, "[#{}] (output) {} = {:?}", client.id, #name_str, #name);
         }
     });
 
@@ -268,10 +285,13 @@ pub fn cuda_hook_hijack(args: TokenStream, input: TokenStream) -> TokenStream {
             #shadow_desc_return
             #async_api_return
 
-            #( #recv_statements )*
+            #( #recv_def_statements )*
             match #result_name.recv(channel_receiver) {
                 Ok(()) => {}
                 Err(e) => panic!("failed to receive {}: {}", stringify!(#result_name), e),
+            }
+            if !#result_name.is_error() {
+                #( #recv_statements )*
             }
             match channel_receiver.recv_ts() {
                 Ok(()) => {}
@@ -587,10 +607,12 @@ pub fn cuda_hook_exe(args: TokenStream, input: TokenStream) -> TokenStream {
 
             #shadow_desc_return
             #async_api_return
-            #( #send_statements )*
             match #result_name.send(channel_sender) {
                 Ok(()) => {}
                 Err(e) => panic!("failed to send {}: {}", stringify!(#result_name), e),
+            }
+            if !#result_name.is_error() {
+                #( #send_statements )*
             }
             match channel_sender.flush_out() {
                 Ok(()) => {}
