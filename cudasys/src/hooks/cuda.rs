@@ -879,11 +879,32 @@ fn cuStreamGetId(hStream: CUstream, streamId: *mut c_ulonglong) -> CUresult;
 #[cuda_hook(proc_id = 900417)]
 fn cuStreamGetCtx(hStream: CUstream, pctx: *mut CUcontext) -> CUresult;
 
+#[cuda_hook(proc_id = 900883)]
+fn cuStreamGetCtx_v2(
+    hStream: CUstream,
+    pCtx: *mut CUcontext,
+    pGreenCtx: *mut CUgreenCtx,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900418, async_api = false)]
 fn cuStreamWaitEvent(hStream: CUstream, hEvent: CUevent, Flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 900432)]
 fn cuStreamCopyAttributes(dst: CUstream, src: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900884)]
+fn cuStreamGetAttribute(
+    hStream: CUstream,
+    attr: CUstreamAttrID,
+    #[host(output, len = 1)] value_out: *mut CUstreamAttrValue,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900885)]
+fn cuStreamSetAttribute(
+    hStream: CUstream,
+    attr: CUstreamAttrID,
+    #[host(len = 1)] value: *const CUstreamAttrValue,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900876, async_api)]
 fn cuStreamWaitValue32_v2(
@@ -919,6 +940,20 @@ fn cuStreamWriteValue64_v2(
 
 #[cuda_hook(proc_id = 900866, async_api = false)]
 fn cuStreamBeginCapture_v2(hStream: CUstream, mode: CUstreamCaptureMode) -> CUresult;
+
+#[cuda_hook(proc_id = 900886)]
+fn cuThreadExchangeStreamCaptureMode(mode: *mut CUstreamCaptureMode) -> CUresult {
+    'client_extra_send: {
+        unsafe { *mode }.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut mode_in = CUstreamCaptureMode::CU_STREAM_CAPTURE_MODE_GLOBAL;
+        mode_in.recv(channel_receiver).unwrap();
+    }
+    'server_before_execution: {
+        mode.write(mode_in);
+    }
+}
 
 #[cuda_hook(proc_id = 900867)]
 fn cuStreamBeginCaptureToGraph(

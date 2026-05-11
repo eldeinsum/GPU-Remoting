@@ -70,6 +70,18 @@ int main()
     if (runtime_device != 0) {
         return 1;
     }
+    cudaStreamAttrValue runtime_attr = {};
+    runtime_attr.syncPolicy = cudaSyncPolicyAuto;
+    CHECK_CUDA_SUCCESS(cudaStreamSetAttribute(
+        runtime_a, cudaStreamAttributeSynchronizationPolicy, &runtime_attr));
+    cudaStreamAttrValue runtime_attr_out = {};
+    CHECK_CUDA_SUCCESS(cudaStreamGetAttribute(
+        runtime_a, cudaStreamAttributeSynchronizationPolicy,
+        &runtime_attr_out));
+    if (runtime_attr_out.syncPolicy != cudaSyncPolicyAuto) {
+        std::fprintf(stderr, "unexpected runtime stream sync policy\n");
+        return 1;
+    }
 
     CHECK_CUDA_SUCCESS(cudaEventCreate(&runtime_start));
     CHECK_CUDA_SUCCESS(cudaEventCreate(&runtime_end));
@@ -109,9 +121,36 @@ int main()
     CHECK_DRV_SUCCESS(cuStreamGetId(driver_a, &driver_stream_id));
     CHECK_DRV_SUCCESS(cuStreamGetDevice(driver_a, &driver_device));
     CHECK_DRV_SUCCESS(cuStreamGetCtx(driver_a, &driver_context));
+    CUcontext driver_context_v2 = nullptr;
+    CUgreenCtx driver_green_context = nullptr;
+    CHECK_DRV_SUCCESS(cuStreamGetCtx_v2(driver_a, &driver_context_v2,
+                                        &driver_green_context));
     if (driver_device != 0 || driver_context == nullptr) {
         return 1;
     }
+    if (driver_context_v2 != driver_context || driver_green_context != nullptr) {
+        std::fprintf(stderr, "unexpected driver stream context metadata\n");
+        return 1;
+    }
+    CUstreamAttrValue driver_attr = {};
+    driver_attr.syncPolicy = CU_SYNC_POLICY_AUTO;
+    CHECK_DRV_SUCCESS(cuStreamSetAttribute(
+        driver_a, CU_STREAM_ATTRIBUTE_SYNCHRONIZATION_POLICY, &driver_attr));
+    CUstreamAttrValue driver_attr_out = {};
+    CHECK_DRV_SUCCESS(cuStreamGetAttribute(
+        driver_a, CU_STREAM_ATTRIBUTE_SYNCHRONIZATION_POLICY,
+        &driver_attr_out));
+    if (driver_attr_out.syncPolicy != CU_SYNC_POLICY_AUTO) {
+        std::fprintf(stderr, "unexpected driver stream sync policy\n");
+        return 1;
+    }
+    CUstreamCaptureMode driver_capture_mode = CU_STREAM_CAPTURE_MODE_RELAXED;
+    CHECK_DRV_SUCCESS(cuThreadExchangeStreamCaptureMode(&driver_capture_mode));
+    if (driver_capture_mode != CU_STREAM_CAPTURE_MODE_GLOBAL) {
+        std::fprintf(stderr, "unexpected driver capture mode\n");
+        return 1;
+    }
+    CHECK_DRV_SUCCESS(cuThreadExchangeStreamCaptureMode(&driver_capture_mode));
 
     CHECK_DRV_SUCCESS(cuEventCreate(&driver_start, CU_EVENT_DEFAULT));
     CHECK_DRV_SUCCESS(cuEventCreate(&driver_end, CU_EVENT_DEFAULT));

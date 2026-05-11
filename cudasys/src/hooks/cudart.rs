@@ -256,6 +256,20 @@ fn cudaStreamGetDevice(hStream: cudaStream_t, device: *mut c_int) -> cudaError_t
 #[cuda_hook(proc_id = 900431)]
 fn cudaStreamCopyAttributes(dst: cudaStream_t, src: cudaStream_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900887)]
+fn cudaStreamGetAttribute(
+    hStream: cudaStream_t,
+    attr: cudaLaunchAttributeID,
+    #[host(output, len = 1)] value_out: *mut cudaLaunchAttributeValue,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900888)]
+fn cudaStreamSetAttribute(
+    hStream: cudaStream_t,
+    attr: cudaLaunchAttributeID,
+    #[host(len = 1)] value: *const cudaLaunchAttributeValue,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900425, async_api = false)]
 fn cudaStreamQuery(stream: cudaStream_t) -> cudaError_t;
 
@@ -1109,7 +1123,7 @@ fn cudaEventRecord(event: cudaEvent_t, stream: cudaStream_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900426)]
 fn cudaEventRecordWithFlags(event: cudaEvent_t, stream: cudaStream_t, flags: c_uint)
-    -> cudaError_t;
+-> cudaError_t;
 
 #[cuda_hook(proc_id = 900104, async_api = false)]
 fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t;

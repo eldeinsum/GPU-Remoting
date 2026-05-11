@@ -224,6 +224,15 @@ pub mod cudart {
             size_of::<u64>()
         }
     }
+
+    impl std::fmt::Debug for cudaLaunchAttributeValue {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let pad = unsafe { self.pad };
+            f.debug_struct("cudaLaunchAttributeValue")
+                .field("pad", &pad)
+                .finish()
+        }
+    }
 }
 
 pub mod nvml {
