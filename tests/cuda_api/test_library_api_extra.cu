@@ -118,6 +118,24 @@ static int runtime_launch_and_check(cudaKernel_t kernel, void *d_output, int val
     return 0;
 }
 
+static int runtime_cooperative_launch_and_check(cudaKernel_t kernel, void *d_output, int value, int expected)
+{
+    CHECK_CUDA(cudaMemset(d_output, 0, sizeof(int)));
+    void *args[] = {
+        (void *)&d_output,
+        (void *)&value,
+    };
+    CHECK_CUDA(cudaLaunchCooperativeKernel((const void *)kernel, dim3(1), dim3(1), args, 0, nullptr));
+    CHECK_CUDA(cudaDeviceSynchronize());
+    int output = 0;
+    CHECK_CUDA(cudaMemcpy(&output, d_output, sizeof(output), cudaMemcpyDeviceToHost));
+    if (output != expected) {
+        std::cerr << "runtime cooperative library kernel produced " << output << " expected " << expected << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
 static int write_temp_cubin(const std::vector<char> &cubin, std::string *path)
 {
     *path = "/tmp/gpu_remoting_library_api_" + std::to_string(getpid()) + ".cubin";
@@ -391,6 +409,7 @@ int main()
         std::cerr << "unexpected runtime max threads per block: " << runtime_attributes.maxThreadsPerBlock << std::endl;
         return 1;
     }
+    CHECK_CUDA(cudaKernelSetAttributeForDevice(runtime_kernel, cudaFuncAttributePreferredSharedMemoryCarveout, 0, 0));
 
     void *runtime_output = nullptr;
     CHECK_CUDA(cudaMalloc(&runtime_output, sizeof(int)));
@@ -399,6 +418,15 @@ int main()
     }
     if (runtime_launch_and_check(runtime_kernels[0], runtime_output, 31, 48) != 0) {
         return 1;
+    }
+    int runtime_cooperative = 0;
+    CHECK_CUDA(cudaDeviceGetAttribute(&runtime_cooperative, cudaDevAttrCooperativeLaunch, 0));
+    if (runtime_cooperative) {
+        if (runtime_cooperative_launch_and_check(runtime_kernel, runtime_output, 37, 54) != 0) {
+            return 1;
+        }
+    } else {
+        std::cout << "runtime cooperative launch unsupported; skipped" << std::endl;
     }
     CHECK_CUDA(cudaFree(runtime_output));
     CHECK_CUDA(cudaLibraryUnload(runtime_library));

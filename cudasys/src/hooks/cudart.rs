@@ -1561,6 +1561,16 @@ fn cudaLaunchKernel(
     stream: cudaStream_t,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // calls driver API
+fn cudaLaunchCooperativeKernel(
+    func: *const c_void,
+    gridDim: dim3,
+    blockDim: dim3,
+    args: *mut *mut c_void,
+    sharedMem: usize,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
 #[cuda_custom_hook] // local
 fn cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> cudaError_t;
 
@@ -1919,6 +1929,14 @@ fn cudaDeviceSynchronize() -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
 fn cudaFuncSetAttribute(func: *const c_void, attr: cudaFuncAttribute, value: c_int) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaKernelSetAttributeForDevice(
+    kernel: cudaKernel_t,
+    attr: cudaFuncAttribute,
+    value: c_int,
+    device: c_int,
+) -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
 fn cudaFuncSetCacheConfig(func: *const c_void, cacheConfig: cudaFuncCache) -> cudaError_t;

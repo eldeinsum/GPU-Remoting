@@ -1604,6 +1604,35 @@ pub extern "C" fn cudaLaunchKernel(
 }
 
 #[no_mangle]
+pub extern "C" fn cudaLaunchCooperativeKernel(
+    func: MemPtr,
+    gridDim: dim3,
+    blockDim: dim3,
+    args: *mut *mut ::std::os::raw::c_void,
+    sharedMem: usize,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaLaunchCooperativeKernel", "");
+
+    let cufunc = get_cufunction(func);
+
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuLaunchCooperativeKernel(
+            cufunc,
+            gridDim.x,
+            gridDim.y,
+            gridDim.z,
+            blockDim.x,
+            blockDim.y,
+            blockDim.z,
+            sharedMem.try_into().unwrap(),
+            stream.cast(),
+            args,
+        ))
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn __cudaLaunchKernel(
     kernel: cudaKernel_t,
     gridDim: dim3,
@@ -2483,6 +2512,25 @@ extern "C" fn cudaFuncSetAttribute(
             get_cufunction(func as _),
             std::mem::transmute(attr),
             value,
+        ))
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudaKernelSetAttributeForDevice(
+    kernel: cudaKernel_t,
+    attr: cudaFuncAttribute,
+    value: c_int,
+    device: c_int,
+) -> cudaError_t {
+    log::debug!(target: "cudaKernelSetAttributeForDevice", "");
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuKernelSetAttribute(
+            std::mem::transmute(attr),
+            value,
+            kernel.cast::<cudasys::types::cuda::CUkern_st>(),
+            device,
         ))
     }
 }
