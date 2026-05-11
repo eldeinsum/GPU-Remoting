@@ -21,6 +21,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::ffi::{CString, c_char, c_void};
 use std::io::{Read as _, Write as _};
+use std::net::Shutdown;
 use std::sync::{Mutex, OnceLock, RwLock};
 
 use cudasys::types::cublas::{cublasHandle_t, cublasPointerMode_t};
@@ -39,6 +40,7 @@ type HostPtr = usize;
 struct ClientThread {
     pid: u32,
     id: i32,
+    daemon_stream: std::net::TcpStream,
     channel_sender: Channel,
     channel_receiver: Channel,
     resource_idx: usize,
@@ -64,12 +66,12 @@ impl ClientThread {
             }
         }
         let config = network::NetworkConfig::read_from_file();
-        let id = {
+        let (id, daemon_stream) = {
             let mut stream = std::net::TcpStream::connect(&config.daemon_socket).unwrap();
             stream.write_all(&std::process::id().to_be_bytes()).unwrap();
             let mut buf = [0u8; 4];
             stream.read_exact(&mut buf).unwrap();
-            i32::from_be_bytes(buf)
+            (i32::from_be_bytes(buf), stream)
         };
         log::info!(
             "[#{id}] PID = {}, {:?}",
@@ -121,6 +123,7 @@ impl ClientThread {
         Self {
             pid: std::process::id(),
             id,
+            daemon_stream,
             channel_sender,
             channel_receiver,
             resource_idx: 0,
@@ -153,6 +156,7 @@ impl Drop for ClientThread {
         let proc_id = -1;
         proc_id.send(&self.channel_sender).unwrap();
         self.channel_sender.flush_out().unwrap();
+        let _ = self.daemon_stream.shutdown(Shutdown::Both);
     }
 }
 
