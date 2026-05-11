@@ -1572,6 +1572,23 @@ fn cuGraphExecKernelNodeSetParams_v2(
     }
 }
 
+#[cuda_hook(proc_id = 900859)]
+fn cuGraphKernelNodeCopyAttributes(dst: CUgraphNode, src: CUgraphNode) -> CUresult;
+
+#[cuda_hook(proc_id = 900860)]
+fn cuGraphKernelNodeGetAttribute(
+    hNode: CUgraphNode,
+    attr: CUkernelNodeAttrID,
+    #[host(output, len = 1)] value_out: *mut CUkernelNodeAttrValue,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900861)]
+fn cuGraphKernelNodeSetAttribute(
+    hNode: CUgraphNode,
+    attr: CUkernelNodeAttrID,
+    #[host(len = 1)] value: *const CUkernelNodeAttrValue,
+) -> CUresult;
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

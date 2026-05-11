@@ -140,6 +140,15 @@ pub mod cuda {
                 .finish()
         }
     }
+
+    impl std::fmt::Debug for CUlaunchAttributeValue_union {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let pad = unsafe { self.pad };
+            f.debug_struct("CUlaunchAttributeValue_union")
+                .field("pad", &pad)
+                .finish()
+        }
+    }
 }
 
 pub mod cudart {

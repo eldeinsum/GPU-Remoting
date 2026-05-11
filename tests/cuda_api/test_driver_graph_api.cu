@@ -560,6 +560,25 @@ static int check_kernel_graph(CUstream stream, CUdevice device)
     CHECK_DRV(cuGraphAddKernelNode(&kernel_node, graph, nullptr, 0,
                                    &kernel_params));
 
+    CUgraphNode attr_copy_node = nullptr;
+    CHECK_DRV(cuGraphAddKernelNode(&attr_copy_node, graph, nullptr, 0,
+                                   &kernel_params));
+    CUkernelNodeAttrValue attr_value = {};
+    attr_value.priority = 0;
+    CHECK_DRV(cuGraphKernelNodeSetAttribute(kernel_node,
+                                            CU_KERNEL_NODE_ATTRIBUTE_PRIORITY,
+                                            &attr_value));
+    CHECK_DRV(cuGraphKernelNodeCopyAttributes(attr_copy_node, kernel_node));
+    CUkernelNodeAttrValue queried_attr = {};
+    CHECK_DRV(cuGraphKernelNodeGetAttribute(attr_copy_node,
+                                            CU_KERNEL_NODE_ATTRIBUTE_PRIORITY,
+                                            &queried_attr));
+    if (queried_attr.priority != 0) {
+        std::fprintf(stderr, "unexpected graph kernel priority attribute\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphDestroyNode(attr_copy_node));
+
     CUDA_KERNEL_NODE_PARAMS queried_params = {};
     CHECK_DRV(cuGraphKernelNodeGetParams(kernel_node, &queried_params));
     if (queried_params.func != function || queried_params.gridDimX != 1 ||
