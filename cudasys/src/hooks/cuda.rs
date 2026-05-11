@@ -72,6 +72,50 @@ fn cuMipmappedArrayGetSparseProperties(
     mipmap: CUmipmappedArray,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 900975)]
+fn cuTexObjectCreate(
+    pTexObject: *mut CUtexObject,
+    pResDesc: *const CUDA_RESOURCE_DESC,
+    pTexDesc: *const CUDA_TEXTURE_DESC,
+    pResViewDesc: *const CUDA_RESOURCE_VIEW_DESC,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900976, async_api = false)]
+fn cuTexObjectDestroy(texObject: CUtexObject) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900977)]
+fn cuTexObjectGetResourceDesc(
+    pResDesc: *mut CUDA_RESOURCE_DESC,
+    texObject: CUtexObject,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900978)]
+fn cuTexObjectGetTextureDesc(
+    #[host(output, len = 1)] pTexDesc: *mut CUDA_TEXTURE_DESC,
+    texObject: CUtexObject,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900979)]
+fn cuTexObjectGetResourceViewDesc(
+    #[host(output, len = 1)] pResViewDesc: *mut CUDA_RESOURCE_VIEW_DESC,
+    texObject: CUtexObject,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900980)]
+fn cuSurfObjectCreate(
+    pSurfObject: *mut CUsurfObject,
+    pResDesc: *const CUDA_RESOURCE_DESC,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900981, async_api = false)]
+fn cuSurfObjectDestroy(surfObject: CUsurfObject) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900982)]
+fn cuSurfObjectGetResourceDesc(
+    pResDesc: *mut CUDA_RESOURCE_DESC,
+    surfObject: CUsurfObject,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900463, async_api = false)]
 fn cuArrayDestroy(hArray: CUarray) -> CUresult;
 

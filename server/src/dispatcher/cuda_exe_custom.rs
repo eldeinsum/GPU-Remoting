@@ -54,6 +54,117 @@ fn make_edge_data_buffer(capacity: usize) -> Vec<CUgraphEdgeData> {
         .collect()
 }
 
+pub fn cuTexObjectCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuTexObjectCreate", "[#{}]", server.id);
+
+    let mut res_desc = std::mem::MaybeUninit::<CUDA_RESOURCE_DESC>::uninit();
+    res_desc.recv(channel_receiver).unwrap();
+    let res_desc = unsafe { res_desc.assume_init() };
+
+    let mut tex_desc = std::mem::MaybeUninit::<CUDA_TEXTURE_DESC>::uninit();
+    tex_desc.recv(channel_receiver).unwrap();
+    let tex_desc = unsafe { tex_desc.assume_init() };
+
+    let mut has_view_desc = false;
+    has_view_desc.recv(channel_receiver).unwrap();
+    let mut view_desc = std::mem::MaybeUninit::<CUDA_RESOURCE_VIEW_DESC>::uninit();
+    let view_desc_ptr = if has_view_desc {
+        view_desc.recv(channel_receiver).unwrap();
+        unsafe { view_desc.assume_init_ref() as *const CUDA_RESOURCE_VIEW_DESC }
+    } else {
+        std::ptr::null()
+    };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut tex_object = 0;
+    let result = unsafe {
+        cuTexObjectCreate(
+            &raw mut tex_object,
+            &raw const res_desc,
+            &raw const tex_desc,
+            view_desc_ptr,
+        )
+    };
+
+    tex_object.send(channel_sender).unwrap();
+    send_result("cuTexObjectCreate", server.id, result, channel_sender);
+}
+
+pub fn cuTexObjectGetResourceDescExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuTexObjectGetResourceDesc", "[#{}]", server.id);
+
+    let mut tex_object = std::mem::MaybeUninit::<CUtexObject>::uninit();
+    tex_object.recv(channel_receiver).unwrap();
+    let tex_object = unsafe { tex_object.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut res_desc = unsafe { std::mem::zeroed::<CUDA_RESOURCE_DESC>() };
+    let result = unsafe { cuTexObjectGetResourceDesc(&raw mut res_desc, tex_object) };
+
+    res_desc.send(channel_sender).unwrap();
+    send_result(
+        "cuTexObjectGetResourceDesc",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuSurfObjectCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuSurfObjectCreate", "[#{}]", server.id);
+
+    let mut res_desc = std::mem::MaybeUninit::<CUDA_RESOURCE_DESC>::uninit();
+    res_desc.recv(channel_receiver).unwrap();
+    let res_desc = unsafe { res_desc.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut surf_object = 0;
+    let result = unsafe { cuSurfObjectCreate(&raw mut surf_object, &raw const res_desc) };
+
+    surf_object.send(channel_sender).unwrap();
+    send_result("cuSurfObjectCreate", server.id, result, channel_sender);
+}
+
+pub fn cuSurfObjectGetResourceDescExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuSurfObjectGetResourceDesc", "[#{}]", server.id);
+
+    let mut surf_object = std::mem::MaybeUninit::<CUsurfObject>::uninit();
+    surf_object.recv(channel_receiver).unwrap();
+    let surf_object = unsafe { surf_object.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut res_desc = unsafe { std::mem::zeroed::<CUDA_RESOURCE_DESC>() };
+    let result = unsafe { cuSurfObjectGetResourceDesc(&raw mut res_desc, surf_object) };
+
+    res_desc.send(channel_sender).unwrap();
+    send_result(
+        "cuSurfObjectGetResourceDesc",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
 pub fn cuEventDestroy_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,

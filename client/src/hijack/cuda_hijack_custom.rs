@@ -164,6 +164,120 @@ fn cu_graph_get_edge_list<T: Transportable>(
 }
 
 #[no_mangle]
+extern "C" fn cuTexObjectCreate(
+    pTexObject: *mut CUtexObject,
+    pResDesc: *const CUDA_RESOURCE_DESC,
+    pTexDesc: *const CUDA_TEXTURE_DESC,
+    pResViewDesc: *const CUDA_RESOURCE_VIEW_DESC,
+) -> CUresult {
+    if pTexObject.is_null() || pResDesc.is_null() || pTexDesc.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuTexObjectCreate", "[#{}]", client.id);
+
+        900975.send(&client.channel_sender).unwrap();
+        unsafe { &*pResDesc }.send(&client.channel_sender).unwrap();
+        unsafe { &*pTexDesc }.send(&client.channel_sender).unwrap();
+        let has_view_desc = !pResViewDesc.is_null();
+        has_view_desc.send(&client.channel_sender).unwrap();
+        if has_view_desc {
+            unsafe { &*pResViewDesc }
+                .send(&client.channel_sender)
+                .unwrap();
+        }
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pTexObject }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuTexObjectCreate", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuTexObjectGetResourceDesc(
+    pResDesc: *mut CUDA_RESOURCE_DESC,
+    texObject: CUtexObject,
+) -> CUresult {
+    if pResDesc.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuTexObjectGetResourceDesc", "[#{}]", client.id);
+
+        900977.send(&client.channel_sender).unwrap();
+        texObject.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pResDesc }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result(
+            "cuTexObjectGetResourceDesc",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuSurfObjectCreate(
+    pSurfObject: *mut CUsurfObject,
+    pResDesc: *const CUDA_RESOURCE_DESC,
+) -> CUresult {
+    if pSurfObject.is_null() || pResDesc.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuSurfObjectCreate", "[#{}]", client.id);
+
+        900980.send(&client.channel_sender).unwrap();
+        unsafe { &*pResDesc }.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pSurfObject }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuSurfObjectCreate", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuSurfObjectGetResourceDesc(
+    pResDesc: *mut CUDA_RESOURCE_DESC,
+    surfObject: CUsurfObject,
+) -> CUresult {
+    if pResDesc.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuSurfObjectGetResourceDesc", "[#{}]", client.id);
+
+        900982.send(&client.channel_sender).unwrap();
+        surfObject.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pResDesc }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result(
+            "cuSurfObjectGetResourceDesc",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuGraphGetNodes(
     hGraph: CUgraph,
     nodes: *mut CUgraphNode,
