@@ -2024,3 +2024,20 @@ fn cudaGraphNodeGetEnabled(
 
 #[cuda_hook(proc_id = 900561)]
 fn cudaGraphDebugDotPrint(graph: cudaGraph_t, path: *const c_char, flags: c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900929)]
+fn cudaGraphConditionalHandleCreate(
+    pHandle_out: *mut cudaGraphConditionalHandle,
+    graph: cudaGraph_t,
+    defaultLaunchValue: c_uint,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900930)]
+fn cudaGraphConditionalHandleCreate_v2(
+    pHandle_out: *mut cudaGraphConditionalHandle,
+    graph: cudaGraph_t,
+    ctx: cudaExecutionContext_t,
+    defaultLaunchValue: c_uint,
+    flags: c_uint,
+) -> cudaError_t;

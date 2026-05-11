@@ -252,6 +252,13 @@ int main()
         std::fprintf(stderr, "cuCtxCreate returned a null context\n");
         return 1;
     }
+    CUcontext attached = nullptr;
+    CHECK_DRV(cuCtxAttach(&attached, 0));
+    if (attached != created) {
+        std::fprintf(stderr, "cuCtxAttach returned unexpected context\n");
+        return 1;
+    }
+    CHECK_DRV(cuCtxDetach(attached));
     CHECK_DRV(cuCtxDestroy(created));
     CHECK_DRV(cuCtxSetCurrent(current));
 

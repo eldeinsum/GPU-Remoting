@@ -420,6 +420,12 @@ fn cuInit(Flags: c_uint) -> CUresult;
 #[cuda_hook(proc_id = 684)]
 fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
 
+#[cuda_hook(proc_id = 900926)]
+fn cuCtxAttach(pctx: *mut CUcontext, flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900927, async_api = false)]
+fn cuCtxDetach(ctx: CUcontext) -> CUresult;
+
 #[cuda_hook(proc_id = 900300)]
 fn cuCtxGetApiVersion(ctx: CUcontext, version: *mut c_uint) -> CUresult;
 
@@ -2147,6 +2153,15 @@ fn cuGraphExecNodeSetParams(
         assert_eq!(memset.height, 1);
     }
 }
+
+#[cuda_hook(proc_id = 900928)]
+fn cuGraphConditionalHandleCreate(
+    pHandle_out: *mut CUgraphConditionalHandle,
+    hGraph: CUgraph,
+    ctx: CUcontext,
+    defaultLaunchValue: c_uint,
+    flags: c_uint,
+) -> CUresult;
 
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(

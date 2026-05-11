@@ -903,6 +903,18 @@ int main()
     CUcontext context = nullptr;
     CHECK_DRV(cuCtxGetCurrent(&context));
 
+    CUgraph conditional_graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&conditional_graph, 0));
+    CUgraphConditionalHandle conditional = 0;
+    CHECK_DRV(cuGraphConditionalHandleCreate(&conditional, conditional_graph,
+                                             context, 17, 0));
+    if (conditional == 0) {
+        std::fprintf(stderr,
+                     "cuGraphConditionalHandleCreate returned zero handle\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphDestroy(conditional_graph));
+
     CUgraph graph = nullptr;
     CHECK_DRV(cuGraphCreate(&graph, 0));
     CUgraphNode node_a = nullptr;

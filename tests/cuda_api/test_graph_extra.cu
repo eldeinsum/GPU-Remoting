@@ -703,6 +703,36 @@ int main()
     CHECK_CUDA(cudaFree(device));
 
     CHECK_CUDA(cudaStreamCreate(&stream));
+    cudaGraph_t conditional_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&conditional_graph, 0));
+    cudaGraphConditionalHandle conditional = 0;
+    CHECK_CUDA(cudaGraphConditionalHandleCreate(&conditional, conditional_graph,
+                                                7, 0));
+    if (conditional == 0) {
+        std::fprintf(stderr,
+                     "cudaGraphConditionalHandleCreate returned zero handle\n");
+        return 1;
+    }
+    cudaGraphConditionalHandle conditional_v2 = 0;
+    CHECK_CUDA(cudaGraphConditionalHandleCreate_v2(
+        &conditional_v2, conditional_graph, nullptr, 11, 0));
+    if (conditional_v2 == 0) {
+        std::fprintf(stderr,
+                     "cudaGraphConditionalHandleCreate_v2 returned zero handle\n");
+        return 1;
+    }
+    cudaExecutionContext_t execution_context = nullptr;
+    CHECK_CUDA(cudaDeviceGetExecutionCtx(&execution_context, 0));
+    cudaGraphConditionalHandle conditional_ctx = 0;
+    CHECK_CUDA(cudaGraphConditionalHandleCreate_v2(
+        &conditional_ctx, conditional_graph, execution_context, 13, 0));
+    if (conditional_ctx == 0) {
+        std::fprintf(stderr,
+                     "cudaGraphConditionalHandleCreate_v2 ctx returned zero handle\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroy(conditional_graph));
+
     cudaGraph_t manual_graph = nullptr;
     CHECK_CUDA(cudaGraphCreate(&manual_graph, 0));
     if (manual_graph == nullptr) {
