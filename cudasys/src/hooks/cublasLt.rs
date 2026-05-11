@@ -559,3 +559,26 @@ fn cublasLtLoggerSetMask(mask: c_int) -> cublasStatus_t;
 
 #[cuda_hook(proc_id = 1546)]
 fn cublasLtLoggerForceDisable() -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1547)]
+fn cublasLtEmulationDescCreate(emulationDesc: *mut cublasLtEmulationDesc_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1548)]
+fn cublasLtEmulationDescDestroy(emulationDesc: cublasLtEmulationDesc_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1549)]
+fn cublasLtEmulationDescSetAttribute(
+    emulationDesc: cublasLtEmulationDesc_t,
+    attr: cublasLtEmulationDescAttributes_t,
+    #[host(len = sizeInBytes)] buf: *const c_void,
+    sizeInBytes: usize,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1550)]
+fn cublasLtEmulationDescGetAttribute(
+    emulationDesc: cublasLtEmulationDesc_t,
+    attr: cublasLtEmulationDescAttributes_t,
+    #[host(output, len = sizeInBytes)] buf: *mut c_void,
+    sizeInBytes: usize,
+    sizeWritten: *mut usize,
+) -> cublasStatus_t;
