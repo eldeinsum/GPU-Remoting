@@ -127,6 +127,37 @@ int main()
         return 1;
     }
 
+    CUdeviceptr wait32_device = 0;
+    CUdeviceptr wait64_device = 0;
+    CHECK_DRV_SUCCESS(cuMemAlloc(&wait32_device, sizeof(cuuint32_t)));
+    CHECK_DRV_SUCCESS(cuMemAlloc(&wait64_device, sizeof(cuuint64_t)));
+    CHECK_DRV_SUCCESS(cuMemsetD32(wait32_device, 0, 1));
+    CHECK_DRV_SUCCESS(cuMemsetD32(wait64_device, 0, 2));
+
+    const cuuint32_t expected32 = 0x10203040u;
+    const cuuint64_t expected64 = 0x1020304050607080ull;
+    CHECK_DRV_SUCCESS(cuStreamWriteValue32(driver_a, wait32_device, expected32,
+                                           CU_STREAM_WRITE_VALUE_DEFAULT));
+    CHECK_DRV_SUCCESS(cuStreamWaitValue32(driver_a, wait32_device, expected32,
+                                          CU_STREAM_WAIT_VALUE_EQ));
+    CHECK_DRV_SUCCESS(cuStreamWriteValue64(driver_a, wait64_device, expected64,
+                                           CU_STREAM_WRITE_VALUE_DEFAULT));
+    CHECK_DRV_SUCCESS(cuStreamWaitValue64(driver_a, wait64_device, expected64,
+                                          CU_STREAM_WAIT_VALUE_EQ));
+    CHECK_DRV_SUCCESS(cuStreamSynchronize(driver_a));
+
+    cuuint32_t output32 = 0;
+    cuuint64_t output64 = 0;
+    CHECK_DRV_SUCCESS(cuMemcpyDtoH(&output32, wait32_device, sizeof(output32)));
+    CHECK_DRV_SUCCESS(cuMemcpyDtoH(&output64, wait64_device, sizeof(output64)));
+    if (output32 != expected32 || output64 != expected64) {
+        std::fprintf(stderr, "stream value output mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV_SUCCESS(cuMemFree(wait64_device));
+    CHECK_DRV_SUCCESS(cuMemFree(wait32_device));
+
     CHECK_DRV_SUCCESS(cuEventDestroy(driver_start));
     CHECK_DRV_SUCCESS(cuEventDestroy(driver_end));
     CHECK_DRV_SUCCESS(cuStreamDestroy(driver_a));

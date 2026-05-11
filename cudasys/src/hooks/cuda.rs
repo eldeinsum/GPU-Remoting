@@ -876,6 +876,38 @@ fn cuStreamWaitEvent(hStream: CUstream, hEvent: CUevent, Flags: c_uint) -> CUres
 #[cuda_hook(proc_id = 900432)]
 fn cuStreamCopyAttributes(dst: CUstream, src: CUstream) -> CUresult;
 
+#[cuda_hook(proc_id = 900876, async_api)]
+fn cuStreamWaitValue32_v2(
+    stream: CUstream,
+    addr: CUdeviceptr,
+    value: cuuint32_t,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900877, async_api)]
+fn cuStreamWriteValue32_v2(
+    stream: CUstream,
+    addr: CUdeviceptr,
+    value: cuuint32_t,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900878, async_api)]
+fn cuStreamWaitValue64_v2(
+    stream: CUstream,
+    addr: CUdeviceptr,
+    value: cuuint64_t,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900879, async_api)]
+fn cuStreamWriteValue64_v2(
+    stream: CUstream,
+    addr: CUdeviceptr,
+    value: cuuint64_t,
+    flags: c_uint,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900866, async_api = false)]
 fn cuStreamBeginCapture_v2(hStream: CUstream, mode: CUstreamCaptureMode) -> CUresult;
 
