@@ -180,6 +180,46 @@ fn cudaDeviceGetHostAtomicCapabilities(
     device: c_int,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900893)]
+fn cudaDeviceGetDevResource(
+    device: c_int,
+    #[host(output, len = 1)] resource: *mut cudaDevResource,
+    type_: cudaDevResourceType,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900894)]
+fn cudaDeviceGetExecutionCtx(ctx: *mut cudaExecutionContext_t, device: c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900895)]
+fn cudaExecutionCtxGetDevResource(
+    ctx: cudaExecutionContext_t,
+    #[host(output, len = 1)] resource: *mut cudaDevResource,
+    type_: cudaDevResourceType,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900896)]
+fn cudaExecutionCtxGetDevice(device: *mut c_int, ctx: cudaExecutionContext_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900897)]
+fn cudaExecutionCtxGetId(ctx: cudaExecutionContext_t, ctxId: *mut c_ulonglong) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900898)]
+fn cudaExecutionCtxStreamCreate(
+    phStream: *mut cudaStream_t,
+    ctx: cudaExecutionContext_t,
+    flags: c_uint,
+    priority: c_int,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900899, async_api = false)]
+fn cudaExecutionCtxSynchronize(ctx: cudaExecutionContext_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900900, async_api)]
+fn cudaExecutionCtxRecordEvent(ctx: cudaExecutionContext_t, event: cudaEvent_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900901, async_api)]
+fn cudaExecutionCtxWaitEvent(ctx: cudaExecutionContext_t, event: cudaEvent_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900460)]
 fn cudaDeviceGetTexture1DLinearMaxWidth(
     maxWidthInElements: *mut usize,
@@ -268,6 +308,13 @@ fn cudaStreamSetAttribute(
     hStream: cudaStream_t,
     attr: cudaLaunchAttributeID,
     #[host(len = 1)] value: *const cudaLaunchAttributeValue,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900902)]
+fn cudaStreamGetDevResource(
+    hStream: cudaStream_t,
+    #[host(output, len = 1)] resource: *mut cudaDevResource,
+    type_: cudaDevResourceType,
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900425, async_api = false)]

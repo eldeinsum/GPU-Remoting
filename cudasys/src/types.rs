@@ -178,6 +178,24 @@ pub mod cuda {
                 .finish()
         }
     }
+
+    impl std::fmt::Debug for CUdevResource_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CUdevResource_st")
+                .field("type_", &self.type_)
+                .field("nextResource", &self.nextResource)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for CUdevResource_st__bindgen_ty_1 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let oversize = unsafe { self._oversize };
+            f.debug_struct("CUdevResource_st__bindgen_ty_1")
+                .field("_oversize", &oversize)
+                .finish()
+        }
+    }
 }
 
 pub mod cudart {
@@ -230,6 +248,24 @@ pub mod cudart {
             let pad = unsafe { self.pad };
             f.debug_struct("cudaLaunchAttributeValue")
                 .field("pad", &pad)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for cudaDevResource_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("cudaDevResource_st")
+                .field("type_", &self.type_)
+                .field("nextResource", &self.nextResource)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for cudaDevResource_st__bindgen_ty_1 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let oversize = unsafe { self._oversize };
+            f.debug_struct("cudaDevResource_st__bindgen_ty_1")
+                .field("_oversize", &oversize)
                 .finish()
         }
     }

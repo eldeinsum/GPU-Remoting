@@ -70,6 +70,67 @@ int main()
     if (runtime_device != 0) {
         return 1;
     }
+    cudaDevResource runtime_device_resource = {};
+    CHECK_CUDA_SUCCESS(cudaDeviceGetDevResource(
+        0, &runtime_device_resource, cudaDevResourceTypeSm));
+    if (runtime_device_resource.type != cudaDevResourceTypeSm ||
+        runtime_device_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime device SM resource\n");
+        return 1;
+    }
+    cudaExecutionContext_t runtime_execution_context = nullptr;
+    CHECK_CUDA_SUCCESS(cudaDeviceGetExecutionCtx(&runtime_execution_context, 0));
+    if (runtime_execution_context == nullptr) {
+        std::fprintf(stderr, "missing runtime execution context\n");
+        return 1;
+    }
+    int execution_context_device = -1;
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxGetDevice(
+        &execution_context_device, runtime_execution_context));
+    if (execution_context_device != 0) {
+        std::fprintf(stderr, "unexpected execution context device\n");
+        return 1;
+    }
+    unsigned long long execution_context_id = 0;
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxGetId(
+        runtime_execution_context, &execution_context_id));
+    if (execution_context_id == 0) {
+        std::fprintf(stderr, "unexpected execution context id\n");
+        return 1;
+    }
+    cudaDevResource runtime_context_resource = {};
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxGetDevResource(
+        runtime_execution_context, &runtime_context_resource,
+        cudaDevResourceTypeSm));
+    if (runtime_context_resource.type != cudaDevResourceTypeSm ||
+        runtime_context_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime context SM resource\n");
+        return 1;
+    }
+    cudaStream_t runtime_execution_stream = nullptr;
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxStreamCreate(
+        &runtime_execution_stream, runtime_execution_context,
+        cudaStreamNonBlocking, 0));
+    cudaDevResource runtime_stream_resource = {};
+    CHECK_CUDA_SUCCESS(cudaStreamGetDevResource(
+        runtime_execution_stream, &runtime_stream_resource,
+        cudaDevResourceTypeSm));
+    if (runtime_stream_resource.type != cudaDevResourceTypeSm ||
+        runtime_stream_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime stream SM resource\n");
+        return 1;
+    }
+    cudaEvent_t runtime_ctx_event = nullptr;
+    CHECK_CUDA_SUCCESS(cudaEventCreate(&runtime_ctx_event));
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxRecordEvent(runtime_execution_context,
+                                                   runtime_ctx_event));
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxWaitEvent(runtime_execution_context,
+                                                 runtime_ctx_event));
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxSynchronize(runtime_execution_context));
+    CHECK_CUDA(cudaEventQuery(runtime_ctx_event));
+    CHECK_CUDA_SUCCESS(cudaEventDestroy(runtime_ctx_event));
+    CHECK_CUDA_SUCCESS(cudaStreamDestroy(runtime_execution_stream));
+
     cudaStreamAttrValue runtime_attr = {};
     runtime_attr.syncPolicy = cudaSyncPolicyAuto;
     CHECK_CUDA_SUCCESS(cudaStreamSetAttribute(
@@ -121,14 +182,42 @@ int main()
     CHECK_DRV_SUCCESS(cuStreamGetId(driver_a, &driver_stream_id));
     CHECK_DRV_SUCCESS(cuStreamGetDevice(driver_a, &driver_device));
     CHECK_DRV_SUCCESS(cuStreamGetCtx(driver_a, &driver_context));
+    CUdevResource driver_device_resource = {};
+    CHECK_DRV_SUCCESS(cuDeviceGetDevResource(
+        driver_device, &driver_device_resource, CU_DEV_RESOURCE_TYPE_SM));
+    if (driver_device_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_device_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver device SM resource\n");
+        return 1;
+    }
+    CUdevResource driver_context_resource = {};
+    CHECK_DRV_SUCCESS(cuCtxGetDevResource(
+        driver_context, &driver_context_resource, CU_DEV_RESOURCE_TYPE_SM));
+    if (driver_context_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_context_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver context SM resource\n");
+        return 1;
+    }
+    CUdevResource driver_stream_resource = {};
+    CHECK_DRV_SUCCESS(cuStreamGetDevResource(
+        driver_a, &driver_stream_resource, CU_DEV_RESOURCE_TYPE_SM));
+    if (driver_stream_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_stream_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver stream SM resource\n");
+        return 1;
+    }
     CUcontext driver_context_v2 = nullptr;
     CUgreenCtx driver_green_context = nullptr;
     CHECK_DRV_SUCCESS(cuStreamGetCtx_v2(driver_a, &driver_context_v2,
                                         &driver_green_context));
+    CUgreenCtx driver_stream_green_context = nullptr;
+    CHECK_DRV_SUCCESS(cuStreamGetGreenCtx(driver_a,
+                                          &driver_stream_green_context));
     if (driver_device != 0 || driver_context == nullptr) {
         return 1;
     }
-    if (driver_context_v2 != driver_context || driver_green_context != nullptr) {
+    if (driver_context_v2 != driver_context || driver_green_context != nullptr ||
+        driver_stream_green_context != nullptr) {
         std::fprintf(stderr, "unexpected driver stream context metadata\n");
         return 1;
     }

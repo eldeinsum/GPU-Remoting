@@ -438,6 +438,13 @@ fn cuCtxGetFlags(flags: *mut c_uint) -> CUresult;
 #[cuda_hook(proc_id = 900449)]
 fn cuCtxGetId(ctx: CUcontext, ctxId: *mut c_ulonglong) -> CUresult;
 
+#[cuda_hook(proc_id = 900889)]
+fn cuCtxGetDevResource(
+    hCtx: CUcontext,
+    #[host(output, len = 1)] resource: *mut CUdevResource,
+    type_: CUdevResourceType,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900305)]
 fn cuCtxGetLimit(pvalue: *mut usize, limit: CUlimit) -> CUresult;
 
@@ -557,6 +564,13 @@ fn cuDeviceGetTexture1DLinearMaxWidth(
     format: CUarray_format,
     numChannels: c_uint,
     dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900890)]
+fn cuDeviceGetDevResource(
+    device: CUdevice,
+    #[host(output, len = 1)] resource: *mut CUdevResource,
+    type_: CUdevResourceType,
 ) -> CUresult;
 
 #[cuda_hook(proc_id = 900322)]
@@ -884,6 +898,16 @@ fn cuStreamGetCtx_v2(
     hStream: CUstream,
     pCtx: *mut CUcontext,
     pGreenCtx: *mut CUgreenCtx,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900891)]
+fn cuStreamGetGreenCtx(hStream: CUstream, phCtx: *mut CUgreenCtx) -> CUresult;
+
+#[cuda_hook(proc_id = 900892)]
+fn cuStreamGetDevResource(
+    hStream: CUstream,
+    #[host(output, len = 1)] resource: *mut CUdevResource,
+    type_: CUdevResourceType,
 ) -> CUresult;
 
 #[cuda_hook(proc_id = 900418, async_api = false)]
