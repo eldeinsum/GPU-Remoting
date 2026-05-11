@@ -1272,6 +1272,9 @@ fn cudaHostRegister(ptr: *mut c_void, size: usize, flags: c_uint) -> cudaError_t
 #[cuda_custom_hook] // local
 fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t;
 
+#[cuda_custom_hook] // local
+fn cudaHostGetFlags(pFlags: *mut c_uint, pHost: *mut c_void) -> cudaError_t;
+
 #[cuda_custom_hook] // unsupported across the remoting boundary
 fn cudaHostGetDevicePointer(
     pDevice: *mut *mut c_void,

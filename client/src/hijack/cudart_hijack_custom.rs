@@ -7,13 +7,17 @@ use cudasys::types::cuda::{
 use cudasys::types::cudart::*;
 use network::type_impl::recv_slice;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ffi::*;
 use std::sync::{Mutex, OnceLock};
 
-fn host_allocations() -> &'static Mutex<BTreeSet<usize>> {
-    static ALLOCATIONS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
-    ALLOCATIONS.get_or_init(|| Mutex::new(BTreeSet::new()))
+fn host_memory_error(error: super::host_memory::HostMemoryError) -> cudaError_t {
+    match error {
+        super::host_memory::HostMemoryError::InvalidValue => cudaError_t::cudaErrorInvalidValue,
+        super::host_memory::HostMemoryError::MemoryAllocation => {
+            cudaError_t::cudaErrorMemoryAllocation
+        }
+    }
 }
 
 fn cuda_error_text(error: cudaError_t, include_code: bool) -> *const c_char {
@@ -498,28 +502,10 @@ fn load_module_for_fatbin(runtime: &mut RuntimeCache, fatCubinHandle: FatBinaryH
         })
 }
 
-fn allocate_host(ptr_out: *mut *mut c_void, size: usize) -> cudaError_t {
-    if ptr_out.is_null() {
-        return cudaError_t::cudaErrorInvalidValue;
-    }
-
-    if size == 0 {
-        unsafe {
-            *ptr_out = std::ptr::null_mut();
-        }
-        return cudaError_t::cudaSuccess;
-    }
-
-    let ptr = unsafe { libc::malloc(size) };
-    if ptr.is_null() {
-        return cudaError_t::cudaErrorMemoryAllocation;
-    }
-
-    host_allocations().lock().unwrap().insert(ptr as usize);
-    unsafe {
-        *ptr_out = ptr;
-    }
-    cudaError_t::cudaSuccess
+fn allocate_host(ptr_out: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t {
+    super::host_memory::allocate(ptr_out, size, flags)
+        .map(|_| cudaError_t::cudaSuccess)
+        .unwrap_or_else(host_memory_error)
 }
 
 #[no_mangle]
@@ -1435,50 +1421,45 @@ pub extern "C" fn cudaHostAlloc(
     flags: c_uint,
 ) -> cudaError_t {
     log::debug!(target: "cudaHostAlloc", "size = {size}, flags = {flags}");
-    allocate_host(pHost, size)
+    allocate_host(pHost, size, flags)
 }
 
 #[no_mangle]
 pub extern "C" fn cudaMallocHost(ptr: *mut *mut c_void, size: usize) -> cudaError_t {
     log::debug!(target: "cudaMallocHost", "size = {size}");
-    allocate_host(ptr, size)
+    allocate_host(ptr, size, 0)
 }
 
 #[no_mangle]
 pub extern "C" fn cudaFreeHost(ptr: *mut c_void) -> cudaError_t {
     log::debug!(target: "cudaFreeHost", "");
-    if ptr.is_null() {
-        return cudaError_t::cudaSuccess;
-    }
-
-    if !host_allocations().lock().unwrap().remove(&(ptr as usize)) {
-        return cudaError_t::cudaErrorInvalidValue;
-    }
-
-    unsafe {
-        libc::free(ptr);
-    }
-    cudaError_t::cudaSuccess
+    super::host_memory::free(ptr)
+        .map(|_| cudaError_t::cudaSuccess)
+        .unwrap_or_else(host_memory_error)
 }
 
 #[no_mangle]
 pub extern "C" fn cudaHostRegister(ptr: *mut c_void, size: usize, flags: c_uint) -> cudaError_t {
     log::debug!(target: "cudaHostRegister", "size = {size}, flags = {flags}");
-    if ptr.is_null() {
-        cudaError_t::cudaErrorInvalidValue
-    } else {
-        cudaError_t::cudaSuccess
-    }
+    super::host_memory::register(ptr, size, flags)
+        .map(|_| cudaError_t::cudaSuccess)
+        .unwrap_or_else(host_memory_error)
 }
 
 #[no_mangle]
 pub extern "C" fn cudaHostUnregister(ptr: *mut c_void) -> cudaError_t {
     log::debug!(target: "cudaHostUnregister", "");
-    if ptr.is_null() {
-        cudaError_t::cudaErrorInvalidValue
-    } else {
-        cudaError_t::cudaSuccess
-    }
+    super::host_memory::unregister(ptr)
+        .map(|_| cudaError_t::cudaSuccess)
+        .unwrap_or_else(host_memory_error)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaHostGetFlags(pFlags: *mut c_uint, pHost: *mut c_void) -> cudaError_t {
+    log::debug!(target: "cudaHostGetFlags", "");
+    super::host_memory::get_flags(pFlags, pHost)
+        .map(|_| cudaError_t::cudaSuccess)
+        .unwrap_or_else(host_memory_error)
 }
 
 #[no_mangle]

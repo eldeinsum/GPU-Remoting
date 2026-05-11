@@ -1105,6 +1105,24 @@ fn cuMemAllocAsync(dptr: *mut CUdeviceptr, bytesize: usize, hStream: CUstream) -
 #[cuda_hook(proc_id = 900202, async_api = false)]
 fn cuMemFree_v2(dptr: CUdeviceptr) -> CUresult;
 
+#[cuda_custom_hook] // local
+fn cuMemAllocHost_v2(pp: *mut *mut c_void, bytesize: usize) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuMemHostAlloc(pp: *mut *mut c_void, bytesize: usize, Flags: c_uint) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuMemFreeHost(p: *mut c_void) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuMemHostRegister_v2(p: *mut c_void, bytesize: usize, Flags: c_uint) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuMemHostUnregister(p: *mut c_void) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuMemHostGetFlags(pFlags: *mut c_uint, p: *mut c_void) -> CUresult;
+
 #[cuda_hook(proc_id = 900402, async_api = false)]
 fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
 

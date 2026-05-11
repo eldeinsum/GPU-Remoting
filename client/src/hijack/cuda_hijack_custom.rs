@@ -71,6 +71,61 @@ fn recv_cu_graph_edge_data_slice<C: CommChannel>(
     None
 }
 
+fn host_memory_error(error: super::host_memory::HostMemoryError) -> CUresult {
+    match error {
+        super::host_memory::HostMemoryError::InvalidValue => CUresult::CUDA_ERROR_INVALID_VALUE,
+        super::host_memory::HostMemoryError::MemoryAllocation => CUresult::CUDA_ERROR_OUT_OF_MEMORY,
+    }
+}
+
+#[no_mangle]
+extern "C" fn cuMemAllocHost_v2(pp: *mut *mut c_void, bytesize: usize) -> CUresult {
+    log::debug!(target: "cuMemAllocHost_v2", "bytesize = {bytesize}");
+    super::host_memory::allocate(pp, bytesize, 0)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(host_memory_error)
+}
+
+#[no_mangle]
+extern "C" fn cuMemHostAlloc(pp: *mut *mut c_void, bytesize: usize, Flags: c_uint) -> CUresult {
+    log::debug!(target: "cuMemHostAlloc", "bytesize = {bytesize}, flags = {Flags}");
+    super::host_memory::allocate(pp, bytesize, Flags)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(host_memory_error)
+}
+
+#[no_mangle]
+extern "C" fn cuMemFreeHost(p: *mut c_void) -> CUresult {
+    log::debug!(target: "cuMemFreeHost", "");
+    super::host_memory::free(p)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(host_memory_error)
+}
+
+#[no_mangle]
+extern "C" fn cuMemHostRegister_v2(p: *mut c_void, bytesize: usize, Flags: c_uint) -> CUresult {
+    log::debug!(target: "cuMemHostRegister_v2", "bytesize = {bytesize}, flags = {Flags}");
+    super::host_memory::register(p, bytesize, Flags)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(host_memory_error)
+}
+
+#[no_mangle]
+extern "C" fn cuMemHostUnregister(p: *mut c_void) -> CUresult {
+    log::debug!(target: "cuMemHostUnregister", "");
+    super::host_memory::unregister(p)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(host_memory_error)
+}
+
+#[no_mangle]
+extern "C" fn cuMemHostGetFlags(pFlags: *mut c_uint, p: *mut c_void) -> CUresult {
+    log::debug!(target: "cuMemHostGetFlags", "");
+    super::host_memory::get_flags(pFlags, p)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(host_memory_error)
+}
+
 fn cu_graph_get_node_list<T: Transportable>(
     proc_id: i32,
     target: &'static str,
