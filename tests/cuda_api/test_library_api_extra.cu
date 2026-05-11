@@ -35,6 +35,7 @@ static int compile_cubin(std::vector<char> *cubin, int major, int minor)
 {
     static const char source[] = R"(
 extern "C" __device__ int device_value = 3;
+extern "C" __managed__ int managed_value = 19;
 
 extern "C" __global__ void library_kernel(int *out, int value)
 {
@@ -209,6 +210,22 @@ int main()
     }
     int global_value = 11;
     CHECK_DRV(cuMemcpyHtoD(d_global, &global_value, sizeof(global_value)));
+
+    CUdeviceptr d_managed = 0;
+    size_t managed_size = 0;
+    CHECK_DRV(cuLibraryGetManaged(&d_managed, &managed_size, library, "managed_value"));
+    if (managed_size != sizeof(int)) {
+        std::cerr << "unexpected managed size: " << managed_size << std::endl;
+        return 1;
+    }
+    int managed_value = 29;
+    CHECK_DRV(cuMemcpyHtoD(d_managed, &managed_value, sizeof(managed_value)));
+    int managed_output = 0;
+    CHECK_DRV(cuMemcpyDtoH(&managed_output, d_managed, sizeof(managed_output)));
+    if (managed_output != managed_value) {
+        std::cerr << "managed value mismatch: " << managed_output << std::endl;
+        return 1;
+    }
 
     CUdeviceptr d_output = 0;
     CHECK_DRV(cuMemAlloc(&d_output, sizeof(int)));

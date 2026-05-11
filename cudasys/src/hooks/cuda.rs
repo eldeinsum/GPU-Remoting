@@ -541,6 +541,14 @@ fn cuLibraryGetGlobal(
     name: *const c_char,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901035)]
+fn cuLibraryGetManaged(
+    dptr: *mut CUdeviceptr,
+    bytes: *mut usize,
+    library: CUlibrary,
+    name: *const c_char,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900716)]
 fn cuKernelGetAttribute(
     pi: *mut c_int,
