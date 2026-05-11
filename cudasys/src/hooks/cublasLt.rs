@@ -321,20 +321,20 @@ fn cublasLtMatmulDescSetAttribute(
                         scale_type_size: Some(std::mem::size_of::<f32>()),
                     });
             match attr {
-                cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_POINTER_MODE => {
-                    if sizeInBytes >= std::mem::size_of::<u32>() {
-                        let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
-                        if let Some(pointer_mode) = cublaslt_pointer_mode_from_u32(value) {
-                            state.pointer_mode = pointer_mode;
-                        }
+                cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_POINTER_MODE
+                    if sizeInBytes >= std::mem::size_of::<u32>() =>
+                {
+                    let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
+                    if let Some(pointer_mode) = cublaslt_pointer_mode_from_u32(value) {
+                        state.pointer_mode = pointer_mode;
                     }
                 }
-                cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_SCALE_TYPE => {
-                    if sizeInBytes >= std::mem::size_of::<u32>() {
-                        let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
-                        if let Some(scale_type) = cublaslt_scale_type_from_u32(value) {
-                            state.scale_type_size = cublaslt_scale_type_size(scale_type);
-                        }
+                cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_SCALE_TYPE
+                    if sizeInBytes >= std::mem::size_of::<u32>() =>
+                {
+                    let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
+                    if let Some(scale_type) = cublaslt_scale_type_from_u32(value) {
+                        state.scale_type_size = cublaslt_scale_type_size(scale_type);
                     }
                 }
                 _ => {}
@@ -581,20 +581,20 @@ fn cublasLtMatrixTransformDescSetAttribute(
                 },
             );
             match attr {
-                cublasLtMatrixTransformDescAttributes_t::CUBLASLT_MATRIX_TRANSFORM_DESC_POINTER_MODE => {
-                    if sizeInBytes >= std::mem::size_of::<u32>() {
-                        let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
-                        if let Some(pointer_mode) = cublaslt_pointer_mode_from_u32(value) {
-                            state.pointer_mode = pointer_mode;
-                        }
+                cublasLtMatrixTransformDescAttributes_t::CUBLASLT_MATRIX_TRANSFORM_DESC_POINTER_MODE
+                    if sizeInBytes >= std::mem::size_of::<u32>() =>
+                {
+                    let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
+                    if let Some(pointer_mode) = cublaslt_pointer_mode_from_u32(value) {
+                        state.pointer_mode = pointer_mode;
                     }
                 }
-                cublasLtMatrixTransformDescAttributes_t::CUBLASLT_MATRIX_TRANSFORM_DESC_SCALE_TYPE => {
-                    if sizeInBytes >= std::mem::size_of::<u32>() {
-                        let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
-                        if let Some(scale_type) = cublaslt_scale_type_from_u32(value) {
-                            state.scale_type_size = cublaslt_scale_type_size(scale_type);
-                        }
+                cublasLtMatrixTransformDescAttributes_t::CUBLASLT_MATRIX_TRANSFORM_DESC_SCALE_TYPE
+                    if sizeInBytes >= std::mem::size_of::<u32>() =>
+                {
+                    let value = unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<u32>()) };
+                    if let Some(scale_type) = cublaslt_scale_type_from_u32(value) {
+                        state.scale_type_size = cublaslt_scale_type_size(scale_type);
                     }
                 }
                 _ => {}

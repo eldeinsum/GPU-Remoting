@@ -1225,11 +1225,9 @@ fn cudaStreamIsCapturing(
 #[cuda_hook(proc_id = 123)]
 fn cudaGetDeviceProperties(prop: *mut cudaDeviceProp, device: c_int) -> cudaError_t {
     'client_after_recv: {
-        if result == cudaError_t::cudaSuccess {
-            if prop.major > 0 && prop.minor >= 0 {
-                DRIVER_CACHE.write().unwrap().device_arch =
-                    Some(prop.major as u32 * 10 + prop.minor as u32);
-            }
+        if result == cudaError_t::cudaSuccess && prop.major > 0 && prop.minor >= 0 {
+            DRIVER_CACHE.write().unwrap().device_arch =
+                Some(prop.major as u32 * 10 + prop.minor as u32);
         }
     }
 }

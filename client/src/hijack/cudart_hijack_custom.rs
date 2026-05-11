@@ -1377,17 +1377,16 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     cufunc
 }
 
+type PackedRuntimeKernelNodeParams = (
+    cudaKernelNodeParams,
+    CUDA_KERNEL_NODE_PARAMS,
+    Box<[u8]>,
+    Box<[u32]>,
+);
+
 fn pack_runtime_kernel_node_params(
     pNodeParams: *const cudaKernelNodeParams,
-) -> Result<
-    (
-        cudaKernelNodeParams,
-        CUDA_KERNEL_NODE_PARAMS,
-        Box<[u8]>,
-        Box<[u32]>,
-    ),
-    cudaError_t,
-> {
+) -> Result<PackedRuntimeKernelNodeParams, cudaError_t> {
     if pNodeParams.is_null() {
         return Err(cudaError_t::cudaErrorInvalidValue);
     }
@@ -2841,13 +2840,10 @@ extern "C" fn cudaFuncGetName(name: *mut *const c_char, func: *const c_void) -> 
     if name.is_null() {
         return cudaError_t::cudaErrorInvalidValue;
     }
-    #[expect(clippy::missing_transmute_annotations)]
-    unsafe {
-        std::mem::transmute(super::cuda_hijack_custom::cuFuncGetName(
-            name,
-            get_cufunction(func as HostPtr),
-        ))
-    }
+    runtime_result(super::cuda_hijack_custom::cuFuncGetName(
+        name,
+        get_cufunction(func as HostPtr),
+    ))
 }
 
 #[no_mangle]
@@ -2858,27 +2854,21 @@ extern "C" fn cudaFuncGetParamInfo(
     paramSize: *mut usize,
 ) -> cudaError_t {
     log::debug!(target: "cudaFuncGetParamInfo", "");
-    #[expect(clippy::missing_transmute_annotations)]
-    unsafe {
-        std::mem::transmute(super::cuda_hijack::cuFuncGetParamInfo(
-            get_cufunction(func as HostPtr),
-            paramIndex,
-            paramOffset,
-            paramSize,
-        ))
-    }
+    runtime_result(super::cuda_hijack::cuFuncGetParamInfo(
+        get_cufunction(func as HostPtr),
+        paramIndex,
+        paramOffset,
+        paramSize,
+    ))
 }
 
 #[no_mangle]
 extern "C" fn cudaFuncGetParamCount(func: *const c_void, paramCount: *mut usize) -> cudaError_t {
     log::debug!(target: "cudaFuncGetParamCount", "");
-    #[expect(clippy::missing_transmute_annotations)]
-    unsafe {
-        std::mem::transmute(super::cuda_hijack::cuFuncGetParamCount(
-            get_cufunction(func as HostPtr),
-            paramCount,
-        ))
-    }
+    runtime_result(super::cuda_hijack::cuFuncGetParamCount(
+        get_cufunction(func as HostPtr),
+        paramCount,
+    ))
 }
 
 #[no_mangle]
