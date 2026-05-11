@@ -52,6 +52,13 @@ fn cuMipmappedArrayCreate(
 #[cuda_hook(proc_id = 900583, async_api = false)]
 fn cuMipmappedArrayDestroy(hMipmappedArray: CUmipmappedArray) -> CUresult;
 
+#[cuda_hook(proc_id = 901116)]
+fn cuMemMapArrayAsync(
+    #[host(input, len = count as usize)] mapInfoList: *mut CUarrayMapInfo,
+    count: c_uint,
+    hStream: CUstream,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900584)]
 fn cuMipmappedArrayGetLevel(
     pLevelArray: *mut CUarray,

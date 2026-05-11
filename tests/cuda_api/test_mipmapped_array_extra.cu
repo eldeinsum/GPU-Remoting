@@ -197,6 +197,48 @@ int main()
         if (check_memory_requirements(driver_array_requirements) != 0) {
             return 1;
         }
+
+        CUmemAllocationProp array_mem_prop = {};
+        array_mem_prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+        array_mem_prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+        array_mem_prop.location.id = device;
+        array_mem_prop.allocFlags.usage = CU_MEM_CREATE_USAGE_TILE_POOL;
+
+        size_t array_granularity = 0;
+        CHECK_DRV(cuMemGetAllocationGranularity(
+            &array_granularity, &array_mem_prop,
+            CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+        size_t array_allocation_size =
+            ((driver_array_requirements.size + array_granularity - 1) /
+             array_granularity) *
+            array_granularity;
+
+        CUmemGenericAllocationHandle array_mem_handle = 0;
+        CHECK_DRV(cuMemCreate(&array_mem_handle, array_allocation_size,
+                              &array_mem_prop, 0));
+
+        CUarrayMapInfo array_map_info = {};
+        array_map_info.resourceType = CU_RESOURCE_TYPE_ARRAY;
+        array_map_info.resource.array = deferred_driver_array;
+        array_map_info.subresourceType =
+            CU_ARRAY_SPARSE_SUBRESOURCE_TYPE_SPARSE_LEVEL;
+        array_map_info.memOperationType = CU_MEM_OPERATION_TYPE_MAP;
+        array_map_info.memHandleType = CU_MEM_HANDLE_TYPE_GENERIC;
+        array_map_info.memHandle.memHandle = array_mem_handle;
+        array_map_info.deviceBitMask = 1u << static_cast<unsigned int>(device);
+
+        CUstream map_stream = nullptr;
+        CHECK_DRV(cuStreamCreate(&map_stream, CU_STREAM_DEFAULT));
+        CHECK_DRV(cuMemMapArrayAsync(&array_map_info, 1, map_stream));
+        CHECK_DRV(cuStreamSynchronize(map_stream));
+
+        array_map_info.memOperationType = CU_MEM_OPERATION_TYPE_UNMAP;
+        array_map_info.memHandle.memHandle = 0;
+        CHECK_DRV(cuMemMapArrayAsync(&array_map_info, 1, map_stream));
+        CHECK_DRV(cuStreamSynchronize(map_stream));
+        CHECK_DRV(cuStreamDestroy(map_stream));
+
+        CHECK_DRV(cuMemRelease(array_mem_handle));
         CHECK_DRV(cuArrayDestroy(deferred_driver_array));
 
         CUmipmappedArray deferred_driver_mipmap = nullptr;
