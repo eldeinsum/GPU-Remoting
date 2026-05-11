@@ -3636,6 +3636,86 @@ fn cublasZdgmm_64(
     ldc: i64,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1340, async_api)]
+fn cublasStpttr(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] AP: *const f32,
+    #[device] A: *mut f32,
+    lda: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1341, async_api)]
+fn cublasDtpttr(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] AP: *const f64,
+    #[device] A: *mut f64,
+    lda: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1342, async_api)]
+fn cublasCtpttr(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] AP: *const cuComplex,
+    #[device] A: *mut cuComplex,
+    lda: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1343, async_api)]
+fn cublasZtpttr(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] AP: *const cuDoubleComplex,
+    #[device] A: *mut cuDoubleComplex,
+    lda: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1344, async_api)]
+fn cublasStrttp(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] A: *const f32,
+    lda: c_int,
+    #[device] AP: *mut f32,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1345, async_api)]
+fn cublasDtrttp(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] A: *const f64,
+    lda: c_int,
+    #[device] AP: *mut f64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1346, async_api)]
+fn cublasCtrttp(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] A: *const cuComplex,
+    lda: c_int,
+    #[device] AP: *mut cuComplex,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1347, async_api)]
+fn cublasZtrttp(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[device] A: *const cuDoubleComplex,
+    lda: c_int,
+    #[device] AP: *mut cuDoubleComplex,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1300, async_api)]
 fn cublasSgemm_v2(
     handle: cublasHandle_t,
