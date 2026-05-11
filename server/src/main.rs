@@ -1,4 +1,5 @@
 use std::collections::btree_map::{BTreeMap, Entry};
+use std::ffi::CString;
 use std::io::{self, Read as _, Write as _};
 use std::mem::MaybeUninit;
 use std::net::TcpListener;
@@ -52,14 +53,23 @@ fn daemon(config: &NetworkConfig) -> io::Result<(io::PipeReader, io::PipeWriter)
                     describe_wait_status(child.status)
                 );
             }
-            children.retain(|_, server_child| {
-                !finished
-                    .iter()
-                    .any(|child| child.pid == server_child.server_pid)
-            });
+            let finished_clients: Vec<_> = children
+                .iter()
+                .filter(|(_, server_child)| {
+                    finished
+                        .iter()
+                        .any(|child| child.pid == server_child.server_pid)
+                })
+                .map(|(&client_pid, _)| client_pid)
+                .collect();
+            for client_pid in finished_clients {
+                if let Some(child) = children.remove(&client_pid) {
+                    cleanup_child_channels(config, &child);
+                }
+            }
         }
         drop(finished);
-        cleanup_dead_clients(&mut children);
+        cleanup_dead_clients(config, &mut children);
 
         let mut stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -92,12 +102,15 @@ fn daemon(config: &NetworkConfig) -> io::Result<(io::PipeReader, io::PipeWriter)
                     daemon_rx,
                     daemon_tx,
                     control_streams: Vec::new(),
+                    channel_ids: Vec::new(),
                 })
             }
         };
+        child.channel_ids.push(id);
         child.daemon_tx.write_all(&id.to_ne_bytes())?;
         child.daemon_rx.read_exact(&mut buf)?;
         if id.to_ne_bytes() != buf {
+            cleanup_child_channels(config, child);
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "server child returned the wrong channel id",
@@ -121,6 +134,7 @@ struct ServerChild {
     daemon_rx: io::PipeReader,
     daemon_tx: io::PipeWriter,
     control_streams: Vec<socket2::Socket>,
+    channel_ids: Vec<i32>,
 }
 
 fn server_process(
@@ -192,7 +206,7 @@ fn reap_children() -> Vec<ChildStatus> {
     }
 }
 
-fn cleanup_dead_clients(children: &mut BTreeMap<u32, ServerChild>) {
+fn cleanup_dead_clients(config: &NetworkConfig, children: &mut BTreeMap<u32, ServerChild>) {
     let mut dead_clients = Vec::new();
     for (&client_pid, child) in children.iter_mut() {
         child.control_streams.retain(control_stream_is_open);
@@ -211,6 +225,31 @@ fn cleanup_dead_clients(children: &mut BTreeMap<u32, ServerChild>) {
         );
         unsafe {
             libc::kill(child.server_pid, libc::SIGTERM);
+        }
+        cleanup_child_channels(config, &child);
+    }
+}
+
+fn cleanup_child_channels(config: &NetworkConfig, child: &ServerChild) {
+    if config.comm_type != "shm" {
+        return;
+    }
+    for &id in &child.channel_ids {
+        unlink_shm_channel(&config.ctos_channel_name, id);
+        unlink_shm_channel(&config.stoc_channel_name, id);
+    }
+}
+
+fn unlink_shm_channel(base_name: &str, id: i32) {
+    let name = format!("{base_name}_{id}");
+    let Ok(name) = CString::new(name) else {
+        log::warn!("shared memory channel name contains an interior NUL byte");
+        return;
+    };
+    if unsafe { libc::shm_unlink(name.as_ptr()) } == -1 {
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() != Some(libc::ENOENT) {
+            log::warn!("failed to unlink shared memory channel: {err}");
         }
     }
 }
