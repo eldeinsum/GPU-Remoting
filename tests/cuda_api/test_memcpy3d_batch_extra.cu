@@ -1,3 +1,4 @@
+#include <cuda.h>
 #include <cuda_runtime.h>
 
 #include <cstdio>
@@ -9,6 +10,19 @@
         if (result != cudaSuccess) {                                           \
             std::fprintf(stderr, "%s failed: %s (%d)\n", #call,               \
                          cudaGetErrorString(result), static_cast<int>(result)); \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
+
+#define CHECK_DRV(call)                                                        \
+    do {                                                                       \
+        CUresult result = (call);                                              \
+        if (result != CUDA_SUCCESS) {                                          \
+            const char *name = nullptr;                                        \
+            cuGetErrorName(result, &name);                                     \
+            std::fprintf(stderr, "%s failed: %s (%d)\n", #call,               \
+                         name == nullptr ? "unknown" : name,                  \
+                         static_cast<int>(result));                            \
             return 1;                                                          \
         }                                                                      \
     } while (0)
@@ -43,6 +57,29 @@ static cudaMemcpy3DBatchOp make_pointer_op(void *dst, const void *src,
     op.extent = make_cudaExtent(width, height, depth);
     op.srcAccessOrder = cudaMemcpySrcAccessOrderStream;
     op.flags = cudaMemcpyFlagDefault;
+    return op;
+}
+
+static CUDA_MEMCPY3D_BATCH_OP make_driver_pointer_op(CUdeviceptr dst,
+                                                     CUdeviceptr src,
+                                                     size_t width,
+                                                     size_t height,
+                                                     size_t depth)
+{
+    CUDA_MEMCPY3D_BATCH_OP op = {};
+    op.src.type = CU_MEMCPY_OPERAND_TYPE_POINTER;
+    op.src.op.ptr.ptr = src;
+    op.src.op.ptr.rowLength = width;
+    op.src.op.ptr.layerHeight = height;
+    op.dst.type = CU_MEMCPY_OPERAND_TYPE_POINTER;
+    op.dst.op.ptr.ptr = dst;
+    op.dst.op.ptr.rowLength = width;
+    op.dst.op.ptr.layerHeight = height;
+    op.extent.width = width;
+    op.extent.height = height;
+    op.extent.depth = depth;
+    op.srcAccessOrder = CU_MEMCPY_SRC_ACCESS_ORDER_STREAM;
+    op.flags = CU_MEMCPY_FLAG_DEFAULT;
     return op;
 }
 
@@ -92,6 +129,89 @@ int main()
     CHECK_CUDA(cudaStreamDestroy(stream));
     CHECK_CUDA(cudaFree(dst));
     CHECK_CUDA(cudaFree(src));
+
+    CHECK_DRV(cuInit(0));
+    CUdevice device = 0;
+    CHECK_DRV(cuDeviceGet(&device, 0));
+    CUcontext context = nullptr;
+    CHECK_DRV(cuCtxGetCurrent(&context));
+    if (context == nullptr) {
+        CHECK_DRV(cuDevicePrimaryCtxRetain(&context, device));
+        CHECK_DRV(cuCtxSetCurrent(context));
+    }
+
+    CUdeviceptr driver_src = 0;
+    CUdeviceptr driver_dst = 0;
+    CUdeviceptr driver_dst2 = 0;
+    CHECK_DRV(cuMemAlloc(&driver_src, bytes));
+    CHECK_DRV(cuMemAlloc(&driver_dst, bytes));
+    CHECK_DRV(cuMemAlloc(&driver_dst2, bytes));
+    CHECK_DRV(cuMemcpyHtoD(driver_src, input.data(), bytes));
+
+    CUstream driver_stream = nullptr;
+    CHECK_DRV(cuStreamCreate(&driver_stream, CU_STREAM_DEFAULT));
+    CUmemcpyAttributes attr = {};
+    attr.srcAccessOrder = CU_MEMCPY_SRC_ACCESS_ORDER_STREAM;
+    attr.flags = CU_MEMCPY_FLAG_DEFAULT;
+    CUmemcpyAttributes batch_attrs[] = {attr, attr};
+    batch_attrs[1].flags = CU_MEMCPY_FLAG_PREFER_OVERLAP_WITH_COMPUTE;
+    size_t attr_indices[] = {0, 1};
+    CUdeviceptr batch_dsts[] = {driver_dst, driver_dst2};
+    CUdeviceptr batch_srcs[] = {driver_src, driver_src};
+    size_t batch_sizes[] = {bytes, bytes};
+
+    output.assign(bytes, 0);
+    CHECK_DRV(cuMemsetD8(driver_dst, 0, bytes));
+    CHECK_DRV(cuMemsetD8(driver_dst2, 0, bytes));
+    CHECK_DRV(cuMemcpyBatchAsync(
+        batch_dsts, batch_srcs, batch_sizes, 2, batch_attrs, attr_indices, 2,
+        driver_stream));
+    CHECK_DRV(cuStreamSynchronize(driver_stream));
+    CHECK_DRV(cuMemcpyDtoH(output.data(), driver_dst, bytes));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+    output.assign(bytes, 0);
+    CHECK_DRV(cuMemcpyDtoH(output.data(), driver_dst2, bytes));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+
+    output.assign(bytes, 0);
+    CHECK_DRV(cuMemsetD8(driver_dst, 0, bytes));
+    CHECK_DRV(cuMemcpyWithAttributesAsync(
+        driver_dst, driver_src, bytes, &attr, driver_stream));
+    CHECK_DRV(cuStreamSynchronize(driver_stream));
+    CHECK_DRV(cuMemcpyDtoH(output.data(), driver_dst, bytes));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+
+    CUDA_MEMCPY3D_BATCH_OP driver_op =
+        make_driver_pointer_op(driver_dst, driver_src, width, height, depth);
+    output.assign(bytes, 0);
+    CHECK_DRV(cuMemsetD8(driver_dst, 0, bytes));
+    CHECK_DRV(cuMemcpy3DBatchAsync(1, &driver_op, 0, driver_stream));
+    CHECK_DRV(cuStreamSynchronize(driver_stream));
+    CHECK_DRV(cuMemcpyDtoH(output.data(), driver_dst, bytes));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+
+    output.assign(bytes, 0);
+    CHECK_DRV(cuMemsetD8(driver_dst, 0, bytes));
+    CHECK_DRV(cuMemcpy3DWithAttributesAsync(&driver_op, 0, driver_stream));
+    CHECK_DRV(cuStreamSynchronize(driver_stream));
+    CHECK_DRV(cuMemcpyDtoH(output.data(), driver_dst, bytes));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+
+    CHECK_DRV(cuStreamDestroy(driver_stream));
+    CHECK_DRV(cuMemFree(driver_dst2));
+    CHECK_DRV(cuMemFree(driver_dst));
+    CHECK_DRV(cuMemFree(driver_src));
+
     std::puts("memcpy3d batch API test passed");
     return 0;
 }

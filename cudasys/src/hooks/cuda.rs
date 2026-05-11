@@ -1356,6 +1356,123 @@ fn cuMemcpy3DPeerAsync(
     }
 }
 
+#[cuda_hook(proc_id = 900961, async_api)]
+fn cuMemcpyBatchAsync_v2(
+    #[host(input, len = count)] dsts: *mut CUdeviceptr,
+    #[host(input, len = count)] srcs: *mut CUdeviceptr,
+    #[host(input, len = count)] sizes: *mut usize,
+    count: usize,
+    #[host(input, len = numAttrs)] attrs: *mut CUmemcpyAttributes,
+    #[host(input, len = numAttrs)] attrsIdxs: *mut usize,
+    numAttrs: usize,
+    hStream: CUstream,
+) -> CUresult {
+    'client_before_send: {
+        assert!(count > 0);
+        assert!(!dsts.is_null());
+        assert!(!srcs.is_null());
+        assert!(!sizes.is_null());
+        assert!(numAttrs > 0);
+        assert!(numAttrs <= count);
+        assert!(!attrs.is_null());
+        assert!(!attrsIdxs.is_null());
+        let dsts_slice = unsafe { std::slice::from_raw_parts(dsts, count) };
+        let srcs_slice = unsafe { std::slice::from_raw_parts(srcs, count) };
+        let sizes_slice = unsafe { std::slice::from_raw_parts(sizes, count) };
+        assert!(dsts_slice.iter().all(|dst| *dst != 0));
+        assert!(srcs_slice.iter().all(|src| *src != 0));
+        assert!(sizes_slice.iter().all(|size| *size > 0));
+        let attrs_idx_slice = unsafe { std::slice::from_raw_parts(attrsIdxs, numAttrs) };
+        assert_eq!(attrs_idx_slice[0], 0);
+        assert!(attrs_idx_slice.iter().all(|idx| *idx < count));
+        assert!(attrs_idx_slice.windows(2).all(|idxs| idxs[0] < idxs[1]));
+    }
+}
+
+#[cuda_hook(proc_id = 900962, async_api)]
+fn cuMemcpyWithAttributesAsync(
+    dst: CUdeviceptr,
+    src: CUdeviceptr,
+    size: usize,
+    #[host(input, len = 1)] attr: *mut CUmemcpyAttributes,
+    hStream: CUstream,
+) -> CUresult {
+    'client_before_send: {
+        assert_ne!(dst, 0);
+        assert_ne!(src, 0);
+        assert!(size > 0);
+        assert!(!attr.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900963, async_api)]
+fn cuMemcpy3DBatchAsync_v2(
+    numOps: usize,
+    #[host(input, len = numOps)] opList: *mut CUDA_MEMCPY3D_BATCH_OP,
+    flags: c_ulonglong,
+    hStream: CUstream,
+) -> CUresult {
+    'client_before_send: {
+        assert!(numOps > 0);
+        assert!(!opList.is_null());
+        assert_eq!(flags, 0);
+        let ops = unsafe { std::slice::from_raw_parts(opList, numOps) };
+        for op in ops {
+            assert_eq!(
+                op.src.type_,
+                CUmemcpy3DOperandType::CU_MEMCPY_OPERAND_TYPE_POINTER
+            );
+            assert_eq!(
+                op.dst.type_,
+                CUmemcpy3DOperandType::CU_MEMCPY_OPERAND_TYPE_POINTER
+            );
+            let src = unsafe { op.src.op.ptr };
+            let dst = unsafe { op.dst.op.ptr };
+            assert_ne!(src.ptr, 0);
+            assert_ne!(dst.ptr, 0);
+            assert!(op.extent.width > 0);
+            assert!(op.extent.height > 0);
+            assert!(op.extent.depth > 0);
+            assert!(src.rowLength == 0 || src.rowLength >= op.extent.width);
+            assert!(dst.rowLength == 0 || dst.rowLength >= op.extent.width);
+            assert!(src.layerHeight == 0 || src.layerHeight >= op.extent.height);
+            assert!(dst.layerHeight == 0 || dst.layerHeight >= op.extent.height);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900964, async_api)]
+fn cuMemcpy3DWithAttributesAsync(
+    #[host(input, len = 1)] op: *mut CUDA_MEMCPY3D_BATCH_OP,
+    flags: c_ulonglong,
+    hStream: CUstream,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!op.is_null());
+        assert_eq!(flags, 0);
+        let op_ref = unsafe { &*op };
+        assert_eq!(
+            op_ref.src.type_,
+            CUmemcpy3DOperandType::CU_MEMCPY_OPERAND_TYPE_POINTER
+        );
+        assert_eq!(
+            op_ref.dst.type_,
+            CUmemcpy3DOperandType::CU_MEMCPY_OPERAND_TYPE_POINTER
+        );
+        let src = unsafe { op_ref.src.op.ptr };
+        let dst = unsafe { op_ref.dst.op.ptr };
+        assert_ne!(src.ptr, 0);
+        assert_ne!(dst.ptr, 0);
+        assert!(op_ref.extent.width > 0);
+        assert!(op_ref.extent.height > 0);
+        assert!(op_ref.extent.depth > 0);
+        assert!(src.rowLength == 0 || src.rowLength >= op_ref.extent.width);
+        assert!(dst.rowLength == 0 || dst.rowLength >= op_ref.extent.width);
+        assert!(src.layerHeight == 0 || src.layerHeight >= op_ref.extent.height);
+        assert!(dst.layerHeight == 0 || dst.layerHeight >= op_ref.extent.height);
+    }
+}
+
 #[cuda_hook(proc_id = 900406, async_api)]
 fn cuMemcpyDtoDAsync_v2(
     dstDevice: CUdeviceptr,
