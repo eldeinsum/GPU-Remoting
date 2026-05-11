@@ -16,6 +16,7 @@ mod cudart_exe;
 mod cudart_exe_custom;
 mod cudnn_exe;
 mod nccl_exe;
+mod nccl_exe_custom;
 mod nvml_exe;
 mod nvml_exe_custom;
 mod nvrtc_exe;

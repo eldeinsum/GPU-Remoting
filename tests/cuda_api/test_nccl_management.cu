@@ -135,6 +135,13 @@ int main(void) {
   if (!nccl_ok(ncclCommInitAll(comms, nranks, devs), "ncclCommInitAll")) {
     return EXIT_FAILURE;
   }
+  for (int rank = 0; rank < nranks; ++rank) {
+    const char *last_error = ncclGetLastError(comms[rank]);
+    if (last_error == NULL) {
+      fprintf(stderr, "ncclGetLastError returned null text\n");
+      return EXIT_FAILURE;
+    }
+  }
   if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(suspend)")) {
     return EXIT_FAILURE;
   }

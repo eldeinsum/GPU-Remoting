@@ -1,8 +1,12 @@
 use cudasys::types::nccl::*;
+use network::type_impl::recv_slice;
+use network::{CommChannelInner, Transportable};
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
+
+use crate::{CLIENT_THREAD, ClientThread};
 
 fn real_nccl_handle() -> *mut c_void {
     static HANDLE: OnceLock<usize> = OnceLock::new();
@@ -81,6 +85,38 @@ pub extern "C" fn ncclGetErrorString(result: ncclResult_t) -> *const c_char {
         .entry(code)
         .or_insert_with(|| CString::new(nccl_error_text(result)).unwrap());
     text.as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn ncclGetLastError(comm: ncclComm_t) -> *const c_char {
+    log::debug!(target: "ncclGetLastError", "{comm:p}");
+    static LAST_ERROR_TEXT: OnceLock<Mutex<CString>> = OnceLock::new();
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "ncclGetLastError", "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        3238i32.send(channel_sender).unwrap();
+        comm.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+
+        let bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+        channel_receiver.recv_ts().unwrap();
+        let text = CString::new(bytes.into_vec()).unwrap_or_else(|_| {
+            CString::new("NCCL returned an invalid last-error string").unwrap()
+        });
+        let mut last_error = LAST_ERROR_TEXT
+            .get_or_init(|| Mutex::new(CString::default()))
+            .lock()
+            .unwrap();
+        *last_error = text;
+        last_error.as_ptr()
+    })
 }
 
 forward_nccl!(ncclParamBind(

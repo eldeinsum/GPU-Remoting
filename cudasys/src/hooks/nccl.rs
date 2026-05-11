@@ -11,6 +11,9 @@ fn ncclGetUniqueId(uniqueId: *mut ncclUniqueId) -> ncclResult_t;
 #[cuda_custom_hook] // local: returns a client-owned C string
 fn ncclGetErrorString(result: ncclResult_t) -> *const c_char;
 
+#[cuda_custom_hook(proc_id = 3238)] // remoted: returns a client-owned copy of server text
+fn ncclGetLastError(comm: ncclComm_t) -> *const c_char;
+
 #[cuda_hook(proc_id = 3202)]
 fn ncclCommInitRank(
     comm: *mut ncclComm_t,
