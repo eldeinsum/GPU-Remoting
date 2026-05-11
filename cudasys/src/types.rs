@@ -90,6 +90,12 @@ pub mod cuda {
             }
         }
     }
+
+    impl CUgraphMem_attribute {
+        pub fn data_size(&self) -> usize {
+            size_of::<u64>()
+        }
+    }
 }
 
 pub mod cudart {

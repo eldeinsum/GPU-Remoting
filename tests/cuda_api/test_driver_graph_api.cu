@@ -136,6 +136,115 @@ static int check_empty_graph(CUgraph graph, CUgraphNode node_a, CUgraphNode node
     return 0;
 }
 
+static int check_graph_memory_attributes(CUdevice device)
+{
+    unsigned long long value = 0;
+    CHECK_DRV(cuDeviceGetGraphMemAttribute(
+        device, CU_GRAPH_MEM_ATTR_USED_MEM_CURRENT, &value));
+    CHECK_DRV(cuDeviceGetGraphMemAttribute(
+        device, CU_GRAPH_MEM_ATTR_RESERVED_MEM_CURRENT, &value));
+    value = 0;
+    CHECK_DRV(cuDeviceSetGraphMemAttribute(
+        device, CU_GRAPH_MEM_ATTR_USED_MEM_HIGH, &value));
+    CHECK_DRV(cuDeviceSetGraphMemAttribute(
+        device, CU_GRAPH_MEM_ATTR_RESERVED_MEM_HIGH, &value));
+    CHECK_DRV(cuDeviceGraphMemTrim(device));
+
+    return 0;
+}
+
+static int check_child_and_event_graph(CUstream stream)
+{
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    CUgraph child_graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&child_graph, 0));
+    CUgraphNode child_inner_node = nullptr;
+    CHECK_DRV(cuGraphAddEmptyNode(&child_inner_node, child_graph, nullptr, 0));
+
+    CUgraphNode child_node = nullptr;
+    CHECK_DRV(cuGraphAddChildGraphNode(&child_node, graph, nullptr, 0,
+                                       child_graph));
+    CUgraph child_clone = nullptr;
+    CHECK_DRV(cuGraphChildGraphNodeGetGraph(child_node, &child_clone));
+    size_t child_nodes = 0;
+    CHECK_DRV(cuGraphGetNodes(child_clone, nullptr, &child_nodes));
+    if (child_nodes != 1) {
+        std::fprintf(stderr, "expected 1 child graph node, got %zu\n",
+                     child_nodes);
+        return 1;
+    }
+    CHECK_DRV(cuGraphDestroy(child_graph));
+
+    CUevent event_initial = nullptr;
+    CUevent event_replacement = nullptr;
+    CHECK_DRV(cuEventCreate(&event_initial, CU_EVENT_DEFAULT));
+    CHECK_DRV(cuEventCreate(&event_replacement, CU_EVENT_DEFAULT));
+
+    CUgraphNode record_node = nullptr;
+    CUgraphNode wait_node = nullptr;
+    CHECK_DRV(cuGraphAddEventRecordNode(&record_node, graph, nullptr, 0,
+                                        event_initial));
+    CUevent queried_event = nullptr;
+    CHECK_DRV(cuGraphEventRecordNodeGetEvent(record_node, &queried_event));
+    if (queried_event != event_initial) {
+        std::fprintf(stderr, "unexpected event record node event\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphEventRecordNodeSetEvent(record_node, event_replacement));
+    CHECK_DRV(cuGraphEventRecordNodeGetEvent(record_node, &queried_event));
+    if (queried_event != event_replacement) {
+        std::fprintf(stderr, "event record node set did not stick\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuGraphAddEventWaitNode(&wait_node, graph, nullptr, 0,
+                                      event_replacement));
+    CHECK_DRV(cuGraphEventWaitNodeGetEvent(wait_node, &queried_event));
+    if (queried_event != event_replacement) {
+        std::fprintf(stderr, "unexpected event wait node event\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphEventWaitNodeSetEvent(wait_node, event_initial));
+    CHECK_DRV(cuGraphEventWaitNodeGetEvent(wait_node, &queried_event));
+    if (queried_event != event_initial) {
+        std::fprintf(stderr, "event wait node set did not stick\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphEventWaitNodeSetEvent(wait_node, event_replacement));
+
+    CUgraphNode event_from[1] = {record_node};
+    CUgraphNode event_to[1] = {wait_node};
+    CHECK_DRV(cuGraphAddDependencies(graph, event_from, event_to, nullptr, 1));
+
+    CUgraph replacement_child_graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&replacement_child_graph, 0));
+    CUgraphNode replacement_child_node = nullptr;
+    CHECK_DRV(cuGraphAddEmptyNode(&replacement_child_node,
+                                  replacement_child_graph, nullptr, 0));
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+    CHECK_DRV(cuGraphExecChildGraphNodeSetParams(exec, child_node,
+                                                 replacement_child_graph));
+    CHECK_DRV(cuGraphExecEventRecordNodeSetEvent(exec, record_node,
+                                                 event_replacement));
+    CHECK_DRV(cuGraphExecEventWaitNodeSetEvent(exec, wait_node,
+                                               event_replacement));
+    CHECK_DRV(cuGraphUpload(exec, stream));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+    CHECK_DRV(cuGraphExecDestroy(exec));
+
+    CHECK_DRV(cuGraphDestroy(replacement_child_graph));
+    CHECK_DRV(cuEventDestroy(event_replacement));
+    CHECK_DRV(cuEventDestroy(event_initial));
+    CHECK_DRV(cuGraphDestroy(graph));
+
+    return 0;
+}
+
 int main()
 {
     CHECK_CUDA(cudaSetDevice(0));
@@ -144,6 +253,11 @@ int main()
     CHECK_CUDA(cudaFree(runtime_context_init));
 
     CHECK_DRV(cuInit(0));
+    CUdevice device = 0;
+    CHECK_DRV(cuDeviceGet(&device, 0));
+    if (check_graph_memory_attributes(device) != 0) {
+        return 1;
+    }
 
     CUstream stream = nullptr;
     CHECK_DRV(cuStreamCreate(&stream, CU_STREAM_DEFAULT));
@@ -159,6 +273,9 @@ int main()
     CHECK_DRV(cuGraphAddDependencies(graph, from, to, nullptr, 1));
 
     if (check_empty_graph(graph, node_a, node_b) != 0) {
+        return 1;
+    }
+    if (check_child_and_event_graph(stream) != 0) {
         return 1;
     }
 

@@ -1097,6 +1097,101 @@ fn cuGraphExecDestroy(hGraphExec: CUgraphExec) -> CUresult;
 #[cuda_hook(proc_id = 900826)]
 fn cuGraphDebugDotPrint(hGraph: CUgraph, path: *const c_char, flags: c_uint) -> CUresult;
 
+#[cuda_hook(proc_id = 900827, async_api = false)]
+fn cuDeviceGraphMemTrim(device: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 900828)]
+fn cuDeviceGetGraphMemAttribute(
+    device: CUdevice,
+    attr: CUgraphMem_attribute,
+    #[host(output, len = attr.data_size())] value: *mut c_void,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900829)]
+fn cuDeviceSetGraphMemAttribute(
+    device: CUdevice,
+    attr: CUgraphMem_attribute,
+    #[host(input, len = attr.data_size())] value: *mut c_void,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900830)]
+fn cuGraphAddChildGraphNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    childGraph: CUgraph,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900831)]
+fn cuGraphChildGraphNodeGetGraph(hNode: CUgraphNode, phGraph: *mut CUgraph) -> CUresult;
+
+#[cuda_hook(proc_id = 900832)]
+fn cuGraphExecChildGraphNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    childGraph: CUgraph,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900833)]
+fn cuGraphAddEventRecordNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    event: CUevent,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900834)]
+fn cuGraphEventRecordNodeGetEvent(hNode: CUgraphNode, event_out: *mut CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900835)]
+fn cuGraphEventRecordNodeSetEvent(hNode: CUgraphNode, event: CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900836)]
+fn cuGraphAddEventWaitNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    event: CUevent,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900837)]
+fn cuGraphEventWaitNodeGetEvent(hNode: CUgraphNode, event_out: *mut CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900838)]
+fn cuGraphEventWaitNodeSetEvent(hNode: CUgraphNode, event: CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900839)]
+fn cuGraphExecEventRecordNodeSetEvent(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    event: CUevent,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900840)]
+fn cuGraphExecEventWaitNodeSetEvent(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    event: CUevent,
+) -> CUresult;
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,
