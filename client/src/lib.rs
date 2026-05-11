@@ -33,6 +33,7 @@ use cudasys::types::cuda::{
     CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS, CUfunction, CUgraphNode, CUkernel,
     CUlibrary, CUmodule, CUstreamBatchMemOpParams,
 };
+use cudasys::types::cudart::{cudaGraphNode_t, cudaKernelNodeParams};
 type FatBinaryHandle = usize;
 type HostPtr = usize;
 
@@ -296,6 +297,8 @@ struct RuntimeCache {
     loaded_modules: BTreeMap<FatBinaryHandle, CUmodule>,
     /// Used in `cudaLaunchKernel`. Cache of `cuModuleGetFunction` calls.
     loaded_functions: BTreeMap<HostPtr, CUfunction>,
+    /// Client-side copies of runtime graph kernel node parameters.
+    graph_kernel_nodes: BTreeMap<cudaGraphNode_t, RuntimeGraphKernelNodeCache>,
 }
 
 // The pointers are either static or server-side.
@@ -311,6 +314,7 @@ impl RuntimeCache {
             lazy_variables: BTreeMap::new(),
             loaded_modules: BTreeMap::new(),
             loaded_functions: BTreeMap::new(),
+            graph_kernel_nodes: BTreeMap::new(),
         }
     }
 
@@ -318,6 +322,54 @@ impl RuntimeCache {
         self.cuda_device = None;
         self.loaded_modules.clear();
         self.loaded_functions.clear();
+        self.graph_kernel_nodes.clear();
+    }
+}
+
+struct RuntimeGraphKernelNodeCache {
+    params: cudaKernelNodeParams,
+    args: Box<[u8]>,
+    arg_offsets: Box<[u32]>,
+    kernel_param_ptrs: Box<[*mut c_void]>,
+}
+
+impl RuntimeGraphKernelNodeCache {
+    fn new(mut params: cudaKernelNodeParams, args: Box<[u8]>, arg_offsets: Box<[u32]>) -> Self {
+        params.kernelParams = std::ptr::null_mut();
+        params.extra = std::ptr::null_mut();
+        let mut cache = Self {
+            params,
+            args,
+            arg_offsets,
+            kernel_param_ptrs: Box::default(),
+        };
+        cache.refresh_kernel_param_ptrs();
+        cache
+    }
+
+    fn refresh_kernel_param_ptrs(&mut self) {
+        self.kernel_param_ptrs = self
+            .arg_offsets
+            .iter()
+            .map(|offset| unsafe {
+                self.args
+                    .as_mut_ptr()
+                    .add(*offset as usize)
+                    .cast::<c_void>()
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+    }
+
+    fn params_for_client(&mut self) -> cudaKernelNodeParams {
+        let mut params = self.params;
+        params.kernelParams = if self.kernel_param_ptrs.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            self.kernel_param_ptrs.as_mut_ptr()
+        };
+        params.extra = std::ptr::null_mut();
+        params
     }
 }
 

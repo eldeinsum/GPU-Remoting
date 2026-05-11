@@ -1,6 +1,9 @@
 #![expect(non_snake_case)]
 use super::*;
-use cudasys::types::cuda::{CUdeviceptr, CUlaunchAttribute, CUlaunchConfig, CUmodule, CUresult};
+use cudasys::types::cuda::{
+    CUDA_KERNEL_NODE_PARAMS, CUdeviceptr, CUgraphNode, CUlaunchAttribute, CUlaunchConfig, CUmodule,
+    CUresult,
+};
 use cudasys::types::cudart::*;
 use network::type_impl::recv_slice;
 use std::cell::RefCell;
@@ -815,6 +818,80 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
     cufunc
 }
 
+fn pack_runtime_kernel_node_params(
+    pNodeParams: *const cudaKernelNodeParams,
+) -> Result<
+    (
+        cudaKernelNodeParams,
+        CUDA_KERNEL_NODE_PARAMS,
+        Box<[u8]>,
+        Box<[u32]>,
+    ),
+    cudaError_t,
+> {
+    if pNodeParams.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    let node_params = unsafe { &*pNodeParams };
+    if node_params.func.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidDeviceFunction);
+    }
+    if !node_params.extra.is_null() {
+        return Err(cudaError_t::cudaErrorNotSupported);
+    }
+
+    let host_func = node_params.func as HostPtr;
+    if !RUNTIME_CACHE
+        .read()
+        .unwrap()
+        .lazy_functions
+        .contains_key(&host_func)
+    {
+        return Err(cudaError_t::cudaErrorInvalidDeviceFunction);
+    }
+    let cufunc = get_cufunction(host_func);
+    let driver = DRIVER_CACHE.read().unwrap();
+    let Some(param_info) = driver.function_params.get(&cufunc) else {
+        return Err(cudaError_t::cudaErrorInvalidDeviceFunction);
+    };
+    let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+        node_params.kernelParams,
+        param_info,
+    );
+    let packed_params = CUDA_KERNEL_NODE_PARAMS {
+        func: cufunc,
+        gridDimX: node_params.gridDim.x,
+        gridDimY: node_params.gridDim.y,
+        gridDimZ: node_params.gridDim.z,
+        blockDimX: node_params.blockDim.x,
+        blockDimY: node_params.blockDim.y,
+        blockDimZ: node_params.blockDim.z,
+        sharedMemBytes: node_params.sharedMemBytes,
+        kernelParams: std::ptr::null_mut(),
+        extra: std::ptr::null_mut(),
+        kern: std::ptr::null_mut(),
+        ctx: std::ptr::null_mut(),
+    };
+    Ok((*node_params, packed_params, args, arg_offsets))
+}
+
+fn cache_runtime_graph_kernel_node(
+    node: cudaGraphNode_t,
+    cached_params: cudaKernelNodeParams,
+    packed_params: CUDA_KERNEL_NODE_PARAMS,
+    args: Box<[u8]>,
+    arg_offsets: Box<[u32]>,
+) {
+    RUNTIME_CACHE.write().unwrap().graph_kernel_nodes.insert(
+        node,
+        crate::RuntimeGraphKernelNodeCache::new(cached_params, args.clone(), arg_offsets.clone()),
+    );
+    DRIVER_CACHE.write().unwrap().graph_kernel_nodes.insert(
+        node as CUgraphNode,
+        crate::GraphKernelNodeCache::new(packed_params, args, arg_offsets),
+    );
+}
+
 fn write_driver_entry_point(
     symbol: *const c_char,
     funcPtr: *mut *mut c_void,
@@ -1156,6 +1233,163 @@ pub extern "C" fn cudaGraphGetEdges(
         edgeData,
         numEdges,
     )
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphAddKernelNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    pNodeParams: *const cudaKernelNodeParams,
+) -> cudaError_t {
+    if pGraphNode.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if !pDependencies.is_null() || numDependencies != 0 {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let (cached_params, packed_params, args, arg_offsets) =
+        match pack_runtime_kernel_node_params(pNodeParams) {
+            Ok(params) => params,
+            Err(error) => return error,
+        };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphAddKernelNode", "[#{}]", client.id);
+
+        900910.send(&client.channel_sender).unwrap();
+        graph.send(&client.channel_sender).unwrap();
+        packed_params.send(&client.channel_sender).unwrap();
+        send_slice(&arg_offsets, &client.channel_sender).unwrap();
+        send_slice(&args, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut node: cudaGraphNode_t = std::ptr::null_mut();
+        node.recv(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaGraphAddKernelNode",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            unsafe {
+                *pGraphNode = node;
+            }
+            cache_runtime_graph_kernel_node(node, cached_params, packed_params, args, arg_offsets);
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphKernelNodeGetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *mut cudaKernelNodeParams,
+) -> cudaError_t {
+    if pNodeParams.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphKernelNodeGetParams", "[#{}]", client.id);
+
+        900911.send(&client.channel_sender).unwrap();
+        node.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut server_params = std::mem::MaybeUninit::<cudaKernelNodeParams>::uninit();
+        server_params.recv(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaGraphKernelNodeGetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            unsafe {
+                *pNodeParams = server_params.assume_init();
+            }
+            if let Some(cache) = RUNTIME_CACHE
+                .write()
+                .unwrap()
+                .graph_kernel_nodes
+                .get_mut(&node)
+            {
+                unsafe {
+                    *pNodeParams = cache.params_for_client();
+                }
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphKernelNodeSetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaKernelNodeParams,
+) -> cudaError_t {
+    let (cached_params, packed_params, args, arg_offsets) =
+        match pack_runtime_kernel_node_params(pNodeParams) {
+            Ok(params) => params,
+            Err(error) => return error,
+        };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphKernelNodeSetParams", "[#{}]", client.id);
+
+        900912.send(&client.channel_sender).unwrap();
+        node.send(&client.channel_sender).unwrap();
+        packed_params.send(&client.channel_sender).unwrap();
+        send_slice(&arg_offsets, &client.channel_sender).unwrap();
+        send_slice(&args, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cuda_result(
+            "cudaGraphKernelNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            cache_runtime_graph_kernel_node(node, cached_params, packed_params, args, arg_offsets);
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExecKernelNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaKernelNodeParams,
+) -> cudaError_t {
+    let (_cached_params, packed_params, args, arg_offsets) =
+        match pack_runtime_kernel_node_params(pNodeParams) {
+            Ok(params) => params,
+            Err(error) => return error,
+        };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExecKernelNodeSetParams", "[#{}]", client.id);
+
+        900913.send(&client.channel_sender).unwrap();
+        hGraphExec.send(&client.channel_sender).unwrap();
+        node.send(&client.channel_sender).unwrap();
+        packed_params.send(&client.channel_sender).unwrap();
+        send_slice(&arg_offsets, &client.channel_sender).unwrap();
+        send_slice(&args, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cuda_result(
+            "cudaGraphExecKernelNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
 }
 
 #[no_mangle]

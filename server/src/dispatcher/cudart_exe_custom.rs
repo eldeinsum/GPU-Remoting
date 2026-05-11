@@ -2,6 +2,7 @@
 
 use super::*;
 use cudasys::cudart::*;
+use cudasys::types::cuda::{CUDA_KERNEL_NODE_PARAMS, CUgraph, CUgraphExec, CUgraphNode, CUresult};
 
 fn recv_output_request<C: CommChannel>(channel_receiver: &C) -> (bool, usize) {
     let mut requested = false;
@@ -29,6 +30,61 @@ fn output_len(requested: bool, result: cudaError_t, count: usize, capacity: usiz
         count.min(capacity)
     } else {
         0
+    }
+}
+
+fn driver_result_to_runtime(result: CUresult) -> cudaError_t {
+    if result == CUresult::CUDA_SUCCESS {
+        cudaError_t::cudaSuccess
+    } else {
+        cudaError_t::cudaErrorUnknown
+    }
+}
+
+fn recv_kernel_node_params<C: CommChannel>(
+    channel_receiver: &C,
+) -> (CUDA_KERNEL_NODE_PARAMS, Box<[u32]>, Box<[u8]>) {
+    let mut packed_params = std::mem::MaybeUninit::<CUDA_KERNEL_NODE_PARAMS>::uninit();
+    packed_params.recv(channel_receiver).unwrap();
+    let packed_params = unsafe { packed_params.assume_init() };
+    let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
+    let args = recv_slice::<u8, _>(channel_receiver).unwrap();
+    (packed_params, arg_offsets, args)
+}
+
+fn materialize_kernel_params(
+    packed_params: &mut CUDA_KERNEL_NODE_PARAMS,
+    args: &[u8],
+    arg_offsets: &[u32],
+) -> Vec<*mut std::ffi::c_void> {
+    let mut kernel_params =
+        super::cuda_exe_utils::kernel_params_from_packed_args(args, arg_offsets);
+    packed_params.kernelParams = if kernel_params.is_empty() {
+        std::ptr::null_mut()
+    } else {
+        kernel_params.as_mut_ptr()
+    };
+    kernel_params
+}
+
+fn runtime_kernel_params_from_driver(
+    driver_params: CUDA_KERNEL_NODE_PARAMS,
+) -> cudaKernelNodeParams {
+    cudaKernelNodeParams {
+        func: driver_params.func.cast(),
+        gridDim: dim3 {
+            x: driver_params.gridDimX,
+            y: driver_params.gridDimY,
+            z: driver_params.gridDimZ,
+        },
+        blockDim: dim3 {
+            x: driver_params.blockDimX,
+            y: driver_params.blockDimY,
+            z: driver_params.blockDimZ,
+        },
+        sharedMemBytes: driver_params.sharedMemBytes,
+        kernelParams: std::ptr::null_mut(),
+        extra: std::ptr::null_mut(),
     }
 }
 
@@ -163,6 +219,132 @@ pub fn cudaGraphGetEdgesExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     }
     count.send(channel_sender).unwrap();
     send_result("cudaGraphGetEdges", server.id, result, channel_sender);
+}
+
+pub fn cudaGraphAddKernelNodeExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphAddKernelNode", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<cudaGraph_t>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let (mut packed_params, arg_offsets, args) = recv_kernel_node_params(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let _kernel_params = materialize_kernel_params(&mut packed_params, &args, &arg_offsets);
+    let mut node: CUgraphNode = std::ptr::null_mut();
+    let driver_result = unsafe {
+        cudasys::cuda::cuGraphAddKernelNode_v2(
+            &raw mut node,
+            graph as CUgraph,
+            std::ptr::null(),
+            0,
+            &raw const packed_params,
+        )
+    };
+    let result = driver_result_to_runtime(driver_result);
+
+    (node as cudaGraphNode_t).send(channel_sender).unwrap();
+    send_result("cudaGraphAddKernelNode", server.id, result, channel_sender);
+}
+
+pub fn cudaGraphKernelNodeGetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphKernelNodeGetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut driver_params = std::mem::MaybeUninit::<CUDA_KERNEL_NODE_PARAMS>::uninit();
+    let driver_result = unsafe {
+        cudasys::cuda::cuGraphKernelNodeGetParams_v2(
+            node as CUgraphNode,
+            driver_params.as_mut_ptr(),
+        )
+    };
+    let result = driver_result_to_runtime(driver_result);
+    let runtime_params = if result == cudaError_t::cudaSuccess {
+        runtime_kernel_params_from_driver(unsafe { driver_params.assume_init() })
+    } else {
+        unsafe { std::mem::zeroed() }
+    };
+
+    runtime_params.send(channel_sender).unwrap();
+    send_result(
+        "cudaGraphKernelNodeGetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphKernelNodeSetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphKernelNodeSetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let (mut packed_params, arg_offsets, args) = recv_kernel_node_params(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let _kernel_params = materialize_kernel_params(&mut packed_params, &args, &arg_offsets);
+    let driver_result = unsafe {
+        cudasys::cuda::cuGraphKernelNodeSetParams_v2(node as CUgraphNode, &raw const packed_params)
+    };
+    send_result(
+        "cudaGraphKernelNodeSetParams",
+        server.id,
+        driver_result_to_runtime(driver_result),
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExecKernelNodeSetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExecKernelNodeSetParams", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<cudaGraphExec_t>::uninit();
+    graph_exec.recv(channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let (mut packed_params, arg_offsets, args) = recv_kernel_node_params(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let _kernel_params = materialize_kernel_params(&mut packed_params, &args, &arg_offsets);
+    let driver_result = unsafe {
+        cudasys::cuda::cuGraphExecKernelNodeSetParams_v2(
+            graph_exec as CUgraphExec,
+            node as CUgraphNode,
+            &raw const packed_params,
+        )
+    };
+    send_result(
+        "cudaGraphExecKernelNodeSetParams",
+        server.id,
+        driver_result_to_runtime(driver_result),
+        channel_sender,
+    );
 }
 
 pub fn cudaGraphNodeGetDependenciesExe<C: CommChannel>(server: &mut ServerWorker<C>) {

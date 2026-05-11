@@ -1463,6 +1463,34 @@ fn cudaGraphExecNodeSetParams(
     }
 }
 
+#[cuda_custom_hook(proc_id = 900910)]
+fn cudaGraphAddKernelNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    pNodeParams: *const cudaKernelNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900911)]
+fn cudaGraphKernelNodeGetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *mut cudaKernelNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900912)]
+fn cudaGraphKernelNodeSetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaKernelNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900913)]
+fn cudaGraphExecKernelNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaKernelNodeParams,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900907)]
 fn cudaGraphKernelNodeCopyAttributes(hDst: cudaGraphNode_t, hSrc: cudaGraphNode_t) -> cudaError_t;
 

@@ -270,6 +270,80 @@ int main()
     CHECK_CUDA(cudaGraphDestroy(generic_graph));
     CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
 
+    cudaGraph_t manual_kernel_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&manual_kernel_graph, 0));
+    unsigned char manual_value = 0x63;
+    size_t manual_count = kBytes;
+    void *manual_kernel_args[] = {&device, &manual_value, &manual_count};
+    cudaKernelNodeParams kernel_params = {};
+    kernel_params.func = reinterpret_cast<void *>(graph_extra_kernel);
+    kernel_params.gridDim = dim3((kBytes + 127) / 128, 1, 1);
+    kernel_params.blockDim = dim3(128, 1, 1);
+    kernel_params.sharedMemBytes = 0;
+    kernel_params.kernelParams = manual_kernel_args;
+
+    cudaGraphNode_t manual_kernel_node = nullptr;
+    CHECK_CUDA(cudaGraphAddKernelNode(&manual_kernel_node,
+                                      manual_kernel_graph, nullptr, 0,
+                                      &kernel_params));
+    cudaKernelNodeParams queried_kernel_params = {};
+    CHECK_CUDA(cudaGraphKernelNodeGetParams(manual_kernel_node,
+                                            &queried_kernel_params));
+    if (queried_kernel_params.func != kernel_params.func ||
+        queried_kernel_params.gridDim.x != kernel_params.gridDim.x ||
+        queried_kernel_params.blockDim.x != kernel_params.blockDim.x ||
+        queried_kernel_params.kernelParams == nullptr) {
+        std::fprintf(stderr, "unexpected runtime kernel node params\n");
+        return 1;
+    }
+    unsigned char queried_value =
+        *static_cast<unsigned char *>(queried_kernel_params.kernelParams[1]);
+    if (queried_value != manual_value) {
+        std::fprintf(stderr, "unexpected runtime kernel node argument\n");
+        return 1;
+    }
+
+    manual_value = 0x64;
+    CHECK_CUDA(cudaGraphKernelNodeSetParams(manual_kernel_node,
+                                            &kernel_params));
+    queried_kernel_params = {};
+    CHECK_CUDA(cudaGraphKernelNodeGetParams(manual_kernel_node,
+                                            &queried_kernel_params));
+    queried_value =
+        *static_cast<unsigned char *>(queried_kernel_params.kernelParams[1]);
+    if (queried_value != manual_value) {
+        std::fprintf(stderr, "runtime kernel node update did not stick\n");
+        return 1;
+    }
+
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, manual_kernel_graph, 0));
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x64) != 0) {
+        return 1;
+    }
+
+    manual_value = 0x65;
+    CHECK_CUDA(cudaGraphExecKernelNodeSetParams(exec, manual_kernel_node,
+                                                &kernel_params));
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x65) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(manual_kernel_graph));
+    CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
+
     CHECK_CUDA(cudaMemset(device, 0, kBytes));
     CHECK_CUDA(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
     graph_extra_kernel<<<(kBytes + 127) / 128, 128, 0, stream>>>(
