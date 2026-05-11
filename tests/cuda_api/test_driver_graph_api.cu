@@ -513,6 +513,72 @@ static int check_mem_alloc_graph(CUstream stream, CUcontext context)
     return 0;
 }
 
+static int check_generic_node_graph(CUstream stream, CUcontext context)
+{
+    const size_t bytes = 64;
+    CUdeviceptr device = 0;
+    CHECK_DRV(cuMemAlloc(&device, bytes));
+    CHECK_DRV(cuMemsetD8(device, 0, bytes));
+
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    CUgraphNodeParams params = {};
+    params.type = CU_GRAPH_NODE_TYPE_MEMSET;
+    params.memset.dst = device;
+    params.memset.value = 0x21;
+    params.memset.elementSize = 1;
+    params.memset.width = bytes;
+    params.memset.height = 1;
+    params.memset.ctx = context;
+
+    CUgraphNode node = nullptr;
+    CHECK_DRV(cuGraphAddNode(&node, graph, nullptr, nullptr, 0, &params));
+
+    CUgraphNodeParams queried = {};
+    CHECK_DRV(cuGraphNodeGetParams(node, &queried));
+    if (queried.type != CU_GRAPH_NODE_TYPE_MEMSET ||
+        queried.memset.dst != device || queried.memset.value != 0x21 ||
+        queried.memset.width != bytes || queried.memset.height != 1) {
+        std::fprintf(stderr, "unexpected generic graph node params\n");
+        return 1;
+    }
+
+    params.memset.value = 0x32;
+    CHECK_DRV(cuGraphNodeSetParams(node, &params));
+    queried = {};
+    CHECK_DRV(cuGraphNodeGetParams(node, &queried));
+    if (queried.memset.value != 0x32) {
+        std::fprintf(stderr, "generic graph node update did not stick\n");
+        return 1;
+    }
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+
+    params.memset.value = 0x43;
+    CHECK_DRV(cuGraphExecNodeSetParams(exec, node, &params));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    unsigned char output[bytes];
+    CHECK_DRV(cuMemcpyDtoH(output, device, bytes));
+    for (size_t i = 0; i < bytes; ++i) {
+        if (output[i] != 0x43) {
+            std::fprintf(stderr,
+                         "generic graph node output mismatch at %zu: got %u\n",
+                         i, static_cast<unsigned int>(output[i]));
+            return 1;
+        }
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(graph));
+    CHECK_DRV(cuMemFree(device));
+
+    return 0;
+}
+
 static int check_kernel_graph(CUstream stream, CUdevice device)
 {
     int major = 0;
@@ -673,6 +739,9 @@ int main()
         return 1;
     }
     if (check_mem_alloc_graph(stream, context) != 0) {
+        return 1;
+    }
+    if (check_generic_node_graph(stream, context) != 0) {
         return 1;
     }
     if (check_kernel_graph(stream, device) != 0) {

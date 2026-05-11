@@ -1589,6 +1589,77 @@ fn cuGraphKernelNodeSetAttribute(
     #[host(len = 1)] value: *const CUkernelNodeAttrValue,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900862)]
+fn cuGraphAddNode_v2(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    #[device] dependencyData: *const CUgraphEdgeData,
+    numDependencies: usize,
+    #[host(input, len = 1)] nodeParams: *mut CUgraphNodeParams,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert!(dependencyData.is_null());
+        assert_eq!(numDependencies, 0);
+        assert!(!nodeParams.is_null());
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.type_, CUgraphNodeType::CU_GRAPH_NODE_TYPE_MEMSET);
+        let memset = unsafe { params.__bindgen_anon_1.memset };
+        assert_eq!(memset.elementSize, 1);
+        assert_eq!(memset.height, 1);
+    }
+}
+
+#[cuda_hook(proc_id = 900863)]
+fn cuGraphNodeGetParams(
+    hNode: CUgraphNode,
+    #[host(output, len = 1)] nodeParams: *mut CUgraphNodeParams,
+) -> CUresult {
+    'server_execution: {
+        let result = unsafe { cuGraphNodeGetParams(hNode, nodeParams__ptr) };
+        if result == CUresult::CUDA_SUCCESS {
+            unsafe {
+                assert_eq!(
+                    (*nodeParams__ptr).type_,
+                    CUgraphNodeType::CU_GRAPH_NODE_TYPE_MEMSET
+                );
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900864)]
+fn cuGraphNodeSetParams(
+    hNode: CUgraphNode,
+    #[host(input, len = 1)] nodeParams: *mut CUgraphNodeParams,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.type_, CUgraphNodeType::CU_GRAPH_NODE_TYPE_MEMSET);
+        let memset = unsafe { params.__bindgen_anon_1.memset };
+        assert_eq!(memset.elementSize, 1);
+        assert_eq!(memset.height, 1);
+    }
+}
+
+#[cuda_hook(proc_id = 900865)]
+fn cuGraphExecNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    #[host(input, len = 1)] nodeParams: *mut CUgraphNodeParams,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.type_, CUgraphNodeType::CU_GRAPH_NODE_TYPE_MEMSET);
+        let memset = unsafe { params.__bindgen_anon_1.memset };
+        assert_eq!(memset.elementSize, 1);
+        assert_eq!(memset.height, 1);
+    }
+}
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

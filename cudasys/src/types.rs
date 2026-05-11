@@ -149,6 +149,26 @@ pub mod cuda {
                 .finish()
         }
     }
+
+    impl std::fmt::Debug for CUgraphNodeParams_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CUgraphNodeParams_st")
+                .field("type_", &self.type_)
+                .field("reserved0", &self.reserved0)
+                .field("__bindgen_anon_1", &self.__bindgen_anon_1)
+                .field("reserved2", &self.reserved2)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for CUgraphNodeParams_st__bindgen_ty_1 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let reserved1 = unsafe { self.reserved1 };
+            f.debug_struct("CUgraphNodeParams_st__bindgen_ty_1")
+                .field("reserved1", &reserved1)
+                .finish()
+        }
+    }
 }
 
 pub mod cudart {
