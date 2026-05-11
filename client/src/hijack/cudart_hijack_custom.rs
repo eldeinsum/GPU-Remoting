@@ -1818,6 +1818,66 @@ pub extern "C" fn cudaLaunchHostFunc_v2(
 }
 
 #[no_mangle]
+extern "C" fn cudaUserObjectCreate(
+    object_out: *mut cudaUserObject_t,
+    ptr: *mut c_void,
+    destroy: cudaHostFn_t,
+    initialRefcount: c_uint,
+    flags: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaUserObjectCreate", "");
+    runtime_result(super::user_object::create(
+        object_out.cast(),
+        ptr,
+        destroy,
+        initialRefcount,
+        flags,
+    ))
+}
+
+#[no_mangle]
+extern "C" fn cudaUserObjectRetain(object: cudaUserObject_t, count: c_uint) -> cudaError_t {
+    log::debug!(target: "cudaUserObjectRetain", "");
+    runtime_result(super::user_object::retain(object.cast(), count))
+}
+
+#[no_mangle]
+extern "C" fn cudaUserObjectRelease(object: cudaUserObject_t, count: c_uint) -> cudaError_t {
+    log::debug!(target: "cudaUserObjectRelease", "");
+    runtime_result(super::user_object::release(object.cast(), count))
+}
+
+#[no_mangle]
+extern "C" fn cudaGraphRetainUserObject(
+    graph: cudaGraph_t,
+    object: cudaUserObject_t,
+    count: c_uint,
+    flags: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaGraphRetainUserObject", "");
+    runtime_result(super::user_object::graph_retain(
+        graph.cast(),
+        object.cast(),
+        count,
+        flags,
+    ))
+}
+
+#[no_mangle]
+extern "C" fn cudaGraphReleaseUserObject(
+    graph: cudaGraph_t,
+    object: cudaUserObject_t,
+    count: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaGraphReleaseUserObject", "");
+    runtime_result(super::user_object::graph_release(
+        graph.cast(),
+        object.cast(),
+        count,
+    ))
+}
+
+#[no_mangle]
 pub extern "C" fn cudaStreamAddCallback(
     stream: cudaStream_t,
     callback: cudaStreamCallback_t,

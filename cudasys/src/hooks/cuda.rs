@@ -2828,7 +2828,13 @@ fn cuOccupancyMaxActiveClusters(
 fn cuGraphCreate(phGraph: *mut CUgraph, flags: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 900801, async_api = false)]
-fn cuGraphDestroy(hGraph: CUgraph) -> CUresult;
+fn cuGraphDestroy(hGraph: CUgraph) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            super::user_object::graph_destroy(hGraph);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 900802)]
 fn cuGraphAddEmptyNode(
@@ -2911,7 +2917,13 @@ fn cuGraphNodeGetDependentNodes_v2(
 fn cuGraphGetId(hGraph: CUgraph, graphId: *mut c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 900812)]
-fn cuGraphClone(phGraphClone: *mut CUgraph, originalGraph: CUgraph) -> CUresult;
+fn cuGraphClone(phGraphClone: *mut CUgraph, originalGraph: CUgraph) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            super::user_object::graph_clone(originalGraph, *phGraphClone);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 900813)]
 fn cuGraphNodeFindInClone(
@@ -2986,6 +2998,32 @@ fn cuGraphExecDestroy(hGraphExec: CUgraphExec) -> CUresult;
 
 #[cuda_hook(proc_id = 900826)]
 fn cuGraphDebugDotPrint(hGraph: CUgraph, path: *const c_char, flags: c_uint) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuUserObjectCreate(
+    object_out: *mut CUuserObject,
+    ptr: *mut c_void,
+    destroy: CUhostFn,
+    initialRefcount: c_uint,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuUserObjectRetain(object: CUuserObject, count: c_uint) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuUserObjectRelease(object: CUuserObject, count: c_uint) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuGraphRetainUserObject(
+    graph: CUgraph,
+    object: CUuserObject,
+    count: c_uint,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_custom_hook] // local
+fn cuGraphReleaseUserObject(graph: CUgraph, object: CUuserObject, count: c_uint) -> CUresult;
 
 #[cuda_hook(proc_id = 900827, async_api = false)]
 fn cuDeviceGraphMemTrim(device: CUdevice) -> CUresult;

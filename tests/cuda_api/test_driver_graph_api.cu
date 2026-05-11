@@ -2,9 +2,12 @@
 #include <cuda_runtime.h>
 #include <nvrtc.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <thread>
 #include <vector>
 
 #define CHECK_CUDA(call)                                                       \
@@ -90,6 +93,86 @@ static bool contains_node(const CUgraphNode *nodes, size_t count, CUgraphNode no
         }
     }
     return false;
+}
+
+static void CUDA_CB driver_user_object_destroy(void *userData)
+{
+    auto *destroy_count = static_cast<std::atomic<int> *>(userData);
+    destroy_count->fetch_add(1);
+}
+
+static int wait_for_destroy_count(const char *label,
+                                  const std::atomic<int> &destroy_count,
+                                  int expected)
+{
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (destroy_count.load() == expected) {
+            return 0;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::fprintf(stderr, "%s destroy count: %d\n", label,
+                 destroy_count.load());
+    return 1;
+}
+
+static int check_user_objects(CUgraph graph)
+{
+    std::atomic<int> destroy_count{0};
+    CUuserObject object = nullptr;
+    CHECK_DRV(cuUserObjectCreate(&object, &destroy_count,
+                                 driver_user_object_destroy, 1,
+                                 CU_USER_OBJECT_NO_DESTRUCTOR_SYNC));
+    CHECK_DRV(cuUserObjectRetain(object, 1));
+    CHECK_DRV(cuGraphRetainUserObject(graph, object, 1,
+                                      CU_GRAPH_USER_OBJECT_MOVE));
+    CHECK_DRV(cuGraphReleaseUserObject(graph, object, 1));
+    if (destroy_count.load() != 0) {
+        std::fprintf(stderr, "driver user object destroyed too early\n");
+        return 1;
+    }
+    CHECK_DRV(cuUserObjectRelease(object, 1));
+    if (wait_for_destroy_count("driver user object", destroy_count, 1) != 0) {
+        return 1;
+    }
+
+    CUgraph destroy_graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&destroy_graph, 0));
+    std::atomic<int> destroy_graph_count{0};
+    CUuserObject destroy_graph_object = nullptr;
+    CHECK_DRV(cuUserObjectCreate(&destroy_graph_object, &destroy_graph_count,
+                                 driver_user_object_destroy, 1,
+                                 CU_USER_OBJECT_NO_DESTRUCTOR_SYNC));
+    CHECK_DRV(cuGraphRetainUserObject(destroy_graph, destroy_graph_object, 1,
+                                      CU_GRAPH_USER_OBJECT_MOVE));
+    CHECK_DRV(cuGraphDestroy(destroy_graph));
+    if (wait_for_destroy_count("driver graph destroy user object",
+                               destroy_graph_count, 1) != 0) {
+        return 1;
+    }
+
+    CUgraph clone_source_graph = nullptr;
+    CUgraph clone_graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&clone_source_graph, 0));
+    std::atomic<int> clone_graph_count{0};
+    CUuserObject clone_graph_object = nullptr;
+    CHECK_DRV(cuUserObjectCreate(&clone_graph_object, &clone_graph_count,
+                                 driver_user_object_destroy, 1,
+                                 CU_USER_OBJECT_NO_DESTRUCTOR_SYNC));
+    CHECK_DRV(cuGraphRetainUserObject(clone_source_graph, clone_graph_object,
+                                      1, CU_GRAPH_USER_OBJECT_MOVE));
+    CHECK_DRV(cuGraphClone(&clone_graph, clone_source_graph));
+    CHECK_DRV(cuGraphDestroy(clone_source_graph));
+    if (clone_graph_count.load() != 0) {
+        std::fprintf(stderr, "driver cloned user object destroyed too early\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphDestroy(clone_graph));
+    if (wait_for_destroy_count("driver cloned user object", clone_graph_count,
+                               1) != 0) {
+        return 1;
+    }
+    return 0;
 }
 
 static int check_empty_graph(CUgraph graph, CUgraphNode node_a, CUgraphNode node_b)
@@ -924,6 +1007,9 @@ int main()
     CUgraphNode from[1] = {node_a};
     CUgraphNode to[1] = {node_b};
     CHECK_DRV(cuGraphAddDependencies(graph, from, to, nullptr, 1));
+    if (check_user_objects(graph) != 0) {
+        return 1;
+    }
 
     if (check_empty_graph(graph, node_a, node_b) != 0) {
         return 1;

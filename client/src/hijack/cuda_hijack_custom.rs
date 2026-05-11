@@ -787,6 +787,51 @@ pub extern "C" fn cuLaunchHostFunc_v2(
 }
 
 #[no_mangle]
+extern "C" fn cuUserObjectCreate(
+    object_out: *mut CUuserObject,
+    ptr: *mut c_void,
+    destroy: CUhostFn,
+    initialRefcount: c_uint,
+    flags: c_uint,
+) -> CUresult {
+    log::debug!(target: "cuUserObjectCreate", "");
+    super::user_object::create(object_out, ptr, destroy, initialRefcount, flags)
+}
+
+#[no_mangle]
+extern "C" fn cuUserObjectRetain(object: CUuserObject, count: c_uint) -> CUresult {
+    log::debug!(target: "cuUserObjectRetain", "");
+    super::user_object::retain(object, count)
+}
+
+#[no_mangle]
+extern "C" fn cuUserObjectRelease(object: CUuserObject, count: c_uint) -> CUresult {
+    log::debug!(target: "cuUserObjectRelease", "");
+    super::user_object::release(object, count)
+}
+
+#[no_mangle]
+extern "C" fn cuGraphRetainUserObject(
+    graph: CUgraph,
+    object: CUuserObject,
+    count: c_uint,
+    flags: c_uint,
+) -> CUresult {
+    log::debug!(target: "cuGraphRetainUserObject", "");
+    super::user_object::graph_retain(graph, object, count, flags)
+}
+
+#[no_mangle]
+extern "C" fn cuGraphReleaseUserObject(
+    graph: CUgraph,
+    object: CUuserObject,
+    count: c_uint,
+) -> CUresult {
+    log::debug!(target: "cuGraphReleaseUserObject", "");
+    super::user_object::graph_release(graph, object, count)
+}
+
+#[no_mangle]
 pub extern "C" fn cuEventDestroy_v2(hEvent: CUevent) -> CUresult {
     CLIENT_THREAD.with_borrow_mut(|client| {
         client.ensure_current_process();

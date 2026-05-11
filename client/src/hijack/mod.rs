@@ -24,6 +24,7 @@ mod nvml_unimplement;
 mod nvrtc_hijack;
 mod nvrtc_hijack_custom;
 mod nvrtc_unimplement;
+mod user_object;
 
 #[expect(unused_imports)]
 use codegen::{cuda_hook_hijack, use_thread_local};

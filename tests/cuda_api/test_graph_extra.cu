@@ -1,7 +1,10 @@
 #include <cuda_runtime.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -40,6 +43,27 @@ __global__ void graph_extra_kernel(unsigned char *data, unsigned char value,
     }
 }
 
+static void CUDART_CB runtime_user_object_destroy(void *userData)
+{
+    auto *destroy_count = static_cast<std::atomic<int> *>(userData);
+    destroy_count->fetch_add(1);
+}
+
+static int wait_for_destroy_count(const char *label,
+                                  const std::atomic<int> &destroy_count,
+                                  int expected)
+{
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (destroy_count.load() == expected) {
+            return 0;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::fprintf(stderr, "%s destroy count: %d\n", label,
+                 destroy_count.load());
+    return 1;
+}
+
 int main()
 {
     constexpr size_t kBytes = 256;
@@ -52,6 +76,66 @@ int main()
 
     cudaStream_t stream = nullptr;
     CHECK_CUDA(cudaStreamCreate(&stream));
+
+    cudaGraph_t user_object_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&user_object_graph, 0));
+    std::atomic<int> runtime_destroy_count{0};
+    cudaUserObject_t runtime_user_object = nullptr;
+    CHECK_CUDA(cudaUserObjectCreate(&runtime_user_object, &runtime_destroy_count,
+                                    runtime_user_object_destroy, 1,
+                                    cudaUserObjectNoDestructorSync));
+    CHECK_CUDA(cudaUserObjectRetain(runtime_user_object, 1));
+    CHECK_CUDA(cudaGraphRetainUserObject(user_object_graph, runtime_user_object,
+                                         1, cudaGraphUserObjectMove));
+    CHECK_CUDA(cudaGraphReleaseUserObject(user_object_graph, runtime_user_object,
+                                          1));
+    if (runtime_destroy_count.load() != 0) {
+        std::fprintf(stderr, "runtime user object destroyed too early\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaUserObjectRelease(runtime_user_object, 1));
+    if (wait_for_destroy_count("runtime user object", runtime_destroy_count,
+                               1) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroy(user_object_graph));
+
+    cudaGraph_t destroy_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&destroy_graph, 0));
+    std::atomic<int> destroy_graph_count{0};
+    cudaUserObject_t destroy_graph_object = nullptr;
+    CHECK_CUDA(cudaUserObjectCreate(&destroy_graph_object, &destroy_graph_count,
+                                    runtime_user_object_destroy, 1,
+                                    cudaUserObjectNoDestructorSync));
+    CHECK_CUDA(cudaGraphRetainUserObject(destroy_graph, destroy_graph_object, 1,
+                                         cudaGraphUserObjectMove));
+    CHECK_CUDA(cudaGraphDestroy(destroy_graph));
+    if (wait_for_destroy_count("runtime graph destroy user object",
+                               destroy_graph_count, 1) != 0) {
+        return 1;
+    }
+
+    cudaGraph_t clone_source_graph = nullptr;
+    cudaGraph_t clone_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&clone_source_graph, 0));
+    std::atomic<int> clone_graph_count{0};
+    cudaUserObject_t clone_graph_object = nullptr;
+    CHECK_CUDA(cudaUserObjectCreate(&clone_graph_object, &clone_graph_count,
+                                    runtime_user_object_destroy, 1,
+                                    cudaUserObjectNoDestructorSync));
+    CHECK_CUDA(cudaGraphRetainUserObject(clone_source_graph, clone_graph_object,
+                                         1, cudaGraphUserObjectMove));
+    CHECK_CUDA(cudaGraphClone(&clone_graph, clone_source_graph));
+    CHECK_CUDA(cudaGraphDestroy(clone_source_graph));
+    if (clone_graph_count.load() != 0) {
+        std::fprintf(stderr, "runtime cloned user object destroyed too early\n");
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphDestroy(clone_graph));
+    if (wait_for_destroy_count("runtime cloned user object", clone_graph_count,
+                               1) != 0) {
+        return 1;
+    }
 
     cudaStreamCaptureStatus status = cudaStreamCaptureStatusNone;
     unsigned long long capture_id = 0;

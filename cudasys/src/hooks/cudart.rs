@@ -2047,7 +2047,13 @@ fn cudaGetDeviceFlags(flags: *mut c_uint) -> cudaError_t;
 fn cudaRuntimeGetVersion(runtimeVersion: *mut c_int) -> cudaError_t;
 
 #[cuda_hook(proc_id = 538, async_api = false)]
-fn cudaGraphDestroy(graph: cudaGraph_t) -> cudaError_t;
+fn cudaGraphDestroy(graph: cudaGraph_t) -> cudaError_t {
+    'client_after_recv: {
+        if result == cudaError_t::cudaSuccess {
+            super::user_object::graph_destroy(graph.cast());
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 900504)]
 fn cudaGraphCreate(pGraph: *mut cudaGraph_t, flags: c_uint) -> cudaError_t;
@@ -2434,6 +2440,36 @@ fn cudaGraphGetNodes(
     numNodes: *mut usize,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // local
+fn cudaUserObjectCreate(
+    object_out: *mut cudaUserObject_t,
+    ptr: *mut c_void,
+    destroy: cudaHostFn_t,
+    initialRefcount: c_uint,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaUserObjectRetain(object: cudaUserObject_t, count: c_uint) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaUserObjectRelease(object: cudaUserObject_t, count: c_uint) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaGraphRetainUserObject(
+    graph: cudaGraph_t,
+    object: cudaUserObject_t,
+    count: c_uint,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
+fn cudaGraphReleaseUserObject(
+    graph: cudaGraph_t,
+    object: cudaUserObject_t,
+    count: c_uint,
+) -> cudaError_t;
+
 #[cuda_custom_hook(proc_id = 900509)]
 fn cudaGraphGetRootNodes(
     graph: cudaGraph_t,
@@ -2454,7 +2490,13 @@ fn cudaGraphGetEdges(
 fn cudaGraphGetId(hGraph: cudaGraph_t, graphID: *mut c_uint) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900517)]
-fn cudaGraphClone(pGraphClone: *mut cudaGraph_t, originalGraph: cudaGraph_t) -> cudaError_t;
+fn cudaGraphClone(pGraphClone: *mut cudaGraph_t, originalGraph: cudaGraph_t) -> cudaError_t {
+    'client_after_recv: {
+        if result == cudaError_t::cudaSuccess {
+            super::user_object::graph_clone(originalGraph.cast(), (*pGraphClone).cast());
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 900518)]
 fn cudaGraphNodeFindInClone(
