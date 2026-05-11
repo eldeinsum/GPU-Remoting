@@ -934,6 +934,169 @@ fn cuOccupancyAvailableDynamicSMemPerBlock(
     blockSize: c_int,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900800)]
+fn cuGraphCreate(phGraph: *mut CUgraph, flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900801, async_api = false)]
+fn cuGraphDestroy(hGraph: CUgraph) -> CUresult;
+
+#[cuda_hook(proc_id = 900802)]
+fn cuGraphAddEmptyNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900803)]
+fn cuGraphAddDependencies_v2(
+    hGraph: CUgraph,
+    #[host(len = numDependencies)] from: *const CUgraphNode,
+    #[host(len = numDependencies)] to: *const CUgraphNode,
+    #[device] edgeData: *const CUgraphEdgeData,
+    numDependencies: usize,
+) -> CUresult {
+    'client_before_send: {
+        assert!(edgeData.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900804)]
+fn cuGraphRemoveDependencies_v2(
+    hGraph: CUgraph,
+    #[host(len = numDependencies)] from: *const CUgraphNode,
+    #[host(len = numDependencies)] to: *const CUgraphNode,
+    #[device] edgeData: *const CUgraphEdgeData,
+    numDependencies: usize,
+) -> CUresult {
+    'client_before_send: {
+        assert!(edgeData.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900805, async_api = false)]
+fn cuGraphDestroyNode(hNode: CUgraphNode) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900806)]
+fn cuGraphGetNodes(hGraph: CUgraph, nodes: *mut CUgraphNode, numNodes: *mut usize) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900807)]
+fn cuGraphGetRootNodes(
+    hGraph: CUgraph,
+    rootNodes: *mut CUgraphNode,
+    numRootNodes: *mut usize,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900808)]
+fn cuGraphGetEdges_v2(
+    hGraph: CUgraph,
+    from: *mut CUgraphNode,
+    to: *mut CUgraphNode,
+    edgeData: *mut CUgraphEdgeData,
+    numEdges: *mut usize,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900809)]
+fn cuGraphNodeGetDependencies_v2(
+    hNode: CUgraphNode,
+    dependencies: *mut CUgraphNode,
+    edgeData: *mut CUgraphEdgeData,
+    numDependencies: *mut usize,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900810)]
+fn cuGraphNodeGetDependentNodes_v2(
+    hNode: CUgraphNode,
+    dependentNodes: *mut CUgraphNode,
+    edgeData: *mut CUgraphEdgeData,
+    numDependentNodes: *mut usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900811)]
+fn cuGraphGetId(hGraph: CUgraph, graphId: *mut c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900812)]
+fn cuGraphClone(phGraphClone: *mut CUgraph, originalGraph: CUgraph) -> CUresult;
+
+#[cuda_hook(proc_id = 900813)]
+fn cuGraphNodeFindInClone(
+    phNode: *mut CUgraphNode,
+    hOriginalNode: CUgraphNode,
+    hClonedGraph: CUgraph,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900814)]
+fn cuGraphNodeGetType(hNode: CUgraphNode, type_: *mut CUgraphNodeType) -> CUresult;
+
+#[cuda_hook(proc_id = 900815)]
+fn cuGraphNodeGetContainingGraph(hNode: CUgraphNode, phGraph: *mut CUgraph) -> CUresult;
+
+#[cuda_hook(proc_id = 900816)]
+fn cuGraphNodeGetLocalId(hNode: CUgraphNode, nodeId: *mut c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900817)]
+fn cuGraphNodeGetToolsId(hNode: CUgraphNode, toolsNodeId: *mut c_ulonglong) -> CUresult;
+
+#[cuda_hook(proc_id = 900818)]
+fn cuGraphInstantiateWithFlags(
+    phGraphExec: *mut CUgraphExec,
+    hGraph: CUgraph,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900819)]
+fn cuGraphInstantiateWithParams(
+    phGraphExec: *mut CUgraphExec,
+    hGraph: CUgraph,
+    #[host(input, len = 1)] instantiateParams: *mut CUDA_GRAPH_INSTANTIATE_PARAMS,
+) -> CUresult {
+    'client_after_recv: {
+        let mut instantiate_params_out: CUDA_GRAPH_INSTANTIATE_PARAMS =
+            unsafe { std::mem::zeroed() };
+        instantiate_params_out.recv(channel_receiver).unwrap();
+        unsafe {
+            std::ptr::write(
+                instantiateParams.as_ptr().cast_mut(),
+                instantiate_params_out,
+            );
+        }
+    }
+    'server_after_send: {
+        instantiateParams[0].send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+    }
+}
+
+#[cuda_hook(proc_id = 900820)]
+fn cuGraphExecGetFlags(hGraphExec: CUgraphExec, flags: *mut cuuint64_t) -> CUresult;
+
+#[cuda_hook(proc_id = 900821)]
+fn cuGraphExecGetId(hGraphExec: CUgraphExec, graphId: *mut c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900822)]
+fn cuGraphExecUpdate_v2(
+    hGraphExec: CUgraphExec,
+    hGraph: CUgraph,
+    resultInfo: *mut CUgraphExecUpdateResultInfo,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900823, async_api)]
+fn cuGraphUpload(hGraphExec: CUgraphExec, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900824, async_api)]
+fn cuGraphLaunch(hGraphExec: CUgraphExec, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900825, async_api = false)]
+fn cuGraphExecDestroy(hGraphExec: CUgraphExec) -> CUresult;
+
+#[cuda_hook(proc_id = 900826)]
+fn cuGraphDebugDotPrint(hGraph: CUgraph, path: *const c_char, flags: c_uint) -> CUresult;
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

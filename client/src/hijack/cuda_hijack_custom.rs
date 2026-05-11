@@ -1,8 +1,246 @@
+use super::*;
 use cudasys::types::cuda::*;
+use network::type_impl::recv_slice;
+use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::*;
 use std::sync::{Mutex, OnceLock};
+
+fn recv_cu_result<C: CommChannel>(
+    target: &'static str,
+    client_id: i32,
+    channel_receiver: &C,
+) -> CUresult {
+    let mut result = CUresult::CUDA_SUCCESS;
+    result.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+    if result != CUresult::CUDA_SUCCESS {
+        log::error!(target: target, "[#{}] returned error: {:?}", client_id, result);
+    }
+    result
+}
+
+fn recv_cu_graph_node_slice<C: CommChannel>(
+    target: &'static str,
+    dst: *mut CUgraphNode,
+    capacity: usize,
+    channel_receiver: &C,
+) -> Option<CUresult> {
+    if dst.is_null() {
+        return None;
+    }
+    let nodes = recv_slice::<CUgraphNode, _>(channel_receiver).unwrap();
+    if nodes.len() > capacity {
+        log::error!(
+            target: target,
+            "server returned {} graph nodes for client capacity {}",
+            nodes.len(),
+            capacity,
+        );
+        return Some(CUresult::CUDA_ERROR_INVALID_VALUE);
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(nodes.as_ptr(), dst, nodes.len());
+    }
+    None
+}
+
+fn recv_cu_graph_edge_data_slice<C: CommChannel>(
+    target: &'static str,
+    dst: *mut CUgraphEdgeData,
+    capacity: usize,
+    channel_receiver: &C,
+) -> Option<CUresult> {
+    if dst.is_null() {
+        return None;
+    }
+    let edge_data = recv_slice::<CUgraphEdgeData, _>(channel_receiver).unwrap();
+    if edge_data.len() > capacity {
+        log::error!(
+            target: target,
+            "server returned {} graph edges for client capacity {}",
+            edge_data.len(),
+            capacity,
+        );
+        return Some(CUresult::CUDA_ERROR_INVALID_VALUE);
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(edge_data.as_ptr(), dst, edge_data.len());
+    }
+    None
+}
+
+fn cu_graph_get_node_list<T: Transportable>(
+    proc_id: i32,
+    target: &'static str,
+    graph_or_node: T,
+    nodes: *mut CUgraphNode,
+    count: *mut usize,
+) -> CUresult {
+    if count.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    let has_nodes = !nodes.is_null();
+    let capacity = if has_nodes { unsafe { *count } } else { 0 };
+    if has_nodes && capacity == 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: target, "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        proc_id.send(channel_sender).unwrap();
+        graph_or_node.send(channel_sender).unwrap();
+        has_nodes.send(channel_sender).unwrap();
+        capacity.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+
+        let local_error = recv_cu_graph_node_slice(target, nodes, capacity, channel_receiver);
+        unsafe { &mut *count }.recv(channel_receiver).unwrap();
+        let result = recv_cu_result(target, client.id, channel_receiver);
+        local_error.unwrap_or(result)
+    })
+}
+
+fn cu_graph_get_edge_list<T: Transportable>(
+    proc_id: i32,
+    target: &'static str,
+    graph_or_node: T,
+    from: *mut CUgraphNode,
+    to: *mut CUgraphNode,
+    edge_data: *mut CUgraphEdgeData,
+    count: *mut usize,
+) -> CUresult {
+    if count.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    let has_from = !from.is_null();
+    let has_to = !to.is_null();
+    let has_edge_data = !edge_data.is_null();
+    let has_outputs = has_from || has_to || has_edge_data;
+    let capacity = if has_outputs { unsafe { *count } } else { 0 };
+    if has_outputs && capacity == 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: target, "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        proc_id.send(channel_sender).unwrap();
+        graph_or_node.send(channel_sender).unwrap();
+        has_from.send(channel_sender).unwrap();
+        has_to.send(channel_sender).unwrap();
+        has_edge_data.send(channel_sender).unwrap();
+        capacity.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+
+        let mut local_error = recv_cu_graph_node_slice(target, from, capacity, channel_receiver);
+        let to_error = recv_cu_graph_node_slice(target, to, capacity, channel_receiver);
+        if local_error.is_none() {
+            local_error = to_error;
+        }
+        let edge_data_error =
+            recv_cu_graph_edge_data_slice(target, edge_data, capacity, channel_receiver);
+        if local_error.is_none() {
+            local_error = edge_data_error;
+        }
+        unsafe { &mut *count }.recv(channel_receiver).unwrap();
+        let result = recv_cu_result(target, client.id, channel_receiver);
+        local_error.unwrap_or(result)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuGraphGetNodes(
+    hGraph: CUgraph,
+    nodes: *mut CUgraphNode,
+    numNodes: *mut usize,
+) -> CUresult {
+    cu_graph_get_node_list(900806, "cuGraphGetNodes", hGraph, nodes, numNodes)
+}
+
+#[no_mangle]
+extern "C" fn cuGraphGetRootNodes(
+    hGraph: CUgraph,
+    rootNodes: *mut CUgraphNode,
+    numRootNodes: *mut usize,
+) -> CUresult {
+    cu_graph_get_node_list(
+        900807,
+        "cuGraphGetRootNodes",
+        hGraph,
+        rootNodes,
+        numRootNodes,
+    )
+}
+
+#[no_mangle]
+extern "C" fn cuGraphGetEdges_v2(
+    hGraph: CUgraph,
+    from: *mut CUgraphNode,
+    to: *mut CUgraphNode,
+    edgeData: *mut CUgraphEdgeData,
+    numEdges: *mut usize,
+) -> CUresult {
+    cu_graph_get_edge_list(
+        900808,
+        "cuGraphGetEdges_v2",
+        hGraph,
+        from,
+        to,
+        edgeData,
+        numEdges,
+    )
+}
+
+#[no_mangle]
+extern "C" fn cuGraphNodeGetDependencies_v2(
+    hNode: CUgraphNode,
+    dependencies: *mut CUgraphNode,
+    edgeData: *mut CUgraphEdgeData,
+    numDependencies: *mut usize,
+) -> CUresult {
+    cu_graph_get_edge_list(
+        900809,
+        "cuGraphNodeGetDependencies_v2",
+        hNode,
+        dependencies,
+        std::ptr::null_mut(),
+        edgeData,
+        numDependencies,
+    )
+}
+
+#[no_mangle]
+extern "C" fn cuGraphNodeGetDependentNodes_v2(
+    hNode: CUgraphNode,
+    dependentNodes: *mut CUgraphNode,
+    edgeData: *mut CUgraphEdgeData,
+    numDependentNodes: *mut usize,
+) -> CUresult {
+    cu_graph_get_edge_list(
+        900810,
+        "cuGraphNodeGetDependentNodes_v2",
+        hNode,
+        dependentNodes,
+        std::ptr::null_mut(),
+        edgeData,
+        numDependentNodes,
+    )
+}
 
 #[no_mangle]
 extern "C" fn cuModuleLoad(module: *mut CUmodule, fname: *const c_char) -> CUresult {
