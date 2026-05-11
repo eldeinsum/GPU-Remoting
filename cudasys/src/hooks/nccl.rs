@@ -316,3 +316,57 @@ fn ncclRedOpDestroy(op: ncclRedOp_t, comm: ncclComm_t) -> ncclResult_t;
 
 #[cuda_hook(proc_id = 3233)]
 fn ncclCommMemStats(comm: ncclComm_t, stat: ncclCommMemStat_t, value: *mut u64) -> ncclResult_t;
+
+#[cuda_custom_hook] // local: NCCL parameter registry owns returned handles
+fn ncclParamBind(out: *mut *mut ncclParamHandle_t, key: *const c_char) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetI8(h: *mut ncclParamHandle_t, out: *mut i8) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetI16(h: *mut ncclParamHandle_t, out: *mut i16) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetI32(h: *mut ncclParamHandle_t, out: *mut i32) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetI64(h: *mut ncclParamHandle_t, out: *mut i64) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetU8(h: *mut ncclParamHandle_t, out: *mut u8) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetU16(h: *mut ncclParamHandle_t, out: *mut u16) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetU32(h: *mut ncclParamHandle_t, out: *mut u32) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGetU64(h: *mut ncclParamHandle_t, out: *mut u64) -> ncclResult_t;
+
+#[cuda_custom_hook] // local: NCCL parameter registry owns returned string
+fn ncclParamGetStr(h: *mut ncclParamHandle_t, out: *mut *const c_char) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamGet(
+    h: *mut ncclParamHandle_t,
+    out: *mut c_void,
+    maxLen: c_int,
+    len: *mut c_int,
+) -> ncclResult_t;
+
+#[cuda_custom_hook] // local: NCCL parameter registry owns returned string
+fn ncclParamGetParameter(
+    key: *const c_char,
+    value: *mut *const c_char,
+    valueLen: *mut c_int,
+) -> ncclResult_t;
+
+#[cuda_custom_hook] // local: NCCL parameter registry owns returned table
+fn ncclParamGetAllParameterKeys(
+    table: *mut *mut *const c_char,
+    tableLen: *mut c_int,
+) -> ncclResult_t;
+
+#[cuda_custom_hook] // local
+fn ncclParamDumpAll();
