@@ -280,6 +280,14 @@ fn cudaLaunchHostFunc_v2(
     syncMode: c_uint,
 ) -> cudaError_t;
 
+#[cuda_custom_hook]
+fn cudaStreamAddCallback(
+    stream: cudaStream_t,
+    callback: cudaStreamCallback_t,
+    userData: *mut c_void,
+    flags: c_uint,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900100)]
 fn cudaStreamCreate(pStream: *mut cudaStream_t) -> cudaError_t;
 
@@ -1186,7 +1194,7 @@ fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t;
 #[cuda_hook(proc_id = 180, async_api = false)]
 fn cudaStreamWaitEvent(stream: cudaStream_t, event: cudaEvent_t, flags: c_uint) -> cudaError_t;
 
-#[cuda_hook(proc_id = 202)]
+#[cuda_custom_hook(proc_id = 202)]
 fn cudaEventDestroy(event: cudaEvent_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 102)]
@@ -1222,6 +1230,12 @@ fn cudaIpcGetMemHandle(
     handle: *mut cudaIpcMemHandle_t,
     #[device] devPtr: *mut c_void,
 ) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900914)]
+fn cudaIpcGetEventHandle(handle: *mut cudaIpcEventHandle_t, event: cudaEvent_t) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900915)]
+fn cudaIpcOpenEventHandle(event: *mut cudaEvent_t, handle: cudaIpcEventHandle_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 128)]
 fn cudaIpcOpenMemHandle(

@@ -3,6 +3,20 @@
 use super::*;
 use cudasys::cudart::*;
 use cudasys::types::cuda::{CUDA_KERNEL_NODE_PARAMS, CUgraph, CUgraphExec, CUgraphNode, CUresult};
+use std::collections::BTreeMap;
+use std::os::raw::c_char;
+use std::sync::{Mutex, OnceLock};
+
+#[derive(Default)]
+struct RuntimeIpcEventState {
+    handle_to_event: BTreeMap<[c_char; 64], usize>,
+    event_refs: BTreeMap<usize, usize>,
+}
+
+fn runtime_ipc_events() -> &'static Mutex<RuntimeIpcEventState> {
+    static STATE: OnceLock<Mutex<RuntimeIpcEventState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(RuntimeIpcEventState::default()))
+}
 
 fn recv_output_request<C: CommChannel>(channel_receiver: &C) -> (bool, usize) {
     let mut requested = false;
@@ -50,6 +64,106 @@ fn recv_kernel_node_params<C: CommChannel>(
     let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
     let args = recv_slice::<u8, _>(channel_receiver).unwrap();
     (packed_params, arg_offsets, args)
+}
+
+pub fn cudaEventDestroyExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaEventDestroy", "[#{}]", server.id);
+
+    let mut event = std::mem::MaybeUninit::<cudaEvent_t>::uninit();
+    event.recv(channel_receiver).unwrap();
+    let event = unsafe { event.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let event_key = event as usize;
+    let should_destroy = {
+        let mut state = runtime_ipc_events().lock().unwrap();
+        match state.event_refs.get_mut(&event_key) {
+            Some(refs) if *refs > 1 => {
+                *refs -= 1;
+                false
+            }
+            Some(_) => {
+                state.event_refs.remove(&event_key);
+                state
+                    .handle_to_event
+                    .retain(|_, mapped_event| *mapped_event != event_key);
+                true
+            }
+            None => true,
+        }
+    };
+    let result = if should_destroy {
+        unsafe { cudaEventDestroy(event) }
+    } else {
+        cudaError_t::cudaSuccess
+    };
+
+    send_result("cudaEventDestroy", server.id, result, channel_sender);
+}
+
+pub fn cudaIpcGetEventHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaIpcGetEventHandle", "[#{}]", server.id);
+
+    let mut event = std::mem::MaybeUninit::<cudaEvent_t>::uninit();
+    event.recv(channel_receiver).unwrap();
+    let event = unsafe { event.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut handle: cudaIpcEventHandle_t = unsafe { std::mem::zeroed() };
+    let result = unsafe { cudaIpcGetEventHandle(&raw mut handle, event) };
+    if result == cudaError_t::cudaSuccess {
+        let mut state = runtime_ipc_events().lock().unwrap();
+        state
+            .handle_to_event
+            .insert(handle.reserved, event as usize);
+        state.event_refs.entry(event as usize).or_insert(1);
+    }
+
+    handle.send(channel_sender).unwrap();
+    send_result("cudaIpcGetEventHandle", server.id, result, channel_sender);
+}
+
+pub fn cudaIpcOpenEventHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaIpcOpenEventHandle", "[#{}]", server.id);
+
+    let mut handle = std::mem::MaybeUninit::<cudaIpcEventHandle_t>::uninit();
+    handle.recv(channel_receiver).unwrap();
+    let handle = unsafe { handle.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut event: cudaEvent_t = std::ptr::null_mut();
+    let mapped_event = {
+        let mut state = runtime_ipc_events().lock().unwrap();
+        let mapped = state.handle_to_event.get(&handle.reserved).copied();
+        if let Some(event_key) = mapped {
+            *state.event_refs.entry(event_key).or_insert(1) += 1;
+            event = event_key as cudaEvent_t;
+        }
+        mapped
+    };
+    let result = if mapped_event.is_some() {
+        cudaError_t::cudaSuccess
+    } else {
+        unsafe { cudaIpcOpenEventHandle(&raw mut event, handle) }
+    };
+
+    event.send(channel_sender).unwrap();
+    send_result("cudaIpcOpenEventHandle", server.id, result, channel_sender);
 }
 
 fn materialize_kernel_params(

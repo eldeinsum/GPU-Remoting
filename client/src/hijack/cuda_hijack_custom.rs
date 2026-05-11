@@ -243,6 +243,90 @@ extern "C" fn cuGraphNodeGetDependentNodes_v2(
 }
 
 #[no_mangle]
+pub extern "C" fn cuStreamAddCallback(
+    hStream: CUstream,
+    callback: CUstreamCallback,
+    userData: *mut c_void,
+    flags: c_uint,
+) -> CUresult {
+    log::debug!(target: "cuStreamAddCallback", "flags = {flags}");
+    if flags != 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    let Some(callback) = callback else {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    };
+    let status = super::cuda_hijack::cuStreamSynchronize(hStream);
+    unsafe {
+        callback(hStream, status, userData);
+    }
+    if status.is_error() {
+        status
+    } else {
+        CUresult::CUDA_SUCCESS
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cuEventDestroy_v2(hEvent: CUevent) -> CUresult {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuEventDestroy_v2", "[#{}]", client.id);
+
+        900214.send(&client.channel_sender).unwrap();
+        hEvent.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result("cuEventDestroy_v2", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cuIpcGetEventHandle(pHandle: *mut CUipcEventHandle, event: CUevent) -> CUresult {
+    if pHandle.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuIpcGetEventHandle", "[#{}]", client.id);
+
+        900916.send(&client.channel_sender).unwrap();
+        event.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pHandle }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuIpcGetEventHandle", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cuIpcOpenEventHandle(
+    phEvent: *mut CUevent,
+    handle: CUipcEventHandle,
+) -> CUresult {
+    if phEvent.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuIpcOpenEventHandle", "[#{}]", client.id);
+
+        900917.send(&client.channel_sender).unwrap();
+        handle.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *phEvent }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuIpcOpenEventHandle", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuModuleLoad(module: *mut CUmodule, fname: *const c_char) -> CUresult {
     if module.is_null() || fname.is_null() {
         return CUresult::CUDA_ERROR_INVALID_VALUE;

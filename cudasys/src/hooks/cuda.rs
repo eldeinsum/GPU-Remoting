@@ -566,6 +566,13 @@ fn cuDeviceGetTexture1DLinearMaxWidth(
     dev: CUdevice,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900918)]
+fn cuDeviceGetExecAffinitySupport(
+    pi: *mut c_int,
+    type_: CUexecAffinityType,
+    dev: CUdevice,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900890)]
 fn cuDeviceGetDevResource(
     device: CUdevice,
@@ -913,6 +920,14 @@ fn cuStreamGetDevResource(
 #[cuda_hook(proc_id = 900418, async_api = false)]
 fn cuStreamWaitEvent(hStream: CUstream, hEvent: CUevent, Flags: c_uint) -> CUresult;
 
+#[cuda_custom_hook]
+fn cuStreamAddCallback(
+    hStream: CUstream,
+    callback: CUstreamCallback,
+    userData: *mut c_void,
+    flags: c_uint,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900432)]
 fn cuStreamCopyAttributes(dst: CUstream, src: CUstream) -> CUresult;
 
@@ -1050,11 +1065,17 @@ fn cuEventSynchronize(hEvent: CUevent) -> CUresult;
 #[cuda_hook(proc_id = 900419, async_api = false)]
 fn cuEventQuery(hEvent: CUevent) -> CUresult;
 
-#[cuda_hook(proc_id = 900214, async_api = false)]
+#[cuda_custom_hook(proc_id = 900214)]
 fn cuEventDestroy_v2(hEvent: CUevent) -> CUresult;
 
 #[cuda_hook(proc_id = 900428)]
 fn cuEventElapsedTime_v2(pMilliseconds: *mut f32, hStart: CUevent, hEnd: CUevent) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900916)]
+fn cuIpcGetEventHandle(pHandle: *mut CUipcEventHandle, event: CUevent) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900917)]
+fn cuIpcOpenEventHandle(phEvent: *mut CUevent, handle: CUipcEventHandle) -> CUresult;
 
 #[cuda_hook(proc_id = 1002)]
 fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(

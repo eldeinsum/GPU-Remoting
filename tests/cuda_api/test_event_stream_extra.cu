@@ -2,6 +2,46 @@
 #include <cuda_runtime.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+static bool running_remoted()
+{
+    const char *preload = std::getenv("LD_PRELOAD");
+    return preload != nullptr && std::strstr(preload, "libclient.so") != nullptr;
+}
+
+struct RuntimeCallbackState {
+    int called;
+    cudaError_t status;
+    cudaStream_t stream;
+};
+
+static void CUDART_CB runtime_stream_callback(cudaStream_t stream,
+                                              cudaError_t status,
+                                              void *user_data)
+{
+    RuntimeCallbackState *state =
+        static_cast<RuntimeCallbackState *>(user_data);
+    state->called += 1;
+    state->status = status;
+    state->stream = stream;
+}
+
+struct DriverCallbackState {
+    int called;
+    CUresult status;
+    CUstream stream;
+};
+
+static void CUDA_CB driver_stream_callback(CUstream stream, CUresult status,
+                                           void *user_data)
+{
+    DriverCallbackState *state = static_cast<DriverCallbackState *>(user_data);
+    state->called += 1;
+    state->status = status;
+    state->stream = stream;
+}
 
 #define CHECK_CUDA(call)                                                       \
     do {                                                                       \
@@ -152,6 +192,35 @@ int main()
     CHECK_CUDA_SUCCESS(cudaEventSynchronize(runtime_end));
     CHECK_CUDA(cudaEventQuery(runtime_end));
 
+    RuntimeCallbackState runtime_callback_state = {};
+    CHECK_CUDA_SUCCESS(cudaStreamAddCallback(
+        runtime_a, runtime_stream_callback, &runtime_callback_state, 0));
+    CHECK_CUDA_SUCCESS(cudaStreamSynchronize(runtime_a));
+    if (runtime_callback_state.called != 1 ||
+        runtime_callback_state.status != cudaSuccess ||
+        runtime_callback_state.stream != runtime_a) {
+        std::fprintf(stderr, "unexpected runtime stream callback state\n");
+        return 1;
+    }
+
+    cudaEvent_t runtime_ipc_event = nullptr;
+    cudaEvent_t runtime_ipc_opened = nullptr;
+    CHECK_CUDA_SUCCESS(cudaEventCreateWithFlags(
+        &runtime_ipc_event, cudaEventDisableTiming | cudaEventInterprocess));
+    cudaIpcEventHandle_t runtime_ipc_handle = {};
+    CHECK_CUDA_SUCCESS(cudaIpcGetEventHandle(&runtime_ipc_handle,
+                                             runtime_ipc_event));
+    if (running_remoted()) {
+        CHECK_CUDA_SUCCESS(cudaIpcOpenEventHandle(&runtime_ipc_opened,
+                                                  runtime_ipc_handle));
+        CHECK_CUDA_SUCCESS(cudaEventRecord(runtime_ipc_event, runtime_a));
+        CHECK_CUDA_SUCCESS(
+            cudaStreamWaitEvent(runtime_b, runtime_ipc_opened, 0));
+        CHECK_CUDA_SUCCESS(cudaStreamSynchronize(runtime_b));
+        CHECK_CUDA_SUCCESS(cudaEventDestroy(runtime_ipc_opened));
+    }
+    CHECK_CUDA_SUCCESS(cudaEventDestroy(runtime_ipc_event));
+
     float runtime_ms = -1.0f;
     CHECK_CUDA_SUCCESS(cudaEventElapsedTime(
         &runtime_ms, runtime_start, runtime_end));
@@ -248,6 +317,34 @@ int main()
     CHECK_DRV_SUCCESS(cuEventRecord(driver_end, driver_b));
     CHECK_DRV_SUCCESS(cuEventSynchronize(driver_end));
     CHECK_DRV(cuEventQuery(driver_end));
+
+    DriverCallbackState driver_callback_state = {};
+    CHECK_DRV_SUCCESS(cuStreamAddCallback(
+        driver_a, driver_stream_callback, &driver_callback_state, 0));
+    CHECK_DRV_SUCCESS(cuStreamSynchronize(driver_a));
+    if (driver_callback_state.called != 1 ||
+        driver_callback_state.status != CUDA_SUCCESS ||
+        driver_callback_state.stream != driver_a) {
+        std::fprintf(stderr, "unexpected driver stream callback state\n");
+        return 1;
+    }
+
+    CUevent driver_ipc_event = nullptr;
+    CUevent driver_ipc_opened = nullptr;
+    CHECK_DRV_SUCCESS(cuEventCreate(
+        &driver_ipc_event, CU_EVENT_DISABLE_TIMING | CU_EVENT_INTERPROCESS));
+    CUipcEventHandle driver_ipc_handle = {};
+    CHECK_DRV_SUCCESS(cuIpcGetEventHandle(&driver_ipc_handle,
+                                          driver_ipc_event));
+    if (running_remoted()) {
+        CHECK_DRV_SUCCESS(cuIpcOpenEventHandle(&driver_ipc_opened,
+                                               driver_ipc_handle));
+        CHECK_DRV_SUCCESS(cuEventRecord(driver_ipc_event, driver_a));
+        CHECK_DRV_SUCCESS(cuStreamWaitEvent(driver_b, driver_ipc_opened, 0));
+        CHECK_DRV_SUCCESS(cuStreamSynchronize(driver_b));
+        CHECK_DRV_SUCCESS(cuEventDestroy(driver_ipc_opened));
+    }
+    CHECK_DRV_SUCCESS(cuEventDestroy(driver_ipc_event));
 
     float driver_ms = -1.0f;
     CHECK_DRV_SUCCESS(cuEventElapsedTime(&driver_ms, driver_start, driver_end));

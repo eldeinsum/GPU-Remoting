@@ -1227,6 +1227,97 @@ pub extern "C" fn cudaLaunchHostFunc_v2(
 }
 
 #[no_mangle]
+pub extern "C" fn cudaStreamAddCallback(
+    stream: cudaStream_t,
+    callback: cudaStreamCallback_t,
+    userData: *mut c_void,
+    flags: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaStreamAddCallback", "flags = {flags}");
+    if flags != 0 {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    let Some(callback) = callback else {
+        return cudaError_t::cudaErrorInvalidValue;
+    };
+    let status = super::cudart_hijack::cudaStreamSynchronize(stream);
+    unsafe {
+        callback(stream, status, userData);
+    }
+    if status.is_error() {
+        status
+    } else {
+        cudaError_t::cudaSuccess
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaEventDestroy(event: cudaEvent_t) -> cudaError_t {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaEventDestroy", "[#{}]", client.id);
+
+        202.send(&client.channel_sender).unwrap();
+        event.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cuda_result("cudaEventDestroy", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaIpcGetEventHandle(
+    handle: *mut cudaIpcEventHandle_t,
+    event: cudaEvent_t,
+) -> cudaError_t {
+    if handle.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaIpcGetEventHandle", "[#{}]", client.id);
+
+        900914.send(&client.channel_sender).unwrap();
+        event.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *handle }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result("cudaIpcGetEventHandle", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaIpcOpenEventHandle(
+    event: *mut cudaEvent_t,
+    handle: cudaIpcEventHandle_t,
+) -> cudaError_t {
+    if event.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaIpcOpenEventHandle", "[#{}]", client.id);
+
+        900915.send(&client.channel_sender).unwrap();
+        handle.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *event }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaIpcOpenEventHandle",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn cudaGraphGetNodes(
     graph: cudaGraph_t,
     nodes: *mut cudaGraphNode_t,

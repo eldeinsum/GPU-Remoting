@@ -4,6 +4,20 @@ use crate::ServerWorker;
 use cudasys::cuda::*;
 use network::type_impl::send_slice;
 use network::{CommChannel, Transportable};
+use std::collections::BTreeMap;
+use std::os::raw::c_char;
+use std::sync::{Mutex, OnceLock};
+
+#[derive(Default)]
+struct DriverIpcEventState {
+    handle_to_event: BTreeMap<[c_char; 64], usize>,
+    event_refs: BTreeMap<usize, usize>,
+}
+
+fn driver_ipc_events() -> &'static Mutex<DriverIpcEventState> {
+    static STATE: OnceLock<Mutex<DriverIpcEventState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(DriverIpcEventState::default()))
+}
 
 fn recv_output_request<C: CommChannel>(channel_receiver: &C) -> (bool, usize) {
     let mut requested = false;
@@ -38,6 +52,106 @@ fn make_edge_data_buffer(capacity: usize) -> Vec<CUgraphEdgeData> {
     (0..capacity)
         .map(|_| unsafe { std::mem::zeroed() })
         .collect()
+}
+
+pub fn cuEventDestroy_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuEventDestroy_v2", "[#{}]", server.id);
+
+    let mut event = std::mem::MaybeUninit::<CUevent>::uninit();
+    event.recv(channel_receiver).unwrap();
+    let event = unsafe { event.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let event_key = event as usize;
+    let should_destroy = {
+        let mut state = driver_ipc_events().lock().unwrap();
+        match state.event_refs.get_mut(&event_key) {
+            Some(refs) if *refs > 1 => {
+                *refs -= 1;
+                false
+            }
+            Some(_) => {
+                state.event_refs.remove(&event_key);
+                state
+                    .handle_to_event
+                    .retain(|_, mapped_event| *mapped_event != event_key);
+                true
+            }
+            None => true,
+        }
+    };
+    let result = if should_destroy {
+        unsafe { cuEventDestroy_v2(event) }
+    } else {
+        CUresult::CUDA_SUCCESS
+    };
+
+    send_result("cuEventDestroy_v2", server.id, result, channel_sender);
+}
+
+pub fn cuIpcGetEventHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuIpcGetEventHandle", "[#{}]", server.id);
+
+    let mut event = std::mem::MaybeUninit::<CUevent>::uninit();
+    event.recv(channel_receiver).unwrap();
+    let event = unsafe { event.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut handle: CUipcEventHandle = unsafe { std::mem::zeroed() };
+    let result = unsafe { cuIpcGetEventHandle(&raw mut handle, event) };
+    if result == CUresult::CUDA_SUCCESS {
+        let mut state = driver_ipc_events().lock().unwrap();
+        state
+            .handle_to_event
+            .insert(handle.reserved, event as usize);
+        state.event_refs.entry(event as usize).or_insert(1);
+    }
+
+    handle.send(channel_sender).unwrap();
+    send_result("cuIpcGetEventHandle", server.id, result, channel_sender);
+}
+
+pub fn cuIpcOpenEventHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuIpcOpenEventHandle", "[#{}]", server.id);
+
+    let mut handle = std::mem::MaybeUninit::<CUipcEventHandle>::uninit();
+    handle.recv(channel_receiver).unwrap();
+    let handle = unsafe { handle.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut event: CUevent = std::ptr::null_mut();
+    let mapped_event = {
+        let mut state = driver_ipc_events().lock().unwrap();
+        let mapped = state.handle_to_event.get(&handle.reserved).copied();
+        if let Some(event_key) = mapped {
+            *state.event_refs.entry(event_key).or_insert(1) += 1;
+            event = event_key as CUevent;
+        }
+        mapped
+    };
+    let result = if mapped_event.is_some() {
+        CUresult::CUDA_SUCCESS
+    } else {
+        unsafe { cuIpcOpenEventHandle(&raw mut event, handle) }
+    };
+
+    event.send(channel_sender).unwrap();
+    send_result("cuIpcOpenEventHandle", server.id, result, channel_sender);
 }
 
 pub fn cuGraphGetNodesExe<C: CommChannel>(server: &mut ServerWorker<C>) {
