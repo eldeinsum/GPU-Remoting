@@ -76,6 +76,17 @@ int main()
         }
     }
 
+    const int short_count = count * 2;
+    unsigned short short_output[short_count];
+    CHECK_DRV(cuMemsetD16(device_a, 0x55aa, short_count));
+    CHECK_DRV(cuMemcpyDtoH(short_output, device_a, sizeof(short_output)));
+    for (size_t i = 0; i < short_count; ++i) {
+        if (short_output[i] != 0x55aa) {
+            std::fprintf(stderr, "D16 memset mismatch at %zu\n", i);
+            return 1;
+        }
+    }
+
     CHECK_DRV(cuMemsetD32(device_b, 0x01020304u, count));
     CHECK_DRV(cuMemcpyDtoH(output, device_b, bytes));
     for (int i = 0; i < count; ++i) {
@@ -88,6 +99,15 @@ int main()
     CUstream stream = nullptr;
     CUevent event = nullptr;
     CHECK_DRV(cuStreamCreate(&stream, CU_STREAM_DEFAULT));
+    CHECK_DRV(cuMemsetD16Async(device_a, 0x33cc, short_count, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+    CHECK_DRV(cuMemcpyDtoH(short_output, device_a, sizeof(short_output)));
+    for (size_t i = 0; i < short_count; ++i) {
+        if (short_output[i] != 0x33cc) {
+            std::fprintf(stderr, "D16 async memset mismatch at %zu\n", i);
+            return 1;
+        }
+    }
     CHECK_DRV(cuEventCreate(&event, CU_EVENT_DEFAULT));
     CHECK_DRV(cuEventRecord(event, stream));
     CHECK_DRV(cuEventSynchronize(event));

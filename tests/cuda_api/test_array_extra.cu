@@ -177,6 +177,8 @@ int main() {
     driver_desc.NumChannels = 1;
     CUarray driver_array = nullptr;
     CHECK_DRV(cuArrayCreate(&driver_array, &driver_desc));
+    CUarray driver_array_copy = nullptr;
+    CHECK_DRV(cuArrayCreate(&driver_array_copy, &driver_desc));
 
     CUDA_ARRAY_DESCRIPTOR actual_driver_desc = {};
     CHECK_DRV(cuArrayGetDescriptor(&actual_driver_desc, driver_array));
@@ -191,6 +193,13 @@ int main() {
     device_roundtrip.fill(0);
     CHECK_DRV(cuMemcpyHtoA(driver_array, 0, input.data(), kBytes));
     CHECK_DRV(cuMemcpyAtoH(output.data(), driver_array, 0, kBytes));
+    if (!equal_bytes(input, output)) {
+        return 1;
+    }
+
+    output.fill(0);
+    CHECK_DRV(cuMemcpyAtoA(driver_array_copy, 0, driver_array, 0, kBytes));
+    CHECK_DRV(cuMemcpyAtoH(output.data(), driver_array_copy, 0, kBytes));
     if (!equal_bytes(input, output)) {
         return 1;
     }
@@ -222,6 +231,7 @@ int main() {
     CHECK_DRV(cuMemFree(driver_device));
     CHECK_DRV(cuMemFree(driver_device_out));
     CHECK_DRV(cuStreamDestroy(driver_stream));
+    CHECK_DRV(cuArrayDestroy(driver_array_copy));
     CHECK_DRV(cuArrayDestroy(driver_array));
 
     std::puts("array API test passed");

@@ -1165,6 +1165,15 @@ fn cuMemcpyHtoA_v2(
     ByteCount: usize,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900949, async_api)]
+fn cuMemcpyAtoA_v2(
+    dstArray: CUarray,
+    dstOffset: usize,
+    srcArray: CUarray,
+    srcOffset: usize,
+    ByteCount: usize,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900476)]
 fn cuMemcpyHtoAAsync_v2(
     dstArray: CUarray,
@@ -1178,6 +1187,172 @@ fn cuMemcpyHtoAAsync_v2(
             assert_eq!(cuStreamSynchronize(hStream), Default::default());
             cuMemcpyHtoA_v2(dstArray, dstOffset, srcHost__ptr.cast(), ByteCount)
         };
+    }
+}
+
+#[cuda_hook(proc_id = 900950, async_api)]
+fn cuMemcpy2D_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY2D) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        match params.srcMemoryType {
+            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
+                assert_ne!(params.srcDevice, 0);
+                assert!(params.srcArray.is_null());
+            }
+            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.srcArray.is_null()),
+            _ => panic!("unsupported cuMemcpy2D source memory type"),
+        }
+        match params.dstMemoryType {
+            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
+                assert_ne!(params.dstDevice, 0);
+                assert!(params.dstArray.is_null());
+            }
+            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.dstArray.is_null()),
+            _ => panic!("unsupported cuMemcpy2D destination memory type"),
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900951, async_api)]
+fn cuMemcpy2DUnaligned_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY2D) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        match params.srcMemoryType {
+            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
+                assert_ne!(params.srcDevice, 0);
+                assert!(params.srcArray.is_null());
+            }
+            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.srcArray.is_null()),
+            _ => panic!("unsupported cuMemcpy2DUnaligned source memory type"),
+        }
+        match params.dstMemoryType {
+            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
+                assert_ne!(params.dstDevice, 0);
+                assert!(params.dstArray.is_null());
+            }
+            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.dstArray.is_null()),
+            _ => panic!("unsupported cuMemcpy2DUnaligned destination memory type"),
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900952, async_api)]
+fn cuMemcpy2DAsync_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY2D, hStream: CUstream) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        match params.srcMemoryType {
+            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
+                assert_ne!(params.srcDevice, 0);
+                assert!(params.srcArray.is_null());
+            }
+            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.srcArray.is_null()),
+            _ => panic!("unsupported cuMemcpy2DAsync source memory type"),
+        }
+        match params.dstMemoryType {
+            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
+                assert_ne!(params.dstDevice, 0);
+                assert!(params.dstArray.is_null());
+            }
+            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.dstArray.is_null()),
+            _ => panic!("unsupported cuMemcpy2DAsync destination memory type"),
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900953, async_api)]
+fn cuMemcpy3D_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY3D) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_ne!(params.srcDevice, 0);
+        assert_ne!(params.dstDevice, 0);
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(params.reserved0.is_null());
+        assert!(params.reserved1.is_null());
+        assert_eq!(params.srcLOD, 0);
+        assert_eq!(params.dstLOD, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900954, async_api)]
+fn cuMemcpy3DAsync_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY3D, hStream: CUstream) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_ne!(params.srcDevice, 0);
+        assert_ne!(params.dstDevice, 0);
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(params.reserved0.is_null());
+        assert!(params.reserved1.is_null());
+        assert_eq!(params.srcLOD, 0);
+        assert_eq!(params.dstLOD, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900955, async_api)]
+fn cuMemcpyPeer(
+    dstDevice: CUdeviceptr,
+    dstContext: CUcontext,
+    srcDevice: CUdeviceptr,
+    srcContext: CUcontext,
+    ByteCount: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900956, async_api)]
+fn cuMemcpyPeerAsync(
+    dstDevice: CUdeviceptr,
+    dstContext: CUcontext,
+    srcDevice: CUdeviceptr,
+    srcContext: CUcontext,
+    ByteCount: usize,
+    hStream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900957, async_api)]
+fn cuMemcpy3DPeer(#[host(len = 1)] pCopy: *const CUDA_MEMCPY3D_PEER) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_ne!(params.srcDevice, 0);
+        assert_ne!(params.dstDevice, 0);
+        assert!(!params.srcContext.is_null());
+        assert!(!params.dstContext.is_null());
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert_eq!(params.srcLOD, 0);
+        assert_eq!(params.dstLOD, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900958, async_api)]
+fn cuMemcpy3DPeerAsync(
+    #[host(len = 1)] pCopy: *const CUDA_MEMCPY3D_PEER,
+    hStream: CUstream,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!pCopy.is_null());
+        let params = unsafe { &*pCopy };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_ne!(params.srcDevice, 0);
+        assert_ne!(params.dstDevice, 0);
+        assert!(!params.srcContext.is_null());
+        assert!(!params.dstContext.is_null());
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert_eq!(params.srcLOD, 0);
+        assert_eq!(params.dstLOD, 0);
     }
 }
 
@@ -1222,11 +1397,17 @@ fn cuMemcpyHtoDAsync_v2(
 #[cuda_hook(proc_id = 900206, async_api)]
 fn cuMemsetD8_v2(dstDevice: CUdeviceptr, uc: c_uchar, N: usize) -> CUresult;
 
+#[cuda_hook(proc_id = 900959, async_api)]
+fn cuMemsetD16_v2(dstDevice: CUdeviceptr, us: c_ushort, N: usize) -> CUresult;
+
 #[cuda_hook(proc_id = 900207, async_api)]
 fn cuMemsetD32_v2(dstDevice: CUdeviceptr, ui: c_uint, N: usize) -> CUresult;
 
 #[cuda_hook(proc_id = 900409, async_api)]
 fn cuMemsetD8Async(dstDevice: CUdeviceptr, uc: c_uchar, N: usize, hStream: CUstream) -> CUresult;
+
+#[cuda_hook(proc_id = 900960, async_api)]
+fn cuMemsetD16Async(dstDevice: CUdeviceptr, us: c_ushort, N: usize, hStream: CUstream) -> CUresult;
 
 #[cuda_hook(proc_id = 900410, async_api)]
 fn cuMemsetD32Async(dstDevice: CUdeviceptr, ui: c_uint, N: usize, hStream: CUstream) -> CUresult;
