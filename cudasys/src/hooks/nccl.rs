@@ -1,5 +1,5 @@
 use crate::types::nccl::*;
-use codegen::cuda_hook;
+use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
 
 #[cuda_hook(proc_id = 3200)]
@@ -7,6 +7,9 @@ fn ncclGetVersion(version: *mut c_int) -> ncclResult_t;
 
 #[cuda_hook(proc_id = 3201)]
 fn ncclGetUniqueId(uniqueId: *mut ncclUniqueId) -> ncclResult_t;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn ncclGetErrorString(result: ncclResult_t) -> *const c_char;
 
 #[cuda_hook(proc_id = 3202)]
 fn ncclCommInitRank(
@@ -178,3 +181,138 @@ fn ncclScatter(
     comm: ncclComm_t,
     stream: cudaStream_t,
 ) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3226)]
+fn ncclMemAlloc(ptr: *mut *mut c_void, size: usize) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3227, async_api = false)]
+fn ncclMemFree(#[device] ptr: *mut c_void) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3228)]
+fn ncclCommRegister(
+    comm: ncclComm_t,
+    #[device] buff: *mut c_void,
+    size: usize,
+    handle: *mut *mut c_void,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3229)]
+fn ncclCommDeregister(comm: ncclComm_t, #[device] handle: *mut c_void) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3230)]
+fn ncclCommInitRankScalable(
+    newcomm: *mut ncclComm_t,
+    nranks: c_int,
+    myrank: c_int,
+    nId: c_int,
+    #[host(input, len = nId)] commIds: *mut ncclUniqueId,
+    #[skip] config: *mut ncclConfig_t,
+) -> ncclResult_t {
+    'client_before_send: {
+        let config_present = !config.is_null();
+        let config_value = if config_present {
+            Some(unsafe { *config })
+        } else {
+            None
+        };
+    }
+    'client_extra_send: {
+        config_present.send(channel_sender).unwrap();
+        if let Some(config_value) = config_value {
+            config_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut config_present = false;
+        config_present.recv(channel_receiver).unwrap();
+        let mut config_value = std::mem::MaybeUninit::<ncclConfig_t>::uninit();
+        let config_arg = if config_present {
+            config_value.recv(channel_receiver).unwrap();
+            config_value.as_mut_ptr()
+        } else {
+            std::ptr::null_mut()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            ncclCommInitRankScalable(newcomm__ptr, nranks, myrank, nId, commIds__ptr, config_arg)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 3231)]
+fn ncclRedOpCreatePreMulSum(
+    op: *mut ncclRedOp_t,
+    #[skip] scalar: *mut c_void,
+    datatype: ncclDataType_t,
+    residence: ncclScalarResidence_t,
+    comm: ncclComm_t,
+) -> ncclResult_t {
+    'client_before_send: {
+        let scalar_is_host = matches!(residence, ncclScalarResidence_t::ncclScalarHostImmediate);
+        let scalar_addr = scalar as usize;
+        let scalar_bytes = if scalar_is_host {
+            assert!(!scalar.is_null());
+            let scalar_len = match datatype {
+                ncclDataType_t::ncclInt8
+                | ncclDataType_t::ncclUint8
+                | ncclDataType_t::ncclFloat8e4m3
+                | ncclDataType_t::ncclFloat8e5m2 => 1,
+                ncclDataType_t::ncclFloat16 | ncclDataType_t::ncclBfloat16 => 2,
+                ncclDataType_t::ncclInt32
+                | ncclDataType_t::ncclUint32
+                | ncclDataType_t::ncclFloat32 => 4,
+                ncclDataType_t::ncclInt64
+                | ncclDataType_t::ncclUint64
+                | ncclDataType_t::ncclFloat64 => 8,
+                ncclDataType_t::ncclNumTypes => 0,
+            };
+            unsafe { std::slice::from_raw_parts(scalar.cast::<u8>(), scalar_len).to_vec() }
+        } else {
+            Vec::<u8>::new()
+        };
+    }
+    'client_extra_send: {
+        scalar_is_host.send(channel_sender).unwrap();
+        scalar_addr.send(channel_sender).unwrap();
+        if scalar_is_host {
+            send_slice(&scalar_bytes, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut scalar_is_host = false;
+        scalar_is_host.recv(channel_receiver).unwrap();
+        let mut scalar_addr = 0usize;
+        scalar_addr.recv(channel_receiver).unwrap();
+        let scalar_bytes = if scalar_is_host {
+            recv_slice::<u8, _>(channel_receiver).unwrap()
+        } else {
+            Box::<[u8]>::default()
+        };
+        let mut scalar_storage = [0u64; 1];
+        if scalar_is_host {
+            let scalar_dst = unsafe {
+                std::slice::from_raw_parts_mut(
+                    scalar_storage.as_mut_ptr().cast::<u8>(),
+                    scalar_bytes.len(),
+                )
+            };
+            scalar_dst.copy_from_slice(&scalar_bytes);
+        }
+        let scalar_arg = if scalar_is_host {
+            scalar_storage.as_mut_ptr().cast::<c_void>()
+        } else {
+            scalar_addr as *mut c_void
+        };
+    }
+    'server_execution: {
+        let result =
+            unsafe { ncclRedOpCreatePreMulSum(op__ptr, scalar_arg, datatype, residence, comm) };
+    }
+}
+
+#[cuda_hook(proc_id = 3232)]
+fn ncclRedOpDestroy(op: ncclRedOp_t, comm: ncclComm_t) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3233)]
+fn ncclCommMemStats(comm: ncclComm_t, stat: ncclCommMemStat_t, value: *mut u64) -> ncclResult_t;

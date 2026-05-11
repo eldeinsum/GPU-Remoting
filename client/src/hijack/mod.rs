@@ -18,6 +18,7 @@ mod cudnn_hijack_custom;
 mod cudnn_unimplement;
 mod host_memory;
 mod nccl_hijack;
+mod nccl_hijack_custom;
 mod nccl_unimplement;
 mod nvml_hijack;
 mod nvml_hijack_custom;
