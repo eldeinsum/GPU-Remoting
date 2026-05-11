@@ -236,6 +236,12 @@ fn cuTexRefSetFlags(hTexRef: CUtexref, Flags: c_uint) -> CUresult;
 #[cuda_hook(proc_id = 901079)]
 fn cuTexRefGetFlags(pFlags: *mut c_uint, hTexRef: CUtexref) -> CUresult;
 
+#[cuda_hook(proc_id = 901082)]
+fn cuSurfRefSetArray(hSurfRef: CUsurfref, hArray: CUarray, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901083)]
+fn cuSurfRefGetArray(phArray: *mut CUarray, hSurfRef: CUsurfref) -> CUresult;
+
 #[cuda_hook(proc_id = 900463, async_api = false)]
 fn cuArrayDestroy(hArray: CUarray) -> CUresult;
 
@@ -564,6 +570,12 @@ fn cuModuleEnumerateFunctions(
     mod_: CUmodule,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901080)]
+fn cuModuleGetTexRef(pTexRef: *mut CUtexref, hmod: CUmodule, name: *const c_char) -> CUresult;
+
+#[cuda_hook(proc_id = 901081)]
+fn cuModuleGetSurfRef(pSurfRef: *mut CUsurfref, hmod: CUmodule, name: *const c_char) -> CUresult;
+
 #[cuda_hook(proc_id = 900706, async_api = false)]
 fn cuModuleUnload(hmod: CUmodule) -> CUresult {
     'client_after_recv: {
@@ -841,6 +853,9 @@ fn cuParamSetv(
     #[host(input, len = numbytes as usize)] ptr: *mut c_void,
     numbytes: c_uint,
 ) -> CUresult;
+
+#[cuda_hook(proc_id = 901084, async_api = false)]
+fn cuParamSetTexRef(hfunc: CUfunction, texunit: c_int, hTexRef: CUtexref) -> CUresult;
 
 #[cuda_hook(proc_id = 901031, async_api)]
 fn cuLaunch(f: CUfunction) -> CUresult;

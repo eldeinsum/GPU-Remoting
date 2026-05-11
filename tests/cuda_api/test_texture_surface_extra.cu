@@ -311,6 +311,92 @@ static int run_driver_legacy_texture_refs()
     return 0;
 }
 
+static const char kReferencePtx[] = R"ptx(
+.version 7.8
+.target sm_52
+.address_size 64
+
+.global .texref module_tex;
+.global .surfref module_surf;
+
+.visible .entry module_ref_kernel()
+{
+    ret;
+}
+)ptx";
+
+static int run_driver_module_refs()
+{
+    constexpr size_t kWidth = 16;
+    constexpr size_t kHeight = 4;
+
+    CHECK_DRV(cuInit(0));
+    CHECK_CUDA(cudaSetDevice(0));
+    CHECK_CUDA(cudaFree(nullptr));
+
+    CUmodule module = nullptr;
+    CHECK_DRV(cuModuleLoadData(&module, kReferencePtx));
+
+    CUfunction function = nullptr;
+    CHECK_DRV(cuModuleGetFunction(&function, module, "module_ref_kernel"));
+
+    CUtexref tex = nullptr;
+    CHECK_DRV(cuModuleGetTexRef(&tex, module, "module_tex"));
+    if (require(tex != nullptr, "module texture reference handle is null") !=
+        0) {
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetFormat(tex, CU_AD_FORMAT_UNSIGNED_INT8, 1));
+    CUDA_ARRAY_DESCRIPTOR tex_desc = {};
+    tex_desc.Width = kWidth;
+    tex_desc.Height = kHeight;
+    tex_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    tex_desc.NumChannels = 1;
+
+    CUarray tex_array = nullptr;
+    CHECK_DRV(cuArrayCreate(&tex_array, &tex_desc));
+    CHECK_DRV(cuTexRefSetArray(tex, tex_array, CU_TRSA_OVERRIDE_FORMAT));
+    CUarray queried_tex_array = nullptr;
+    CHECK_DRV(cuTexRefGetArray(&queried_tex_array, tex));
+    if (queried_tex_array != tex_array) {
+        std::fprintf(stderr, "module texture array binding mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuParamSetTexRef(function, CU_PARAM_TR_DEFAULT, tex));
+
+    CUsurfref surf = nullptr;
+    CHECK_DRV(cuModuleGetSurfRef(&surf, module, "module_surf"));
+    if (require(surf != nullptr, "module surface reference handle is null") !=
+        0) {
+        return 1;
+    }
+
+    CUDA_ARRAY3D_DESCRIPTOR surf_desc = {};
+    surf_desc.Width = kWidth;
+    surf_desc.Height = kHeight;
+    surf_desc.Depth = 0;
+    surf_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    surf_desc.NumChannels = 1;
+    surf_desc.Flags = CUDA_ARRAY3D_SURFACE_LDST;
+
+    CUarray surf_array = nullptr;
+    CHECK_DRV(cuArray3DCreate(&surf_array, &surf_desc));
+    CHECK_DRV(cuSurfRefSetArray(surf, surf_array, 0));
+    CUarray queried_surf_array = nullptr;
+    CHECK_DRV(cuSurfRefGetArray(&queried_surf_array, surf));
+    if (queried_surf_array != surf_array) {
+        std::fprintf(stderr, "module surface array binding mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuArrayDestroy(surf_array));
+    CHECK_DRV(cuArrayDestroy(tex_array));
+    CHECK_DRV(cuModuleUnload(module));
+    return 0;
+}
+
 int main()
 {
     constexpr size_t kWidth = 16;
@@ -409,6 +495,9 @@ int main()
         return 1;
     }
     if (run_driver_legacy_texture_refs() != 0) {
+        return 1;
+    }
+    if (run_driver_module_refs() != 0) {
         return 1;
     }
 
