@@ -844,3 +844,49 @@ pub fn cuModuleEnumerateFunctionsExe<C: CommChannel>(server: &mut ServerWorker<C
         channel_sender,
     );
 }
+
+pub fn cuLibraryEnumerateKernelsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuLibraryEnumerateKernels", "[#{}]", server.id);
+
+    let mut num_kernels = 0u32;
+    num_kernels.recv(channel_receiver).unwrap();
+    let mut library: CUlibrary = std::ptr::null_mut();
+    library.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut kernels = vec![std::ptr::null_mut(); num_kernels as usize];
+    let kernels_ptr = if kernels.is_empty() {
+        std::ptr::null_mut()
+    } else {
+        kernels.as_mut_ptr()
+    };
+    let result = unsafe { cuLibraryEnumerateKernels(kernels_ptr, num_kernels, library) };
+
+    let kernels = if result == CUresult::CUDA_SUCCESS {
+        kernels
+    } else {
+        Vec::new()
+    };
+    send_slice(&kernels, channel_sender).unwrap();
+    for kernel in &kernels {
+        let mut name = std::ptr::null();
+        let name_result = unsafe { cuKernelGetName(&raw mut name, *kernel) };
+        let bytes = if name_result == CUresult::CUDA_SUCCESS && !name.is_null() {
+            unsafe { CStr::from_ptr(name).to_bytes().to_vec() }
+        } else {
+            Vec::new()
+        };
+        send_slice(&bytes, channel_sender).unwrap();
+    }
+    send_result(
+        "cuLibraryEnumerateKernels",
+        server.id,
+        result,
+        channel_sender,
+    );
+}

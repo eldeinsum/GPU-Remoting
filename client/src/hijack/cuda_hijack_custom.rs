@@ -1068,6 +1068,83 @@ extern "C" fn cuLibraryLoadFromFile(
     super::cuda_hijack::cuLibraryLoadDataInternal(library, image.as_ptr().cast())
 }
 
+fn cache_library_kernel_metadata(library: CUlibrary, kernel: CUkernel, name_bytes: &[u8]) {
+    if name_bytes.is_empty() {
+        return;
+    }
+    let Ok(kernel_name) = std::str::from_utf8(name_bytes) else {
+        return;
+    };
+    let Ok(c_name) = CString::new(name_bytes) else {
+        return;
+    };
+
+    let target_arch = DRIVER_CACHE.read().unwrap().device_arch;
+    let mut driver = DRIVER_CACHE.write().unwrap();
+    let Some(image) = driver.library_images.get(&library) else {
+        return;
+    };
+    let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
+        let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
+        fatbin.find_kernel_params(kernel_name, target_arch)
+    } else {
+        crate::elf::find_kernel_params_or_empty(image, kernel_name)
+    };
+    driver
+        .function_params
+        .insert(kernel.cast::<CUfunc_st>(), params);
+    driver.kernel_names.insert(kernel, c_name);
+    driver.kernel_libraries.insert(kernel, library);
+}
+
+#[no_mangle]
+extern "C" fn cuLibraryEnumerateKernels(
+    kernels: *mut CUkernel,
+    numKernels: c_uint,
+    lib: CUlibrary,
+) -> CUresult {
+    if numKernels != 0 && kernels.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let capacity = numKernels as usize;
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuLibraryEnumerateKernels", "[#{}]", client.id);
+
+        901024.send(&client.channel_sender).unwrap();
+        numKernels.send(&client.channel_sender).unwrap();
+        lib.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let returned = recv_slice::<CUkernel, _>(&client.channel_receiver).unwrap();
+        let mut names = Vec::with_capacity(returned.len());
+        for _ in 0..returned.len() {
+            names.push(recv_slice::<u8, _>(&client.channel_receiver).unwrap());
+        }
+        let result = recv_cu_result(
+            "cuLibraryEnumerateKernels",
+            client.id,
+            &client.channel_receiver,
+        );
+
+        if returned.len() > capacity {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        if result == CUresult::CUDA_SUCCESS {
+            if !returned.is_empty() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(returned.as_ptr(), kernels, returned.len());
+                }
+            }
+            for (kernel, name) in returned.iter().copied().zip(names.iter()) {
+                cache_library_kernel_metadata(lib, kernel, name);
+            }
+        }
+        result
+    })
+}
+
 #[no_mangle]
 extern "C" fn cuKernelGetName(name: *mut *const c_char, hfunc: CUkernel) -> CUresult {
     if name.is_null() {

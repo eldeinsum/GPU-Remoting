@@ -149,6 +149,32 @@ int main()
         return 1;
     }
 
+    unsigned int kernel_count = 0;
+    CHECK_DRV(cuLibraryGetKernelCount(&kernel_count, library));
+    if (kernel_count != 1) {
+        std::cerr << "unexpected library kernel count: " << kernel_count << std::endl;
+        return 1;
+    }
+    std::vector<CUkernel> kernels(kernel_count);
+    CHECK_DRV(cuLibraryEnumerateKernels(kernels.data(), kernel_count, library));
+    if (kernels[0] == nullptr) {
+        std::cerr << "cuLibraryEnumerateKernels returned null" << std::endl;
+        return 1;
+    }
+    const char *enumerated_kernel_name = nullptr;
+    CHECK_DRV(cuKernelGetName(&enumerated_kernel_name, kernels[0]));
+    if (enumerated_kernel_name == nullptr || std::strcmp(enumerated_kernel_name, "library_kernel") != 0) {
+        std::cerr << "cuKernelGetName for enumerated kernel returned "
+                  << (enumerated_kernel_name ? enumerated_kernel_name : "(null)") << std::endl;
+        return 1;
+    }
+    CUlibrary enumerated_owner;
+    CHECK_DRV(cuKernelGetLibrary(&enumerated_owner, kernels[0]));
+    if (enumerated_owner != library) {
+        std::cerr << "cuKernelGetLibrary returned the wrong library for enumerated kernel" << std::endl;
+        return 1;
+    }
+
     int max_threads = 0;
     CHECK_DRV(cuKernelGetAttribute(&max_threads, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, kernel, device));
     if (max_threads < 1) {
@@ -186,6 +212,23 @@ int main()
 
     CUdeviceptr d_output = 0;
     CHECK_DRV(cuMemAlloc(&d_output, sizeof(int)));
+
+    if (launch_and_check(reinterpret_cast<CUfunction>(kernels[0]), d_output, 33) != 0) {
+        return 1;
+    }
+
+    CUfunction enumerated_function;
+    CHECK_DRV(cuKernelGetFunction(&enumerated_function, kernels[0]));
+    const char *enumerated_function_name = nullptr;
+    CHECK_DRV(cuFuncGetName(&enumerated_function_name, enumerated_function));
+    if (enumerated_function_name == nullptr || std::strcmp(enumerated_function_name, "library_kernel") != 0) {
+        std::cerr << "cuFuncGetName for enumerated kernel returned "
+                  << (enumerated_function_name ? enumerated_function_name : "(null)") << std::endl;
+        return 1;
+    }
+    if (launch_and_check(enumerated_function, d_output, 55) != 0) {
+        return 1;
+    }
 
     if (launch_and_check(reinterpret_cast<CUfunction>(kernel), d_output, 42) != 0) {
         return 1;

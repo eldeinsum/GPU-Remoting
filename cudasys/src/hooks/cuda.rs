@@ -441,6 +441,16 @@ fn cuLibraryGetKernel(pKernel: *mut CUkernel, library: CUlibrary, name: *const c
     }
 }
 
+#[cuda_hook(proc_id = 901023)]
+fn cuLibraryGetKernelCount(count: *mut c_uint, lib: CUlibrary) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901024)]
+fn cuLibraryEnumerateKernels(
+    kernels: *mut CUkernel,
+    numKernels: c_uint,
+    lib: CUlibrary,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900712)]
 fn cuLibraryGetModule(pMod: *mut CUmodule, library: CUlibrary) -> CUresult {
     'client_after_recv: {
