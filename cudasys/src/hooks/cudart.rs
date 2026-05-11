@@ -1222,6 +1222,47 @@ fn cudaHostGetDevicePointer(
 #[cuda_custom_hook] // calls driver API
 fn cudaGetSymbolAddress(devPtr: *mut *mut c_void, symbol: *const c_void) -> cudaError_t;
 
+#[cuda_custom_hook] // calls driver API
+fn cudaGetSymbolSize(size: *mut usize, symbol: *const c_void) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpy
+fn cudaMemcpyToSymbol(
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpy
+fn cudaMemcpyFromSymbol(
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpyAsync
+fn cudaMemcpyToSymbolAsync(
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls cudaMemcpyAsync
+fn cudaMemcpyFromSymbolAsync(
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
 #[cuda_custom_hook] // calls the internal API below
 fn cudaFuncGetAttributes(attr: *mut cudaFuncAttributes, func: *const c_void) -> cudaError_t;
 

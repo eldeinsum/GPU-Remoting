@@ -892,16 +892,50 @@ fn cache_runtime_graph_kernel_node(
     );
 }
 
-fn symbol_device_address(symbol: *const c_void, offset: usize) -> Result<*mut c_void, cudaError_t> {
+fn runtime_symbol_metadata(symbol: *const c_void) -> Result<(CUdeviceptr, usize), cudaError_t> {
     if symbol.is_null() {
-        return Err(cudaError_t::cudaErrorInvalidSymbol);
+        return Err(cudaError_t::cudaErrorInvalidValue);
     }
-    let mut base = std::ptr::null_mut();
-    let result = cudaGetSymbolAddress(&mut base, symbol);
+
+    let runtime = &mut *RUNTIME_CACHE.write().unwrap();
+    let Some(&(fatCubinHandle, deviceName)) = runtime.lazy_variables.get(&(symbol as HostPtr))
+    else {
+        return Err(cudaError_t::cudaErrorInvalidSymbol);
+    };
+    let result = ensure_runtime_device(runtime);
     if result != cudaError_t::cudaSuccess {
         return Err(result);
     }
-    Ok(unsafe { base.cast::<u8>().add(offset).cast() })
+    let module = load_module_for_fatbin(runtime, fatCubinHandle);
+
+    let mut dptr: CUdeviceptr = 0;
+    let mut bytes: usize = 0;
+    let result =
+        super::cuda_hijack::cuModuleGetGlobal_v2(&raw mut dptr, &raw mut bytes, module, deviceName);
+    if result != CUresult::CUDA_SUCCESS {
+        return Err(cudaError_t::cudaErrorInvalidSymbol);
+    }
+    Ok((dptr, bytes))
+}
+
+fn symbol_device_address(symbol: *const c_void, offset: usize) -> Result<*mut c_void, cudaError_t> {
+    let (base, _) = runtime_symbol_metadata(symbol)?;
+    Ok(unsafe { (base as *mut u8).add(offset).cast() })
+}
+
+fn symbol_device_range(
+    symbol: *const c_void,
+    offset: usize,
+    count: usize,
+) -> Result<*mut c_void, cudaError_t> {
+    let (base, bytes) = runtime_symbol_metadata(symbol)?;
+    let Some(end) = offset.checked_add(count) else {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    };
+    if end > bytes {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    Ok(unsafe { (base as *mut u8).add(offset).cast() })
 }
 
 fn symbol_copy_to_kind(src: *const c_void, kind: cudaMemcpyKind) -> cudaMemcpyKind {
@@ -978,33 +1012,107 @@ pub extern "C" fn cudaGetSymbolAddress(
     symbol: *const c_void,
 ) -> cudaError_t {
     log::debug!(target: "cudaGetSymbolAddress", "");
-    if devPtr.is_null() || symbol.is_null() {
+    if devPtr.is_null() {
         return cudaError_t::cudaErrorInvalidValue;
     }
 
-    let runtime = &mut *RUNTIME_CACHE.write().unwrap();
-    let Some(&(fatCubinHandle, deviceName)) = runtime.lazy_variables.get(&(symbol as HostPtr))
-    else {
-        return cudaError_t::cudaErrorInvalidSymbol;
+    let (dptr, _) = match runtime_symbol_metadata(symbol) {
+        Ok(metadata) => metadata,
+        Err(error) => return error,
     };
-    let result = ensure_runtime_device(runtime);
-    if result != cudaError_t::cudaSuccess {
-        return result;
-    }
-    let module = load_module_for_fatbin(runtime, fatCubinHandle);
-
-    let mut dptr: CUdeviceptr = 0;
-    let mut bytes: usize = 0;
-    let result =
-        super::cuda_hijack::cuModuleGetGlobal_v2(&raw mut dptr, &raw mut bytes, module, deviceName);
-    if result != CUresult::CUDA_SUCCESS {
-        return cudaError_t::cudaErrorInvalidSymbol;
-    }
 
     unsafe {
         *devPtr = dptr as *mut c_void;
     }
     cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetSymbolSize(size: *mut usize, symbol: *const c_void) -> cudaError_t {
+    log::debug!(target: "cudaGetSymbolSize", "");
+    if size.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let (_, bytes) = match runtime_symbol_metadata(symbol) {
+        Ok(metadata) => metadata,
+        Err(error) => return error,
+    };
+
+    unsafe {
+        *size = bytes;
+    }
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyToSymbol(
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyToSymbol", "count = {count}, offset = {offset}, kind = {kind:?}");
+    let dst = match symbol_device_range(symbol, offset, count) {
+        Ok(ptr) => ptr,
+        Err(error) => return error,
+    };
+    let kind = symbol_copy_to_kind(src, kind);
+    cudaMemcpy(dst, src, count, kind)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyFromSymbol(
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyFromSymbol", "count = {count}, offset = {offset}, kind = {kind:?}");
+    let src = match symbol_device_range(symbol, offset, count) {
+        Ok(ptr) => ptr.cast_const(),
+        Err(error) => return error,
+    };
+    let kind = symbol_copy_from_kind(dst.cast_const(), kind);
+    cudaMemcpy(dst, src, count, kind)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyToSymbolAsync(
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyToSymbolAsync", "count = {count}, offset = {offset}, kind = {kind:?}");
+    let dst = match symbol_device_range(symbol, offset, count) {
+        Ok(ptr) => ptr,
+        Err(error) => return error,
+    };
+    let kind = symbol_copy_to_kind(src, kind);
+    cudaMemcpyAsync(dst, src, count, kind, stream)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemcpyFromSymbolAsync(
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaMemcpyFromSymbolAsync", "count = {count}, offset = {offset}, kind = {kind:?}");
+    let src = match symbol_device_range(symbol, offset, count) {
+        Ok(ptr) => ptr.cast_const(),
+        Err(error) => return error,
+    };
+    let kind = symbol_copy_from_kind(dst.cast_const(), kind);
+    cudaMemcpyAsync(dst, src, count, kind, stream)
 }
 
 fn write_kernel_handle(kernel: *mut cudaKernel_t, entry_func_addr: MemPtr) -> cudaError_t {
