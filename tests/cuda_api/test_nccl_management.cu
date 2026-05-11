@@ -95,8 +95,75 @@ int main(void) {
   const int nranks = 2;
   const int devs[nranks] = {0, 1};
   const int elem_count = 4;
+  ncclComm_t revoke_comms[nranks];
+  if (!nccl_ok(ncclCommInitAll(revoke_comms, nranks, devs),
+               "ncclCommInitAll(revoke)")) {
+    return EXIT_FAILURE;
+  }
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(revoke)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!nccl_ok(ncclCommRevoke(revoke_comms[rank], NCCL_REVOKE_DEFAULT),
+                 "ncclCommRevoke")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(revoke)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    ncclResult_t revoke_state = ncclInProgress;
+    for (int attempt = 0; attempt < 100 && revoke_state == ncclInProgress;
+         ++attempt) {
+      if (!nccl_ok(ncclCommGetAsyncError(revoke_comms[rank], &revoke_state),
+                   "ncclCommGetAsyncError(revoke)")) {
+        return EXIT_FAILURE;
+      }
+    }
+    if (revoke_state != ncclSuccess) {
+      fprintf(stderr, "NCCL revoke did not quiesce for rank %d\n", rank);
+      return EXIT_FAILURE;
+    }
+    if (!nccl_ok(ncclCommDestroy(revoke_comms[rank]),
+                 "ncclCommDestroy(revoke)")) {
+      return EXIT_FAILURE;
+    }
+  }
+
   ncclComm_t comms[nranks];
   if (!nccl_ok(ncclCommInitAll(comms, nranks, devs), "ncclCommInitAll")) {
+    return EXIT_FAILURE;
+  }
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(suspend)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!nccl_ok(ncclCommSuspend(comms[rank], NCCL_SUSPEND_MEM),
+                 "ncclCommSuspend")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(suspend)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    uint64_t suspended = 0;
+    if (!nccl_ok(ncclCommMemStats(comms[rank], ncclStatGpuMemSuspended,
+                                  &suspended),
+                 "ncclCommMemStats(suspended)")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(resume)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!nccl_ok(ncclCommResume(comms[rank]), "ncclCommResume")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(resume)")) {
     return EXIT_FAILURE;
   }
 

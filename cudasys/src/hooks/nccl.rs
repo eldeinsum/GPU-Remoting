@@ -28,6 +28,9 @@ fn ncclCommFinalize(comm: ncclComm_t) -> ncclResult_t;
 #[cuda_hook(proc_id = 3204)]
 fn ncclCommAbort(comm: ncclComm_t) -> ncclResult_t;
 
+#[cuda_hook(proc_id = 3235)]
+fn ncclCommRevoke(comm: ncclComm_t, revokeFlags: c_int) -> ncclResult_t;
+
 #[cuda_hook(proc_id = 3205)]
 fn ncclCommGetAsyncError(comm: ncclComm_t, asyncError: *mut ncclResult_t) -> ncclResult_t;
 
@@ -352,6 +355,12 @@ fn ncclRedOpDestroy(op: ncclRedOp_t, comm: ncclComm_t) -> ncclResult_t;
 
 #[cuda_hook(proc_id = 3233)]
 fn ncclCommMemStats(comm: ncclComm_t, stat: ncclCommMemStat_t, value: *mut u64) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3236)]
+fn ncclCommSuspend(comm: ncclComm_t, flags: c_int) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3237)]
+fn ncclCommResume(comm: ncclComm_t) -> ncclResult_t;
 
 #[cuda_custom_hook] // local: NCCL parameter registry owns returned handles
 fn ncclParamBind(out: *mut *mut ncclParamHandle_t, key: *const c_char) -> ncclResult_t;
