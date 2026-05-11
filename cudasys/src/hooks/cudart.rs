@@ -102,6 +102,7 @@ fn cudaSetDevice(device: c_int) -> cudaError_t {
     'client_after_recv: {
         if result == Default::default() {
             client.cuda_device = Some(device);
+            client.cuda_device_init = true;
         } else {
             client.cuda_device = None;
         }
@@ -246,7 +247,14 @@ fn cudaSetValidDevices(
 ) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900501, async_api = false)]
-fn cudaInitDevice(device: c_int, deviceFlags: c_uint, flags: c_uint) -> cudaError_t;
+fn cudaInitDevice(device: c_int, deviceFlags: c_uint, flags: c_uint) -> cudaError_t {
+    'client_after_recv: {
+        if result == Default::default() {
+            client.cuda_device = Some(device);
+            client.cuda_device_init = true;
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 152, async_api = false)]
 fn cudaGetLastError() -> cudaError_t;
@@ -1454,6 +1462,23 @@ fn cudaGraphExecNodeSetParams(
         assert_eq!(memset.height, 1);
     }
 }
+
+#[cuda_hook(proc_id = 900907)]
+fn cudaGraphKernelNodeCopyAttributes(hDst: cudaGraphNode_t, hSrc: cudaGraphNode_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900908)]
+fn cudaGraphKernelNodeGetAttribute(
+    hNode: cudaGraphNode_t,
+    attr: cudaLaunchAttributeID,
+    #[host(output, len = 1)] value_out: *mut cudaLaunchAttributeValue,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900909)]
+fn cudaGraphKernelNodeSetAttribute(
+    hNode: cudaGraphNode_t,
+    attr: cudaLaunchAttributeID,
+    #[host(len = 1)] value: *const cudaLaunchAttributeValue,
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900515)]
 fn cudaGraphAddChildGraphNode(

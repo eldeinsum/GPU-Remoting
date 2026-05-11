@@ -29,6 +29,15 @@ static int verify_value(const std::vector<unsigned char> &data,
     return 0;
 }
 
+__global__ void graph_extra_kernel(unsigned char *data, unsigned char value,
+                                   size_t count)
+{
+    size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (idx < count) {
+        data[idx] = value;
+    }
+}
+
 int main()
 {
     constexpr size_t kBytes = 256;
@@ -259,6 +268,59 @@ int main()
     }
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(generic_graph));
+    CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
+
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+    graph_extra_kernel<<<(kBytes + 127) / 128, 128, 0, stream>>>(
+        device, 0x61, kBytes);
+    graph_extra_kernel<<<(kBytes + 127) / 128, 128, 0, stream>>>(
+        device, 0x62, kBytes);
+    cudaGraph_t kernel_graph = nullptr;
+    CHECK_CUDA(cudaStreamEndCapture(stream, &kernel_graph));
+    nodes = 0;
+    CHECK_CUDA(cudaGraphGetNodes(kernel_graph, nullptr, &nodes));
+    std::vector<cudaGraphNode_t> kernel_graph_nodes(nodes);
+    CHECK_CUDA(cudaGraphGetNodes(kernel_graph, kernel_graph_nodes.data(),
+                                 &nodes));
+    std::vector<cudaGraphNode_t> kernel_nodes;
+    for (cudaGraphNode_t node : kernel_graph_nodes) {
+        cudaGraphNodeType type = cudaGraphNodeTypeCount;
+        CHECK_CUDA(cudaGraphNodeGetType(node, &type));
+        if (type == cudaGraphNodeTypeKernel) {
+            kernel_nodes.push_back(node);
+        }
+    }
+    if (kernel_nodes.size() != 2) {
+        std::fprintf(stderr, "unexpected captured kernel node count: %zu\n",
+                     kernel_nodes.size());
+        return 1;
+    }
+    cudaKernelNodeAttrValue kernel_attr = {};
+    kernel_attr.priority = 0;
+    CHECK_CUDA(cudaGraphKernelNodeSetAttribute(
+        kernel_nodes[0], cudaKernelNodeAttributePriority, &kernel_attr));
+    CHECK_CUDA(cudaGraphKernelNodeCopyAttributes(kernel_nodes[1],
+                                                 kernel_nodes[0]));
+    cudaKernelNodeAttrValue kernel_attr_out = {};
+    CHECK_CUDA(cudaGraphKernelNodeGetAttribute(
+        kernel_nodes[1], cudaKernelNodeAttributePriority, &kernel_attr_out));
+    if (kernel_attr_out.priority != 0) {
+        std::fprintf(stderr, "unexpected runtime graph kernel priority\n");
+        return 1;
+    }
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, kernel_graph, 0));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x62) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(kernel_graph));
     CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
 
     unsigned char *copy_src = nullptr;
