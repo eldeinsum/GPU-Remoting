@@ -168,6 +168,25 @@ int main(void) {
       return EXIT_FAILURE;
     }
   }
+
+  ncclSimInfo_t sim_info = NCCL_SIM_INFO_INITIALIZER;
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(simulate)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
+        !nccl_ok(ncclAllReduce(send[rank], recv[rank], elem_count, ncclFloat,
+                               ncclSum, comms[rank], streams[rank]),
+                 "ncclAllReduce(simulate)")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupSimulateEnd(&sim_info), "ncclGroupSimulateEnd") ||
+      sim_info.size != sizeof(ncclSimInfo_t)) {
+    fprintf(stderr, "invalid NCCL simulation info\n");
+    return EXIT_FAILURE;
+  }
+
   ncclRedOp_t sum_ops[nranks] = {ncclSum, ncclSum};
   if (!allreduce_sum(devs, comms, streams, send, recv, sum_ops,
                      elem_count)) {

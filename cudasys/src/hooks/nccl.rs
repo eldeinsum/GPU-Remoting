@@ -37,6 +37,42 @@ fn ncclGroupStart() -> ncclResult_t;
 #[cuda_hook(proc_id = 3207)]
 fn ncclGroupEnd() -> ncclResult_t;
 
+#[cuda_hook(proc_id = 3234)]
+fn ncclGroupSimulateEnd(#[skip] simInfo: *mut ncclSimInfo_t) -> ncclResult_t {
+    'client_before_send: {
+        if simInfo.is_null() {
+            return ncclResult_t::ncclInvalidArgument;
+        }
+        let sim_info_in = unsafe { *simInfo };
+    }
+    'client_extra_send: {
+        sim_info_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut sim_info = std::mem::MaybeUninit::<ncclSimInfo_t>::uninit();
+        sim_info.recv(channel_receiver).unwrap();
+        let sim_info_ptr = sim_info.as_mut_ptr();
+    }
+    'server_execution: {
+        let result = unsafe { ncclGroupSimulateEnd(sim_info_ptr) };
+    }
+    'server_after_send: {
+        if result == ncclResult_t::ncclSuccess {
+            unsafe { *sim_info_ptr }.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == ncclResult_t::ncclSuccess {
+            let mut sim_info_out = std::mem::MaybeUninit::<ncclSimInfo_t>::uninit();
+            sim_info_out.recv(channel_receiver).unwrap();
+            unsafe {
+                *simInfo = sim_info_out.assume_init();
+            }
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 3208, async_api)]
 fn ncclSend(
     #[device] sendbuff: *const c_void,
