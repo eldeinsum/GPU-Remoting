@@ -60,6 +60,133 @@ fn checkpoint_call_with_args<T: Transportable>(
 }
 
 #[no_mangle]
+extern "C" fn cuDeviceGetNvSciSyncAttributes(
+    nvSciSyncAttrList: *mut c_void,
+    _dev: CUdevice,
+    _flags: c_int,
+) -> CUresult {
+    log::debug!(target: "cuDeviceGetNvSciSyncAttributes", "");
+    if nvSciSyncAttrList.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_HANDLE;
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuDeviceRegisterAsyncNotification(
+    _device: CUdevice,
+    callbackFunc: CUasyncCallback,
+    _userData: *mut c_void,
+    callback: *mut CUasyncCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuDeviceRegisterAsyncNotification", "");
+    if callbackFunc.is_none() || callback.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    unsafe {
+        *callback = std::ptr::null_mut();
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuDeviceUnregisterAsyncNotification(
+    _device: CUdevice,
+    callback: CUasyncCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuDeviceUnregisterAsyncNotification", "");
+    if callback.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuCoredumpRegisterStartCallback(
+    callback: CUcoredumpStatusCallback,
+    _userData: *mut c_void,
+    callbackOut: *mut CUcoredumpCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuCoredumpRegisterStartCallback", "");
+    if callback.is_none() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if !callbackOut.is_null() {
+        unsafe {
+            *callbackOut = std::ptr::null_mut();
+        }
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuCoredumpRegisterCompleteCallback(
+    callback: CUcoredumpStatusCallback,
+    _userData: *mut c_void,
+    callbackOut: *mut CUcoredumpCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuCoredumpRegisterCompleteCallback", "");
+    if callback.is_none() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if !callbackOut.is_null() {
+        unsafe {
+            *callbackOut = std::ptr::null_mut();
+        }
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuCoredumpDeregisterStartCallback(
+    callback: CUcoredumpCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuCoredumpDeregisterStartCallback", "");
+    if callback.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuCoredumpDeregisterCompleteCallback(
+    callback: CUcoredumpCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuCoredumpDeregisterCompleteCallback", "");
+    if callback.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuLogsRegisterCallback(
+    callbackFunc: CUlogsCallback,
+    _userData: *mut c_void,
+    callback_out: *mut CUlogsCallbackHandle,
+) -> CUresult {
+    log::debug!(target: "cuLogsRegisterCallback", "");
+    if callbackFunc.is_none() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if !callback_out.is_null() {
+        unsafe {
+            *callback_out = std::ptr::null_mut();
+        }
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
+extern "C" fn cuLogsUnregisterCallback(callback: CUlogsCallbackHandle) -> CUresult {
+    log::debug!(target: "cuLogsUnregisterCallback", "");
+    if callback.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
 extern "C" fn cuCheckpointProcessGetRestoreThreadId(pid: c_int, tid: *mut c_int) -> CUresult {
     if tid.is_null() {
         return CUresult::CUDA_ERROR_INVALID_VALUE;

@@ -2044,6 +2044,27 @@ fn cuDeviceGetP2PAtomicCapabilities(
     dstDevice: CUdevice,
 ) -> CUresult;
 
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuDeviceGetNvSciSyncAttributes(
+    nvSciSyncAttrList: *mut c_void,
+    dev: CUdevice,
+    flags: c_int,
+) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuDeviceRegisterAsyncNotification(
+    device: CUdevice,
+    callbackFunc: CUasyncCallback,
+    userData: *mut c_void,
+    callback: *mut CUasyncCallbackHandle,
+) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuDeviceUnregisterAsyncNotification(
+    device: CUdevice,
+    callback: CUasyncCallbackHandle,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900320)]
 fn cuDevicePrimaryCtxRetain(pctx: *mut CUcontext, dev: CUdevice) -> CUresult;
 
@@ -4631,6 +4652,36 @@ fn cuCheckpointProcessRestore(pid: c_int, args: *mut CUcheckpointRestoreArgs) ->
 
 #[cuda_custom_hook(proc_id = 901162)]
 fn cuCheckpointProcessUnlock(pid: c_int, args: *mut CUcheckpointUnlockArgs) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuCoredumpRegisterStartCallback(
+    callback: CUcoredumpStatusCallback,
+    userData: *mut c_void,
+    callbackOut: *mut CUcoredumpCallbackHandle,
+) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuCoredumpRegisterCompleteCallback(
+    callback: CUcoredumpStatusCallback,
+    userData: *mut c_void,
+    callbackOut: *mut CUcoredumpCallbackHandle,
+) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuCoredumpDeregisterStartCallback(callback: CUcoredumpCallbackHandle) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuCoredumpDeregisterCompleteCallback(callback: CUcoredumpCallbackHandle) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuLogsRegisterCallback(
+    callbackFunc: CUlogsCallback,
+    userData: *mut c_void,
+    callback_out: *mut CUlogsCallbackHandle,
+) -> CUresult;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuLogsUnregisterCallback(callback: CUlogsCallbackHandle) -> CUresult;
 
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(

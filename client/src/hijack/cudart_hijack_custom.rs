@@ -60,6 +60,77 @@ fn recv_cuda_result<C: CommChannel>(
 }
 
 #[no_mangle]
+extern "C" fn cudaDeviceGetNvSciSyncAttributes(
+    nvSciSyncAttrList: *mut c_void,
+    _device: c_int,
+    _flags: c_int,
+) -> cudaError_t {
+    log::debug!(target: "cudaDeviceGetNvSciSyncAttributes", "");
+    if nvSciSyncAttrList.is_null() {
+        return cudaError_t::cudaErrorInvalidResourceHandle;
+    }
+    cudaError_t::cudaErrorNotSupported
+}
+
+#[no_mangle]
+extern "C" fn cudaDeviceRegisterAsyncNotification(
+    _device: c_int,
+    callbackFunc: cudaAsyncCallback,
+    _userData: *mut c_void,
+    callback: *mut cudaAsyncCallbackHandle_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaDeviceRegisterAsyncNotification", "");
+    if callbackFunc.is_none() || callback.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    unsafe {
+        *callback = std::ptr::null_mut();
+    }
+    cudaError_t::cudaErrorNotSupported
+}
+
+#[no_mangle]
+extern "C" fn cudaDeviceUnregisterAsyncNotification(
+    _device: c_int,
+    callback: cudaAsyncCallbackHandle_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaDeviceUnregisterAsyncNotification", "");
+    if callback.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    cudaError_t::cudaErrorNotSupported
+}
+
+#[no_mangle]
+extern "C" fn cudaLogsRegisterCallback(
+    callbackFunc: cudaLogsCallback_t,
+    _userData: *mut c_void,
+    callback_out: *mut cudaLogsCallbackHandle,
+) -> cudaError_t {
+    log::debug!(target: "cudaLogsRegisterCallback", "");
+    if callbackFunc.is_none() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if !callback_out.is_null() {
+        unsafe {
+            *callback_out = std::ptr::null_mut();
+        }
+    }
+    cudaError_t::cudaErrorNotSupported
+}
+
+#[no_mangle]
+extern "C" fn cudaLogsUnregisterCallback(
+    callback: cudaLogsCallbackHandle,
+) -> cudaError_t {
+    log::debug!(target: "cudaLogsUnregisterCallback", "");
+    if callback.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    cudaError_t::cudaErrorNotSupported
+}
+
+#[no_mangle]
 pub extern "C" fn cudaMemRangeGetAttributes(
     data: *mut *mut c_void,
     dataSizes: *mut usize,

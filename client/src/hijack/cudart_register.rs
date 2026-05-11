@@ -156,3 +156,26 @@ pub extern "C" fn __cudaRegisterManagedVar(
         runtime.lazy_variables.remove(&old_shadow.ptr());
     }
 }
+
+#[no_mangle]
+pub extern "C" fn __cudaRegisterTexture(
+    _fatCubinHandle: *mut *mut ::std::os::raw::c_void,
+    _hostVar: *const cudasys::cudart::textureReference,
+    _deviceAddress: *mut *const ::std::os::raw::c_void,
+    _deviceName: *const ::std::os::raw::c_char,
+    _dim: ::std::os::raw::c_int,
+    _norm: ::std::os::raw::c_int,
+    _ext: ::std::os::raw::c_int,
+) {
+}
+
+#[no_mangle]
+pub extern "C" fn __cudaRegisterSurface(
+    _fatCubinHandle: *mut *mut ::std::os::raw::c_void,
+    _hostVar: *const cudasys::cudart::surfaceReference,
+    _deviceAddress: *mut *const ::std::os::raw::c_void,
+    _deviceName: *const ::std::os::raw::c_char,
+    _dim: ::std::os::raw::c_int,
+    _ext: ::std::os::raw::c_int,
+) {
+}

@@ -196,6 +196,27 @@ fn cudaDeviceGetP2PAtomicCapabilities(
     dstDevice: c_int,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cudaDeviceGetNvSciSyncAttributes(
+    nvSciSyncAttrList: *mut c_void,
+    device: c_int,
+    flags: c_int,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cudaDeviceRegisterAsyncNotification(
+    device: c_int,
+    callbackFunc: cudaAsyncCallback,
+    userData: *mut c_void,
+    callback: *mut cudaAsyncCallbackHandle_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cudaDeviceUnregisterAsyncNotification(
+    device: c_int,
+    callback: cudaAsyncCallbackHandle_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900458, async_api = false)]
 fn cudaDeviceDisablePeerAccess(peerDevice: c_int) -> cudaError_t;
 
@@ -1366,6 +1387,16 @@ fn cudaMemRangeGetAttribute(
     count: usize,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cudaLogsRegisterCallback(
+    callbackFunc: cudaLogsCallback_t,
+    userData: *mut c_void,
+    callback_out: *mut cudaLogsCallbackHandle,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cudaLogsUnregisterCallback(callback: cudaLogsCallbackHandle) -> cudaError_t;
+
 #[cuda_custom_hook(proc_id = 900994)]
 fn cudaMemRangeGetAttributes(
     data: *mut *mut c_void,
@@ -1616,6 +1647,27 @@ fn __cudaRegisterManagedVar(
     size: usize,
     constant: c_int,
     global: c_int,
+);
+
+#[cuda_custom_hook] // local, legacy texture-reference registration
+fn __cudaRegisterTexture(
+    fatCubinHandle: *mut *mut c_void,
+    hostVar: *const textureReference,
+    deviceAddress: *mut *const c_void,
+    deviceName: *const c_char,
+    dim: c_int,
+    norm: c_int,
+    ext: c_int,
+);
+
+#[cuda_custom_hook] // local, legacy surface-reference registration
+fn __cudaRegisterSurface(
+    fatCubinHandle: *mut *mut c_void,
+    hostVar: *const surfaceReference,
+    deviceAddress: *mut *const c_void,
+    deviceName: *const c_char,
+    dim: c_int,
+    ext: c_int,
 );
 
 #[cuda_custom_hook] // calls driver API
