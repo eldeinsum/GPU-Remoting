@@ -1384,6 +1384,77 @@ fn cudaGraphRemoveDependencies(
 #[cuda_hook(proc_id = 900508, async_api = false)]
 fn cudaGraphDestroyNode(node: cudaGraphNode_t) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900903)]
+fn cudaGraphAddNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    #[device] pDependencies: *const cudaGraphNode_t,
+    #[device] dependencyData: *const cudaGraphEdgeData,
+    numDependencies: usize,
+    #[host(input, len = 1)] nodeParams: *mut cudaGraphNodeParams,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(pDependencies.is_null());
+        assert!(dependencyData.is_null());
+        assert_eq!(numDependencies, 0);
+        assert!(!nodeParams.is_null());
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.type_, cudaGraphNodeType::cudaGraphNodeTypeMemset);
+        let memset = unsafe { params.__bindgen_anon_1.memset };
+        assert_eq!(memset.elementSize, 1);
+        assert_eq!(memset.height, 1);
+    }
+}
+
+#[cuda_hook(proc_id = 900904)]
+fn cudaGraphNodeGetParams(
+    node: cudaGraphNode_t,
+    #[host(output, len = 1)] nodeParams: *mut cudaGraphNodeParams,
+) -> cudaError_t {
+    'server_execution: {
+        let result = unsafe { cudaGraphNodeGetParams(node, nodeParams__ptr) };
+        if result == cudaError_t::cudaSuccess {
+            unsafe {
+                assert_eq!(
+                    (*nodeParams__ptr).type_,
+                    cudaGraphNodeType::cudaGraphNodeTypeMemset
+                );
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900905)]
+fn cudaGraphNodeSetParams(
+    node: cudaGraphNode_t,
+    #[host(input, len = 1)] nodeParams: *mut cudaGraphNodeParams,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.type_, cudaGraphNodeType::cudaGraphNodeTypeMemset);
+        let memset = unsafe { params.__bindgen_anon_1.memset };
+        assert_eq!(memset.elementSize, 1);
+        assert_eq!(memset.height, 1);
+    }
+}
+
+#[cuda_hook(proc_id = 900906)]
+fn cudaGraphExecNodeSetParams(
+    graphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    #[host(input, len = 1)] nodeParams: *mut cudaGraphNodeParams,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.type_, cudaGraphNodeType::cudaGraphNodeTypeMemset);
+        let memset = unsafe { params.__bindgen_anon_1.memset };
+        assert_eq!(memset.elementSize, 1);
+        assert_eq!(memset.height, 1);
+    }
+}
+
 #[cuda_hook(proc_id = 900515)]
 fn cudaGraphAddChildGraphNode(
     pGraphNode: *mut cudaGraphNode_t,

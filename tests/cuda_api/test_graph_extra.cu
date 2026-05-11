@@ -212,6 +212,55 @@ int main()
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(memset_graph));
 
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    cudaGraph_t generic_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&generic_graph, 0));
+    cudaGraphNodeParams generic_params = {};
+    generic_params.type = cudaGraphNodeTypeMemset;
+    generic_params.memset.dst = device;
+    generic_params.memset.value = 0x34;
+    generic_params.memset.elementSize = 1;
+    generic_params.memset.width = kBytes;
+    generic_params.memset.height = 1;
+
+    cudaGraphNode_t generic_node = nullptr;
+    CHECK_CUDA(cudaGraphAddNode(&generic_node, generic_graph, nullptr, nullptr,
+                                0, &generic_params));
+    cudaGraphNodeParams queried_generic = {};
+    CHECK_CUDA(cudaGraphNodeGetParams(generic_node, &queried_generic));
+    if (queried_generic.type != cudaGraphNodeTypeMemset ||
+        queried_generic.memset.dst != device ||
+        queried_generic.memset.value != 0x34 ||
+        queried_generic.memset.width != kBytes ||
+        queried_generic.memset.height != 1) {
+        std::fprintf(stderr, "unexpected runtime generic graph node params\n");
+        return 1;
+    }
+    generic_params.memset.value = 0x45;
+    CHECK_CUDA(cudaGraphNodeSetParams(generic_node, &generic_params));
+    queried_generic = {};
+    CHECK_CUDA(cudaGraphNodeGetParams(generic_node, &queried_generic));
+    if (queried_generic.memset.value != 0x45) {
+        std::fprintf(stderr, "runtime generic graph update did not stick\n");
+        return 1;
+    }
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, generic_graph, 0));
+    generic_params.memset.value = 0x56;
+    CHECK_CUDA(cudaGraphExecNodeSetParams(exec, generic_node,
+                                          &generic_params));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x56) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(generic_graph));
+    CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
+
     unsigned char *copy_src = nullptr;
     unsigned char *copy_dst = nullptr;
     CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&copy_src), kBytes));
