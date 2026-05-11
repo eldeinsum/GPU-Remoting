@@ -87,6 +87,7 @@ template <> struct Ops<cuDoubleComplex> {
 
 template <typename T> struct Gemm;
 template <typename T> struct StridedGemm;
+template <typename T> struct BatchedGemm;
 template <typename T> struct TypedGemmEx;
 template <typename T> struct DataType;
 
@@ -134,6 +135,28 @@ template <> struct StridedGemm<float> {
     return cublasSgemmStridedBatched_64(
         handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a, lda, stride_a, b,
         ldb, stride_b, beta, c, ldc, stride_c, batch_count);
+  }
+};
+
+template <> struct BatchedGemm<float> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const float *alpha, const float *const *a,
+                               int lda, const float *const *b, int ldb,
+                               const float *beta, float *const *c, int ldc,
+                               int batch_count) {
+    return cublasSgemmBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                              alpha, a, lda, b, ldb, beta, c, ldc,
+                              batch_count);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const float *alpha,
+                               const float *const *a, int64_t lda,
+                               const float *const *b, int64_t ldb,
+                               const float *beta, float *const *c,
+                               int64_t ldc, int64_t batch_count) {
+    return cublasSgemmBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                                 alpha, a, lda, b, ldb, beta, c, ldc,
+                                 batch_count);
   }
 };
 
@@ -197,6 +220,28 @@ template <> struct StridedGemm<double> {
   }
 };
 
+template <> struct BatchedGemm<double> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const double *alpha, const double *const *a,
+                               int lda, const double *const *b, int ldb,
+                               const double *beta, double *const *c, int ldc,
+                               int batch_count) {
+    return cublasDgemmBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                              alpha, a, lda, b, ldb, beta, c, ldc,
+                              batch_count);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const double *alpha,
+                               const double *const *a, int64_t lda,
+                               const double *const *b, int64_t ldb,
+                               const double *beta, double *const *c,
+                               int64_t ldc, int64_t batch_count) {
+    return cublasDgemmBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                                 alpha, a, lda, b, ldb, beta, c, ldc,
+                                 batch_count);
+  }
+};
+
 template <> struct Gemm<cuComplex> {
   static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
                                const cuComplex *alpha, const cuComplex *a,
@@ -238,6 +283,29 @@ template <> struct StridedGemm<cuComplex> {
     return cublasCgemmStridedBatched_64(
         handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a, lda, stride_a, b,
         ldb, stride_b, beta, c, ldc, stride_c, batch_count);
+  }
+};
+
+template <> struct BatchedGemm<cuComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuComplex *alpha,
+                               const cuComplex *const *a, int lda,
+                               const cuComplex *const *b, int ldb,
+                               const cuComplex *beta, cuComplex *const *c,
+                               int ldc, int batch_count) {
+    return cublasCgemmBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                              alpha, a, lda, b, ldb, beta, c, ldc,
+                              batch_count);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuComplex *alpha,
+                               const cuComplex *const *a, int64_t lda,
+                               const cuComplex *const *b, int64_t ldb,
+                               const cuComplex *beta, cuComplex *const *c,
+                               int64_t ldc, int64_t batch_count) {
+    return cublasCgemmBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                                 alpha, a, lda, b, ldb, beta, c, ldc,
+                                 batch_count);
   }
 };
 
@@ -306,6 +374,31 @@ template <> struct StridedGemm<cuDoubleComplex> {
     return cublasZgemmStridedBatched_64(
         handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a, lda, stride_a, b,
         ldb, stride_b, beta, c, ldc, stride_c, batch_count);
+  }
+};
+
+template <> struct BatchedGemm<cuDoubleComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuDoubleComplex *alpha,
+                               const cuDoubleComplex *const *a, int lda,
+                               const cuDoubleComplex *const *b, int ldb,
+                               const cuDoubleComplex *beta,
+                               cuDoubleComplex *const *c, int ldc,
+                               int batch_count) {
+    return cublasZgemmBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                              alpha, a, lda, b, ldb, beta, c, ldc,
+                              batch_count);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuDoubleComplex *alpha,
+                               const cuDoubleComplex *const *a, int64_t lda,
+                               const cuDoubleComplex *const *b, int64_t ldb,
+                               const cuDoubleComplex *beta,
+                               cuDoubleComplex *const *c, int64_t ldc,
+                               int64_t batch_count) {
+    return cublasZgemmBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                                 alpha, a, lda, b, ldb, beta, c, ldc,
+                                 batch_count);
   }
 };
 
@@ -536,6 +629,126 @@ static void run_strided_case(cublasHandle_t handle, const char *name,
 }
 
 template <typename T>
+static void run_batched_case(cublasHandle_t handle, const char *name,
+                             bool use_64, bool device_scalars) {
+  const int m = 2;
+  const int n = 2;
+  const int k = 3;
+  const int batch_count = 2;
+  const long long stride_a = m * k;
+  const long long stride_b = k * n;
+  const long long stride_c = m * n;
+  std::vector<T> a(batch_count * stride_a);
+  std::vector<T> b(batch_count * stride_b);
+  std::vector<T> c(batch_count * stride_c);
+  for (size_t i = 0; i < a.size(); ++i) {
+    int phase = static_cast<int>(i % 4) - 1;
+    a[i] = Ops<T>::value(static_cast<float>(i + 1),
+                         static_cast<float>(phase) * 0.125f);
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    int phase = static_cast<int>(i % 3) - 1;
+    b[i] = Ops<T>::value(static_cast<float>(i + 3),
+                         static_cast<float>(phase) * -0.25f);
+  }
+  for (size_t i = 0; i < c.size(); ++i) {
+    int phase = static_cast<int>(i % 5) - 2;
+    c[i] = Ops<T>::value(static_cast<float>(phase),
+                         static_cast<float>(i % 2) * 0.5f);
+  }
+
+  T alpha = Ops<T>::alpha();
+  T beta = Ops<T>::beta();
+  std::vector<T> expected = expected_strided_gemm(
+      a, b, c, m, n, k, stride_a, stride_b, stride_c, batch_count, alpha, beta);
+
+  T *d_a = nullptr;
+  T *d_b = nullptr;
+  T *d_c = nullptr;
+  const T **d_a_array = nullptr;
+  const T **d_b_array = nullptr;
+  T **d_c_array = nullptr;
+  T *d_alpha = nullptr;
+  T *d_beta = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_a, a.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_b, b.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_c, c.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_a_array, batch_count * sizeof(T *)));
+  CHECK_CUDA(cudaMalloc(&d_b_array, batch_count * sizeof(T *)));
+  CHECK_CUDA(cudaMalloc(&d_c_array, batch_count * sizeof(T *)));
+  CHECK_CUDA(cudaMemcpy(d_a, a.data(), a.size() * sizeof(T),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b, b.data(), b.size() * sizeof(T),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c, c.data(), c.size() * sizeof(T),
+                        cudaMemcpyHostToDevice));
+
+  std::vector<const T *> a_ptrs(batch_count);
+  std::vector<const T *> b_ptrs(batch_count);
+  std::vector<T *> c_ptrs(batch_count);
+  for (int batch = 0; batch < batch_count; ++batch) {
+    a_ptrs[batch] = d_a + batch * stride_a;
+    b_ptrs[batch] = d_b + batch * stride_b;
+    c_ptrs[batch] = d_c + batch * stride_c;
+  }
+  CHECK_CUDA(cudaMemcpy(d_a_array, a_ptrs.data(),
+                        a_ptrs.size() * sizeof(a_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b_array, b_ptrs.data(),
+                        b_ptrs.size() * sizeof(b_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c_array, c_ptrs.data(),
+                        c_ptrs.size() * sizeof(c_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+
+  const T *alpha_arg = &alpha;
+  const T *beta_arg = &beta;
+  if (device_scalars) {
+    CHECK_CUDA(cudaMalloc(&d_alpha, sizeof(T)));
+    CHECK_CUDA(cudaMalloc(&d_beta, sizeof(T)));
+    CHECK_CUDA(cudaMemcpy(d_alpha, &alpha, sizeof(T), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_beta, &beta, sizeof(T), cudaMemcpyHostToDevice));
+    alpha_arg = d_alpha;
+    beta_arg = d_beta;
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+  } else {
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  }
+
+  if (use_64) {
+    CHECK_CUBLAS(BatchedGemm<T>::call64(handle, m, n, k, alpha_arg, d_a_array,
+                                        m, d_b_array, k, beta_arg, d_c_array,
+                                        m, batch_count));
+  } else {
+    CHECK_CUBLAS(BatchedGemm<T>::call32(handle, m, n, k, alpha_arg, d_a_array,
+                                        m, d_b_array, k, beta_arg, d_c_array,
+                                        m, batch_count));
+  }
+  CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  std::vector<T> out(c.size());
+  CHECK_CUDA(cudaMemcpy(out.data(), d_c, out.size() * sizeof(T),
+                        cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < out.size(); ++i) {
+    if (!Ops<T>::near(out[i], expected[i])) {
+      std::printf("%s batched mismatch index %zu use_64=%d device_scalars=%d\n",
+                  name, i, use_64 ? 1 : 0, device_scalars ? 1 : 0);
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  cudaFree(d_beta);
+  cudaFree(d_alpha);
+  cudaFree(d_c_array);
+  cudaFree(d_b_array);
+  cudaFree(d_a_array);
+  cudaFree(d_c);
+  cudaFree(d_b);
+  cudaFree(d_a);
+}
+
+template <typename T>
 static void run_typed_ex_case(cublasHandle_t handle, const char *name,
                               bool use_64, bool device_scalars) {
   const int m = 2;
@@ -699,6 +912,123 @@ static void run_generic_ex_case(cublasHandle_t handle, bool use_64,
   cudaFree(d_a);
 }
 
+static void run_generic_batched_ex_case(cublasHandle_t handle, bool use_64,
+                                        bool device_scalars) {
+  const int m = 2;
+  const int n = 2;
+  const int k = 3;
+  const int batch_count = 2;
+  const long long stride_a = m * k;
+  const long long stride_b = k * n;
+  const long long stride_c = m * n;
+  std::vector<float> a(batch_count * stride_a);
+  std::vector<float> b(batch_count * stride_b);
+  std::vector<float> c(batch_count * stride_c);
+  for (size_t i = 0; i < a.size(); ++i) {
+    a[i] = static_cast<float>(i + 1);
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    b[i] = static_cast<float>(i + 3);
+  }
+  for (size_t i = 0; i < c.size(); ++i) {
+    c[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
+  }
+  float alpha = Ops<float>::alpha();
+  float beta = Ops<float>::beta();
+  std::vector<float> expected =
+      expected_strided_gemm(a, b, c, m, n, k, stride_a, stride_b, stride_c,
+                            batch_count, alpha, beta);
+
+  float *d_a = nullptr;
+  float *d_b = nullptr;
+  float *d_c = nullptr;
+  const void **d_a_array = nullptr;
+  const void **d_b_array = nullptr;
+  void **d_c_array = nullptr;
+  float *d_alpha = nullptr;
+  float *d_beta = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_a, a.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_b, b.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_c, c.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_a_array, batch_count * sizeof(void *)));
+  CHECK_CUDA(cudaMalloc(&d_b_array, batch_count * sizeof(void *)));
+  CHECK_CUDA(cudaMalloc(&d_c_array, batch_count * sizeof(void *)));
+  CHECK_CUDA(cudaMemcpy(d_a, a.data(), a.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b, b.data(), b.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c, c.data(), c.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  std::vector<const void *> a_ptrs(batch_count);
+  std::vector<const void *> b_ptrs(batch_count);
+  std::vector<void *> c_ptrs(batch_count);
+  for (int batch = 0; batch < batch_count; ++batch) {
+    a_ptrs[batch] = d_a + batch * stride_a;
+    b_ptrs[batch] = d_b + batch * stride_b;
+    c_ptrs[batch] = d_c + batch * stride_c;
+  }
+  CHECK_CUDA(cudaMemcpy(d_a_array, a_ptrs.data(),
+                        a_ptrs.size() * sizeof(a_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b_array, b_ptrs.data(),
+                        b_ptrs.size() * sizeof(b_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c_array, c_ptrs.data(),
+                        c_ptrs.size() * sizeof(c_ptrs[0]),
+                        cudaMemcpyHostToDevice));
+
+  const float *alpha_arg = &alpha;
+  const float *beta_arg = &beta;
+  if (device_scalars) {
+    CHECK_CUDA(cudaMalloc(&d_alpha, sizeof(float)));
+    CHECK_CUDA(cudaMalloc(&d_beta, sizeof(float)));
+    CHECK_CUDA(
+        cudaMemcpy(d_alpha, &alpha, sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_beta, &beta, sizeof(float), cudaMemcpyHostToDevice));
+    alpha_arg = d_alpha;
+    beta_arg = d_beta;
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+  } else {
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  }
+
+  if (use_64) {
+    CHECK_CUBLAS(cublasGemmBatchedEx_64(
+        handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha_arg, d_a_array,
+        CUDA_R_32F, m, d_b_array, CUDA_R_32F, k, beta_arg, d_c_array,
+        CUDA_R_32F, m, batch_count, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT));
+  } else {
+    CHECK_CUBLAS(cublasGemmBatchedEx(
+        handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha_arg, d_a_array,
+        CUDA_R_32F, m, d_b_array, CUDA_R_32F, k, beta_arg, d_c_array,
+        CUDA_R_32F, m, batch_count, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT));
+  }
+  CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  std::vector<float> out(c.size());
+  CHECK_CUDA(cudaMemcpy(out.data(), d_c, out.size() * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < out.size(); ++i) {
+    if (!Ops<float>::near(out[i], expected[i])) {
+      std::printf(
+          "generic batched Ex mismatch index %zu use_64=%d device_scalars=%d\n",
+          i, use_64 ? 1 : 0, device_scalars ? 1 : 0);
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  cudaFree(d_beta);
+  cudaFree(d_alpha);
+  cudaFree(d_c_array);
+  cudaFree(d_b_array);
+  cudaFree(d_a_array);
+  cudaFree(d_c);
+  cudaFree(d_b);
+  cudaFree(d_a);
+}
+
 static void run_generic_strided_ex_case(cublasHandle_t handle, bool use_64,
                                         bool device_scalars) {
   const int m = 2;
@@ -799,6 +1129,10 @@ template <typename T> static void run_type(cublasHandle_t handle,
   run_strided_case<T>(handle, name, false, true);
   run_strided_case<T>(handle, name, true, false);
   run_strided_case<T>(handle, name, true, true);
+  run_batched_case<T>(handle, name, false, false);
+  run_batched_case<T>(handle, name, false, true);
+  run_batched_case<T>(handle, name, true, false);
+  run_batched_case<T>(handle, name, true, true);
 }
 
 int main() {
@@ -820,6 +1154,10 @@ int main() {
   run_generic_ex_case(handle, false, true);
   run_generic_ex_case(handle, true, false);
   run_generic_ex_case(handle, true, true);
+  run_generic_batched_ex_case(handle, false, false);
+  run_generic_batched_ex_case(handle, false, true);
+  run_generic_batched_ex_case(handle, true, false);
+  run_generic_batched_ex_case(handle, true, true);
   run_generic_strided_ex_case(handle, false, false);
   run_generic_strided_ex_case(handle, false, true);
   run_generic_strided_ex_case(handle, true, false);
