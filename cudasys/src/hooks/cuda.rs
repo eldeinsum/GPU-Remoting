@@ -1361,6 +1361,82 @@ fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
 #[cuda_hook(proc_id = 900403)]
 fn cuMemGetInfo_v2(free: *mut usize, total: *mut usize) -> CUresult;
 
+#[cuda_hook(proc_id = 901038)]
+fn cuMemAddressReserve(
+    ptr: *mut CUdeviceptr,
+    size: usize,
+    alignment: usize,
+    addr: CUdeviceptr,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901039, async_api = false)]
+fn cuMemAddressFree(ptr: CUdeviceptr, size: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 901040)]
+fn cuMemCreate(
+    handle: *mut CUmemGenericAllocationHandle,
+    size: usize,
+    #[host(len = 1)] prop: *const CUmemAllocationProp,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901041, async_api = false)]
+fn cuMemRelease(handle: CUmemGenericAllocationHandle) -> CUresult;
+
+#[cuda_hook(proc_id = 901042)]
+fn cuMemMap(
+    ptr: CUdeviceptr,
+    size: usize,
+    offset: usize,
+    handle: CUmemGenericAllocationHandle,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901043, async_api = false)]
+fn cuMemUnmap(ptr: CUdeviceptr, size: usize) -> CUresult;
+
+#[cuda_hook(proc_id = 901044)]
+fn cuMemSetAccess(
+    ptr: CUdeviceptr,
+    size: usize,
+    #[host(len = count)] desc: *const CUmemAccessDesc,
+    count: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901045)]
+fn cuMemGetAccess(
+    flags: *mut c_ulonglong,
+    #[host(len = 1)] location: *const CUmemLocation,
+    ptr: CUdeviceptr,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901046)]
+fn cuMemGetAllocationGranularity(
+    granularity: *mut usize,
+    #[host(len = 1)] prop: *const CUmemAllocationProp,
+    option: CUmemAllocationGranularity_flags,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901047)]
+fn cuMemGetAllocationPropertiesFromHandle(
+    #[host(output, len = 1)] prop: *mut CUmemAllocationProp,
+    handle: CUmemGenericAllocationHandle,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901048)]
+fn cuMemRetainAllocationHandle(
+    handle: *mut CUmemGenericAllocationHandle,
+    #[device] addr: *mut c_void,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901049)]
+fn cuMemGetAddressRange_v2(
+    pbase: *mut CUdeviceptr,
+    psize: *mut usize,
+    dptr: CUdeviceptr,
+) -> CUresult;
+
 #[cuda_custom_hook(proc_id = 900984)]
 fn cuMemPrefetchAsync_v2(
     devPtr: CUdeviceptr,

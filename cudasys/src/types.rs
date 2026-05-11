@@ -141,6 +141,37 @@ pub mod cuda {
         }
     }
 
+    impl std::fmt::Debug for CUmemLocation_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let id = unsafe { self.__bindgen_anon_1.id };
+            f.debug_struct("CUmemLocation_st")
+                .field("type_", &self.type_)
+                .field("id", &id)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for CUmemAllocationProp_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CUmemAllocationProp_st")
+                .field("type_", &self.type_)
+                .field("requestedHandleTypes", &self.requestedHandleTypes)
+                .field("location", &self.location)
+                .field("win32HandleMetaData", &self.win32HandleMetaData)
+                .field("allocFlags", &self.allocFlags)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for CUmemAccessDesc_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CUmemAccessDesc_st")
+                .field("location", &self.location)
+                .field("flags", &self.flags)
+                .finish()
+        }
+    }
+
     impl std::fmt::Debug for CUlaunchAttributeValue_union {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let pad = unsafe { self.pad };
