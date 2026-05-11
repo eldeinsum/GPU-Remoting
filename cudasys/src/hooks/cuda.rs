@@ -1437,6 +1437,19 @@ fn cuMemGetAddressRange_v2(
     dptr: CUdeviceptr,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901050)]
+fn cuIpcGetMemHandle(pHandle: *mut CUipcMemHandle, dptr: CUdeviceptr) -> CUresult;
+
+#[cuda_hook(proc_id = 901051)]
+fn cuIpcOpenMemHandle_v2(
+    pdptr: *mut CUdeviceptr,
+    handle: CUipcMemHandle,
+    Flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901052, async_api = false)]
+fn cuIpcCloseMemHandle(dptr: CUdeviceptr) -> CUresult;
+
 #[cuda_custom_hook(proc_id = 900984)]
 fn cuMemPrefetchAsync_v2(
     devPtr: CUdeviceptr,
