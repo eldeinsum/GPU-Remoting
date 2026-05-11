@@ -5350,3 +5350,973 @@ fn cublasZdrot_v2_64(
         let result = unsafe { cublasZdrot_v2_64(handle, n, x, incx, y, incy, c_arg, s_arg) };
     }
 }
+
+#[cuda_hook(proc_id = 1230)]
+fn cublasSrotg_v2(
+    handle: cublasHandle_t,
+    #[skip] a: *mut f32,
+    #[skip] b: *mut f32,
+    #[skip] c: *mut f32,
+    #[skip] s: *mut f32,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && (a.is_null() || b.is_null() || c.is_null() || s.is_null()) {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let a_addr = a as usize;
+        let b_addr = b as usize;
+        let c_addr = c as usize;
+        let s_addr = s as usize;
+        let mut host_a_value = 0.0f32;
+        let mut host_b_value = 0.0f32;
+        if !device_pointer_mode {
+            unsafe {
+                host_a_value = *a;
+                host_b_value = *b;
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        a_addr.send(channel_sender).unwrap();
+        b_addr.send(channel_sender).unwrap();
+        c_addr.send(channel_sender).unwrap();
+        s_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut a_addr = 0usize;
+        a_addr.recv(channel_receiver).unwrap();
+        let mut b_addr = 0usize;
+        b_addr.recv(channel_receiver).unwrap();
+        let mut c_addr = 0usize;
+        c_addr.recv(channel_receiver).unwrap();
+        let mut s_addr = 0usize;
+        s_addr.recv(channel_receiver).unwrap();
+        let mut host_a_value = 0.0f32;
+        let mut host_b_value = 0.0f32;
+        let mut host_c_value = 0.0f32;
+        let mut host_s_value = 0.0f32;
+        if !device_pointer_mode {
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+        }
+        let a_arg = if device_pointer_mode {
+            a_addr as *mut f32
+        } else {
+            &raw mut host_a_value
+        };
+        let b_arg = if device_pointer_mode {
+            b_addr as *mut f32
+        } else {
+            &raw mut host_b_value
+        };
+        let c_arg = if device_pointer_mode {
+            c_addr as *mut f32
+        } else {
+            &raw mut host_c_value
+        };
+        let s_arg = if device_pointer_mode {
+            s_addr as *mut f32
+        } else {
+            &raw mut host_s_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSrotg_v2(handle, a_arg, b_arg, c_arg, s_arg) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+            host_c_value.send(channel_sender).unwrap();
+            host_s_value.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            let mut host_a_value = 0.0f32;
+            let mut host_b_value = 0.0f32;
+            let mut host_c_value = 0.0f32;
+            let mut host_s_value = 0.0f32;
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+            host_c_value.recv(channel_receiver).unwrap();
+            host_s_value.recv(channel_receiver).unwrap();
+            unsafe {
+                *a = host_a_value;
+                *b = host_b_value;
+                *c = host_c_value;
+                *s = host_s_value;
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1231)]
+fn cublasDrotg_v2(
+    handle: cublasHandle_t,
+    #[skip] a: *mut f64,
+    #[skip] b: *mut f64,
+    #[skip] c: *mut f64,
+    #[skip] s: *mut f64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && (a.is_null() || b.is_null() || c.is_null() || s.is_null()) {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let a_addr = a as usize;
+        let b_addr = b as usize;
+        let c_addr = c as usize;
+        let s_addr = s as usize;
+        let mut host_a_value = 0.0f64;
+        let mut host_b_value = 0.0f64;
+        if !device_pointer_mode {
+            unsafe {
+                host_a_value = *a;
+                host_b_value = *b;
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        a_addr.send(channel_sender).unwrap();
+        b_addr.send(channel_sender).unwrap();
+        c_addr.send(channel_sender).unwrap();
+        s_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut a_addr = 0usize;
+        a_addr.recv(channel_receiver).unwrap();
+        let mut b_addr = 0usize;
+        b_addr.recv(channel_receiver).unwrap();
+        let mut c_addr = 0usize;
+        c_addr.recv(channel_receiver).unwrap();
+        let mut s_addr = 0usize;
+        s_addr.recv(channel_receiver).unwrap();
+        let mut host_a_value = 0.0f64;
+        let mut host_b_value = 0.0f64;
+        let mut host_c_value = 0.0f64;
+        let mut host_s_value = 0.0f64;
+        if !device_pointer_mode {
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+        }
+        let a_arg = if device_pointer_mode {
+            a_addr as *mut f64
+        } else {
+            &raw mut host_a_value
+        };
+        let b_arg = if device_pointer_mode {
+            b_addr as *mut f64
+        } else {
+            &raw mut host_b_value
+        };
+        let c_arg = if device_pointer_mode {
+            c_addr as *mut f64
+        } else {
+            &raw mut host_c_value
+        };
+        let s_arg = if device_pointer_mode {
+            s_addr as *mut f64
+        } else {
+            &raw mut host_s_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDrotg_v2(handle, a_arg, b_arg, c_arg, s_arg) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+            host_c_value.send(channel_sender).unwrap();
+            host_s_value.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            let mut host_a_value = 0.0f64;
+            let mut host_b_value = 0.0f64;
+            let mut host_c_value = 0.0f64;
+            let mut host_s_value = 0.0f64;
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+            host_c_value.recv(channel_receiver).unwrap();
+            host_s_value.recv(channel_receiver).unwrap();
+            unsafe {
+                *a = host_a_value;
+                *b = host_b_value;
+                *c = host_c_value;
+                *s = host_s_value;
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1232)]
+fn cublasCrotg_v2(
+    handle: cublasHandle_t,
+    #[skip] a: *mut cuComplex,
+    #[skip] b: *mut cuComplex,
+    #[skip] c: *mut f32,
+    #[skip] s: *mut cuComplex,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && (a.is_null() || b.is_null() || c.is_null() || s.is_null()) {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let a_addr = a as usize;
+        let b_addr = b as usize;
+        let c_addr = c as usize;
+        let s_addr = s as usize;
+        let mut host_a_value = cuComplex { x: 0.0, y: 0.0 };
+        let mut host_b_value = cuComplex { x: 0.0, y: 0.0 };
+        if !device_pointer_mode {
+            unsafe {
+                host_a_value = *a;
+                host_b_value = *b;
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        a_addr.send(channel_sender).unwrap();
+        b_addr.send(channel_sender).unwrap();
+        c_addr.send(channel_sender).unwrap();
+        s_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut a_addr = 0usize;
+        a_addr.recv(channel_receiver).unwrap();
+        let mut b_addr = 0usize;
+        b_addr.recv(channel_receiver).unwrap();
+        let mut c_addr = 0usize;
+        c_addr.recv(channel_receiver).unwrap();
+        let mut s_addr = 0usize;
+        s_addr.recv(channel_receiver).unwrap();
+        let mut host_a_value = cuComplex { x: 0.0, y: 0.0 };
+        let mut host_b_value = cuComplex { x: 0.0, y: 0.0 };
+        let mut host_c_value = 0.0f32;
+        let mut host_s_value = cuComplex { x: 0.0, y: 0.0 };
+        if !device_pointer_mode {
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+        }
+        let a_arg = if device_pointer_mode {
+            a_addr as *mut cuComplex
+        } else {
+            &raw mut host_a_value
+        };
+        let b_arg = if device_pointer_mode {
+            b_addr as *mut cuComplex
+        } else {
+            &raw mut host_b_value
+        };
+        let c_arg = if device_pointer_mode {
+            c_addr as *mut f32
+        } else {
+            &raw mut host_c_value
+        };
+        let s_arg = if device_pointer_mode {
+            s_addr as *mut cuComplex
+        } else {
+            &raw mut host_s_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasCrotg_v2(handle, a_arg, b_arg, c_arg, s_arg) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+            host_c_value.send(channel_sender).unwrap();
+            host_s_value.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            let mut host_a_value = cuComplex { x: 0.0, y: 0.0 };
+            let mut host_b_value = cuComplex { x: 0.0, y: 0.0 };
+            let mut host_c_value = 0.0f32;
+            let mut host_s_value = cuComplex { x: 0.0, y: 0.0 };
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+            host_c_value.recv(channel_receiver).unwrap();
+            host_s_value.recv(channel_receiver).unwrap();
+            unsafe {
+                *a = host_a_value;
+                *b = host_b_value;
+                *c = host_c_value;
+                *s = host_s_value;
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1233)]
+fn cublasZrotg_v2(
+    handle: cublasHandle_t,
+    #[skip] a: *mut cuDoubleComplex,
+    #[skip] b: *mut cuDoubleComplex,
+    #[skip] c: *mut f64,
+    #[skip] s: *mut cuDoubleComplex,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && (a.is_null() || b.is_null() || c.is_null() || s.is_null()) {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let a_addr = a as usize;
+        let b_addr = b as usize;
+        let c_addr = c as usize;
+        let s_addr = s as usize;
+        let mut host_a_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        let mut host_b_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        if !device_pointer_mode {
+            unsafe {
+                host_a_value = *a;
+                host_b_value = *b;
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        a_addr.send(channel_sender).unwrap();
+        b_addr.send(channel_sender).unwrap();
+        c_addr.send(channel_sender).unwrap();
+        s_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut a_addr = 0usize;
+        a_addr.recv(channel_receiver).unwrap();
+        let mut b_addr = 0usize;
+        b_addr.recv(channel_receiver).unwrap();
+        let mut c_addr = 0usize;
+        c_addr.recv(channel_receiver).unwrap();
+        let mut s_addr = 0usize;
+        s_addr.recv(channel_receiver).unwrap();
+        let mut host_a_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        let mut host_b_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        let mut host_c_value = 0.0f64;
+        let mut host_s_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        if !device_pointer_mode {
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+        }
+        let a_arg = if device_pointer_mode {
+            a_addr as *mut cuDoubleComplex
+        } else {
+            &raw mut host_a_value
+        };
+        let b_arg = if device_pointer_mode {
+            b_addr as *mut cuDoubleComplex
+        } else {
+            &raw mut host_b_value
+        };
+        let c_arg = if device_pointer_mode {
+            c_addr as *mut f64
+        } else {
+            &raw mut host_c_value
+        };
+        let s_arg = if device_pointer_mode {
+            s_addr as *mut cuDoubleComplex
+        } else {
+            &raw mut host_s_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZrotg_v2(handle, a_arg, b_arg, c_arg, s_arg) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            host_a_value.send(channel_sender).unwrap();
+            host_b_value.send(channel_sender).unwrap();
+            host_c_value.send(channel_sender).unwrap();
+            host_s_value.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            let mut host_a_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+            let mut host_b_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+            let mut host_c_value = 0.0f64;
+            let mut host_s_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+            host_a_value.recv(channel_receiver).unwrap();
+            host_b_value.recv(channel_receiver).unwrap();
+            host_c_value.recv(channel_receiver).unwrap();
+            host_s_value.recv(channel_receiver).unwrap();
+            unsafe {
+                *a = host_a_value;
+                *b = host_b_value;
+                *c = host_c_value;
+                *s = host_s_value;
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1234)]
+fn cublasSrotm_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut f32,
+    incx: c_int,
+    #[device] y: *mut f32,
+    incy: c_int,
+    #[skip] param: *const f32,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && param.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let param_addr = param as usize;
+        let mut host_param_value = [0.0f32; 5];
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(param, host_param_value.as_mut_ptr(), 5);
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        param_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&host_param_value, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut param_addr = 0usize;
+        param_addr.recv(channel_receiver).unwrap();
+        let host_param_value = if device_pointer_mode {
+            Box::<[f32]>::default()
+        } else {
+            recv_slice::<f32, _>(channel_receiver).unwrap()
+        };
+        let param_arg = if device_pointer_mode {
+            param_addr as *const f32
+        } else {
+            host_param_value.as_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSrotm_v2(handle, n, x, incx, y, incy, param_arg) };
+    }
+}
+
+#[cuda_hook(proc_id = 1235)]
+fn cublasSrotm_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut f32,
+    incx: i64,
+    #[device] y: *mut f32,
+    incy: i64,
+    #[skip] param: *const f32,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && param.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let param_addr = param as usize;
+        let mut host_param_value = [0.0f32; 5];
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(param, host_param_value.as_mut_ptr(), 5);
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        param_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&host_param_value, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut param_addr = 0usize;
+        param_addr.recv(channel_receiver).unwrap();
+        let host_param_value = if device_pointer_mode {
+            Box::<[f32]>::default()
+        } else {
+            recv_slice::<f32, _>(channel_receiver).unwrap()
+        };
+        let param_arg = if device_pointer_mode {
+            param_addr as *const f32
+        } else {
+            host_param_value.as_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSrotm_v2_64(handle, n, x, incx, y, incy, param_arg) };
+    }
+}
+
+#[cuda_hook(proc_id = 1236)]
+fn cublasDrotm_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut f64,
+    incx: c_int,
+    #[device] y: *mut f64,
+    incy: c_int,
+    #[skip] param: *const f64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && param.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let param_addr = param as usize;
+        let mut host_param_value = [0.0f64; 5];
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(param, host_param_value.as_mut_ptr(), 5);
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        param_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&host_param_value, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut param_addr = 0usize;
+        param_addr.recv(channel_receiver).unwrap();
+        let host_param_value = if device_pointer_mode {
+            Box::<[f64]>::default()
+        } else {
+            recv_slice::<f64, _>(channel_receiver).unwrap()
+        };
+        let param_arg = if device_pointer_mode {
+            param_addr as *const f64
+        } else {
+            host_param_value.as_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDrotm_v2(handle, n, x, incx, y, incy, param_arg) };
+    }
+}
+
+#[cuda_hook(proc_id = 1237)]
+fn cublasDrotm_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut f64,
+    incx: i64,
+    #[device] y: *mut f64,
+    incy: i64,
+    #[skip] param: *const f64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && param.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let param_addr = param as usize;
+        let mut host_param_value = [0.0f64; 5];
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(param, host_param_value.as_mut_ptr(), 5);
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        param_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&host_param_value, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut param_addr = 0usize;
+        param_addr.recv(channel_receiver).unwrap();
+        let host_param_value = if device_pointer_mode {
+            Box::<[f64]>::default()
+        } else {
+            recv_slice::<f64, _>(channel_receiver).unwrap()
+        };
+        let param_arg = if device_pointer_mode {
+            param_addr as *const f64
+        } else {
+            host_param_value.as_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDrotm_v2_64(handle, n, x, incx, y, incy, param_arg) };
+    }
+}
+
+#[cuda_hook(proc_id = 1238)]
+fn cublasSrotmg_v2(
+    handle: cublasHandle_t,
+    #[skip] d1: *mut f32,
+    #[skip] d2: *mut f32,
+    #[skip] x1: *mut f32,
+    #[skip] y1: *const f32,
+    #[skip] param: *mut f32,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode
+            && (d1.is_null() || d2.is_null() || x1.is_null() || y1.is_null() || param.is_null())
+        {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let d1_addr = d1 as usize;
+        let d2_addr = d2 as usize;
+        let x1_addr = x1 as usize;
+        let y1_addr = y1 as usize;
+        let param_addr = param as usize;
+        let mut host_d1_value = 0.0f32;
+        let mut host_d2_value = 0.0f32;
+        let mut host_x1_value = 0.0f32;
+        let mut host_y1_value = 0.0f32;
+        if !device_pointer_mode {
+            unsafe {
+                host_d1_value = *d1;
+                host_d2_value = *d2;
+                host_x1_value = *x1;
+                host_y1_value = *y1;
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        d1_addr.send(channel_sender).unwrap();
+        d2_addr.send(channel_sender).unwrap();
+        x1_addr.send(channel_sender).unwrap();
+        y1_addr.send(channel_sender).unwrap();
+        param_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            host_d1_value.send(channel_sender).unwrap();
+            host_d2_value.send(channel_sender).unwrap();
+            host_x1_value.send(channel_sender).unwrap();
+            host_y1_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut d1_addr = 0usize;
+        d1_addr.recv(channel_receiver).unwrap();
+        let mut d2_addr = 0usize;
+        d2_addr.recv(channel_receiver).unwrap();
+        let mut x1_addr = 0usize;
+        x1_addr.recv(channel_receiver).unwrap();
+        let mut y1_addr = 0usize;
+        y1_addr.recv(channel_receiver).unwrap();
+        let mut param_addr = 0usize;
+        param_addr.recv(channel_receiver).unwrap();
+        let mut host_d1_value = 0.0f32;
+        let mut host_d2_value = 0.0f32;
+        let mut host_x1_value = 0.0f32;
+        let mut host_y1_value = 0.0f32;
+        let mut host_param_value = [0.0f32; 5];
+        if !device_pointer_mode {
+            host_d1_value.recv(channel_receiver).unwrap();
+            host_d2_value.recv(channel_receiver).unwrap();
+            host_x1_value.recv(channel_receiver).unwrap();
+            host_y1_value.recv(channel_receiver).unwrap();
+        }
+        let d1_arg = if device_pointer_mode {
+            d1_addr as *mut f32
+        } else {
+            &raw mut host_d1_value
+        };
+        let d2_arg = if device_pointer_mode {
+            d2_addr as *mut f32
+        } else {
+            &raw mut host_d2_value
+        };
+        let x1_arg = if device_pointer_mode {
+            x1_addr as *mut f32
+        } else {
+            &raw mut host_x1_value
+        };
+        let y1_arg = if device_pointer_mode {
+            y1_addr as *const f32
+        } else {
+            &raw const host_y1_value
+        };
+        let param_arg = if device_pointer_mode {
+            param_addr as *mut f32
+        } else {
+            host_param_value.as_mut_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSrotmg_v2(handle, d1_arg, d2_arg, x1_arg, y1_arg, param_arg) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            host_d1_value.send(channel_sender).unwrap();
+            host_d2_value.send(channel_sender).unwrap();
+            host_x1_value.send(channel_sender).unwrap();
+            send_slice(&host_param_value, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            let mut host_d1_value = 0.0f32;
+            let mut host_d2_value = 0.0f32;
+            let mut host_x1_value = 0.0f32;
+            host_d1_value.recv(channel_receiver).unwrap();
+            host_d2_value.recv(channel_receiver).unwrap();
+            host_x1_value.recv(channel_receiver).unwrap();
+            let host_param_value = recv_slice::<f32, _>(channel_receiver).unwrap();
+            assert_eq!(host_param_value.len(), 5);
+            unsafe {
+                *d1 = host_d1_value;
+                *d2 = host_d2_value;
+                *x1 = host_x1_value;
+                std::ptr::copy_nonoverlapping(host_param_value.as_ptr(), param, 5);
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1239)]
+fn cublasDrotmg_v2(
+    handle: cublasHandle_t,
+    #[skip] d1: *mut f64,
+    #[skip] d2: *mut f64,
+    #[skip] x1: *mut f64,
+    #[skip] y1: *const f64,
+    #[skip] param: *mut f64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode
+            && (d1.is_null() || d2.is_null() || x1.is_null() || y1.is_null() || param.is_null())
+        {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let d1_addr = d1 as usize;
+        let d2_addr = d2 as usize;
+        let x1_addr = x1 as usize;
+        let y1_addr = y1 as usize;
+        let param_addr = param as usize;
+        let mut host_d1_value = 0.0f64;
+        let mut host_d2_value = 0.0f64;
+        let mut host_x1_value = 0.0f64;
+        let mut host_y1_value = 0.0f64;
+        if !device_pointer_mode {
+            unsafe {
+                host_d1_value = *d1;
+                host_d2_value = *d2;
+                host_x1_value = *x1;
+                host_y1_value = *y1;
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        d1_addr.send(channel_sender).unwrap();
+        d2_addr.send(channel_sender).unwrap();
+        x1_addr.send(channel_sender).unwrap();
+        y1_addr.send(channel_sender).unwrap();
+        param_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            host_d1_value.send(channel_sender).unwrap();
+            host_d2_value.send(channel_sender).unwrap();
+            host_x1_value.send(channel_sender).unwrap();
+            host_y1_value.send(channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut d1_addr = 0usize;
+        d1_addr.recv(channel_receiver).unwrap();
+        let mut d2_addr = 0usize;
+        d2_addr.recv(channel_receiver).unwrap();
+        let mut x1_addr = 0usize;
+        x1_addr.recv(channel_receiver).unwrap();
+        let mut y1_addr = 0usize;
+        y1_addr.recv(channel_receiver).unwrap();
+        let mut param_addr = 0usize;
+        param_addr.recv(channel_receiver).unwrap();
+        let mut host_d1_value = 0.0f64;
+        let mut host_d2_value = 0.0f64;
+        let mut host_x1_value = 0.0f64;
+        let mut host_y1_value = 0.0f64;
+        let mut host_param_value = [0.0f64; 5];
+        if !device_pointer_mode {
+            host_d1_value.recv(channel_receiver).unwrap();
+            host_d2_value.recv(channel_receiver).unwrap();
+            host_x1_value.recv(channel_receiver).unwrap();
+            host_y1_value.recv(channel_receiver).unwrap();
+        }
+        let d1_arg = if device_pointer_mode {
+            d1_addr as *mut f64
+        } else {
+            &raw mut host_d1_value
+        };
+        let d2_arg = if device_pointer_mode {
+            d2_addr as *mut f64
+        } else {
+            &raw mut host_d2_value
+        };
+        let x1_arg = if device_pointer_mode {
+            x1_addr as *mut f64
+        } else {
+            &raw mut host_x1_value
+        };
+        let y1_arg = if device_pointer_mode {
+            y1_addr as *const f64
+        } else {
+            &raw const host_y1_value
+        };
+        let param_arg = if device_pointer_mode {
+            param_addr as *mut f64
+        } else {
+            host_param_value.as_mut_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDrotmg_v2(handle, d1_arg, d2_arg, x1_arg, y1_arg, param_arg) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            host_d1_value.send(channel_sender).unwrap();
+            host_d2_value.send(channel_sender).unwrap();
+            host_x1_value.send(channel_sender).unwrap();
+            send_slice(&host_param_value, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
+            let mut host_d1_value = 0.0f64;
+            let mut host_d2_value = 0.0f64;
+            let mut host_x1_value = 0.0f64;
+            host_d1_value.recv(channel_receiver).unwrap();
+            host_d2_value.recv(channel_receiver).unwrap();
+            host_x1_value.recv(channel_receiver).unwrap();
+            let host_param_value = recv_slice::<f64, _>(channel_receiver).unwrap();
+            assert_eq!(host_param_value.len(), 5);
+            unsafe {
+                *d1 = host_d1_value;
+                *d2 = host_d2_value;
+                *x1 = host_x1_value;
+                std::ptr::copy_nonoverlapping(host_param_value.as_ptr(), param, 5);
+            }
+        }
+    }
+}
