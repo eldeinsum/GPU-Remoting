@@ -469,6 +469,15 @@ fn cuCtxSetSharedMemConfig(config: CUsharedconfig) -> CUresult;
 #[cuda_hook(proc_id = 900200, async_api = false)]
 fn cuCtxSynchronize() -> CUresult;
 
+#[cuda_hook(proc_id = 900880, async_api = false)]
+fn cuCtxSynchronize_v2(ctx: CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900881, async_api)]
+fn cuCtxRecordEvent(hCtx: CUcontext, hEvent: CUevent) -> CUresult;
+
+#[cuda_hook(proc_id = 900882, async_api)]
+fn cuCtxWaitEvent(hCtx: CUcontext, hEvent: CUevent) -> CUresult;
+
 #[cuda_hook(proc_id = 900311, async_api = false)]
 fn cuCtxResetPersistingL2Cache() -> CUresult;
 

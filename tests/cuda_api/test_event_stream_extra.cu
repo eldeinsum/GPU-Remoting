@@ -155,6 +155,14 @@ int main()
         return 1;
     }
 
+    CUevent driver_ctx_event = nullptr;
+    CHECK_DRV_SUCCESS(cuEventCreate(&driver_ctx_event, CU_EVENT_DEFAULT));
+    CHECK_DRV_SUCCESS(cuCtxRecordEvent(driver_context, driver_ctx_event));
+    CHECK_DRV_SUCCESS(cuCtxWaitEvent(driver_context, driver_ctx_event));
+    CHECK_DRV_SUCCESS(cuCtxSynchronize_v2(driver_context));
+    CHECK_DRV(cuEventQuery(driver_ctx_event));
+    CHECK_DRV_SUCCESS(cuEventDestroy(driver_ctx_event));
+
     CHECK_DRV_SUCCESS(cuMemFree(wait64_device));
     CHECK_DRV_SUCCESS(cuMemFree(wait32_device));
 
