@@ -5848,6 +5848,198 @@ fn cublasZtrsv_v2_64(
     incx: i64,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1400, async_api)]
+fn cublasStpmv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const f32,
+    #[device] x: *mut f32,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1401, async_api)]
+fn cublasStpmv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const f32,
+    #[device] x: *mut f32,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1402, async_api)]
+fn cublasDtpmv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const f64,
+    #[device] x: *mut f64,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1403, async_api)]
+fn cublasDtpmv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const f64,
+    #[device] x: *mut f64,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1404, async_api)]
+fn cublasCtpmv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const cuComplex,
+    #[device] x: *mut cuComplex,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1405, async_api)]
+fn cublasCtpmv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const cuComplex,
+    #[device] x: *mut cuComplex,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1406, async_api)]
+fn cublasZtpmv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const cuDoubleComplex,
+    #[device] x: *mut cuDoubleComplex,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1407, async_api)]
+fn cublasZtpmv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const cuDoubleComplex,
+    #[device] x: *mut cuDoubleComplex,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1408, async_api)]
+fn cublasStpsv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const f32,
+    #[device] x: *mut f32,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1409, async_api)]
+fn cublasStpsv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const f32,
+    #[device] x: *mut f32,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1410, async_api)]
+fn cublasDtpsv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const f64,
+    #[device] x: *mut f64,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1411, async_api)]
+fn cublasDtpsv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const f64,
+    #[device] x: *mut f64,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1412, async_api)]
+fn cublasCtpsv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const cuComplex,
+    #[device] x: *mut cuComplex,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1413, async_api)]
+fn cublasCtpsv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const cuComplex,
+    #[device] x: *mut cuComplex,
+    incx: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1414, async_api)]
+fn cublasZtpsv_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: c_int,
+    #[device] AP: *const cuDoubleComplex,
+    #[device] x: *mut cuDoubleComplex,
+    incx: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1415, async_api)]
+fn cublasZtpsv_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    trans: cublasOperation_t,
+    diag: cublasDiagType_t,
+    n: i64,
+    #[device] AP: *const cuDoubleComplex,
+    #[device] x: *mut cuDoubleComplex,
+    incx: i64,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1324, async_api)]
 fn cublasSgeam(
     handle: cublasHandle_t,
