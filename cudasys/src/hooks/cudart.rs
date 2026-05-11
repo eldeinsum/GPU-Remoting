@@ -1848,6 +1848,9 @@ fn cudaIpcOpenMemHandle(
     flags: c_uint,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 127, async_api = false)]
+fn cudaIpcCloseMemHandle(#[device] devPtr: *mut c_void) -> cudaError_t;
+
 #[cuda_hook(proc_id = 204, async_api = false)]
 fn cudaEventQuery(event: cudaEvent_t) -> cudaError_t;
 

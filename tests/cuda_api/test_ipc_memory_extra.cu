@@ -46,7 +46,8 @@ static int from_hex(char c)
     return -1;
 }
 
-static std::string encode_handle(const CUipcMemHandle &handle)
+template <typename Handle>
+static std::string encode_handle(const Handle &handle)
 {
     static const char kHex[] = "0123456789abcdef";
     const unsigned char *bytes =
@@ -60,7 +61,8 @@ static std::string encode_handle(const CUipcMemHandle &handle)
     return output;
 }
 
-static int decode_handle(const char *hex, CUipcMemHandle *handle)
+template <typename Handle>
+static int decode_handle(const char *hex, Handle *handle)
 {
     if (hex == nullptr || handle == nullptr ||
         std::strlen(hex) != sizeof(handle->reserved) * 2) {
@@ -91,14 +93,14 @@ static int check_values(const std::vector<unsigned int> &values)
     return 0;
 }
 
-static int run_child(const char *handle_hex)
+static int run_driver_child(const char *handle_hex)
 {
     constexpr size_t kCount = 64;
     constexpr size_t kBytes = kCount * sizeof(unsigned int);
 
     CUipcMemHandle handle = {};
     if (decode_handle(handle_hex, &handle) != 0) {
-        std::fprintf(stderr, "invalid IPC handle encoding\n");
+        std::fprintf(stderr, "invalid driver IPC handle encoding\n");
         return 1;
     }
 
@@ -120,10 +122,69 @@ static int run_child(const char *handle_hex)
     return 0;
 }
 
+static int run_runtime_child(const char *handle_hex)
+{
+    constexpr size_t kCount = 64;
+    constexpr size_t kBytes = kCount * sizeof(unsigned int);
+
+    cudaIpcMemHandle_t handle = {};
+    if (decode_handle(handle_hex, &handle) != 0) {
+        std::fprintf(stderr, "invalid runtime IPC handle encoding\n");
+        return 1;
+    }
+
+    CHECK_CUDA(cudaSetDevice(0));
+    CHECK_CUDA(cudaFree(nullptr));
+
+    void *imported = nullptr;
+    CHECK_CUDA(cudaIpcOpenMemHandle(&imported, handle,
+                                    cudaIpcMemLazyEnablePeerAccess));
+
+    std::vector<unsigned int> output(kCount, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), imported, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (check_values(output) != 0) {
+        return 1;
+    }
+
+    CHECK_CUDA(cudaIpcCloseMemHandle(imported));
+    return 0;
+}
+
+static int run_child_process(const char *program, const char *mode,
+                             const std::string &handle_hex)
+{
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::perror("fork");
+        return 1;
+    }
+    if (pid == 0) {
+        execl(program, program, mode, handle_hex.c_str(),
+              static_cast<char *>(nullptr));
+        std::perror("execl");
+        _exit(127);
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        std::perror("waitpid");
+        return 1;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        std::fprintf(stderr, "%s child failed: status=%d\n", mode, status);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc == 3 && std::strcmp(argv[1], "--child") == 0) {
-        return run_child(argv[2]);
+    if (argc == 3 && std::strcmp(argv[1], "--child-driver") == 0) {
+        return run_driver_child(argv[2]);
+    }
+    if (argc == 3 && std::strcmp(argv[1], "--child-runtime") == 0) {
+        return run_runtime_child(argv[2]);
     }
 
     constexpr size_t kCount = 64;
@@ -156,32 +217,29 @@ int main(int argc, char **argv)
 
     CUipcMemHandle handle = {};
     CHECK_DRV(cuIpcGetMemHandle(&handle, device_ptr));
-    std::string handle_hex = encode_handle(handle);
+    std::string driver_handle_hex = encode_handle(handle);
 
-    pid_t pid = fork();
-    if (pid < 0) {
-        std::perror("fork");
-        return 1;
-    }
-    if (pid == 0) {
-        execl(argv[0], argv[0], "--child", handle_hex.c_str(),
-              static_cast<char *>(nullptr));
-        std::perror("execl");
-        _exit(127);
-    }
-
-    int status = 0;
-    if (waitpid(pid, &status, 0) < 0) {
-        std::perror("waitpid");
+    if (run_child_process(argv[0], "--child-driver", driver_handle_hex) != 0) {
         return 1;
     }
 
     CHECK_DRV(cuMemFree(device_ptr));
 
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        std::fprintf(stderr, "child failed: status=%d\n", status);
+    void *runtime_ptr = nullptr;
+    CHECK_CUDA(cudaMalloc(&runtime_ptr, kBytes));
+    CHECK_CUDA(cudaMemcpy(runtime_ptr, input.data(), kBytes,
+                          cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    cudaIpcMemHandle_t runtime_handle = {};
+    CHECK_CUDA(cudaIpcGetMemHandle(&runtime_handle, runtime_ptr));
+    std::string runtime_handle_hex = encode_handle(runtime_handle);
+
+    if (run_child_process(argv[0], "--child-runtime", runtime_handle_hex) != 0) {
         return 1;
     }
+
+    CHECK_CUDA(cudaFree(runtime_ptr));
 
     std::puts("memory IPC API test passed");
     return 0;
