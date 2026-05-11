@@ -288,6 +288,36 @@ fn cuModuleLoadDataEx(
     optionValues: *mut *mut c_void,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901036)]
+fn cuModuleLoadFatBinary(
+    module: *mut CUmodule,
+    #[host(len = len)] fatCubin: *const c_void,
+) -> CUresult {
+    'client_before_send: {
+        let len = crate::elf::module_image_len(fatCubin);
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            assert!(
+                DRIVER_CACHE
+                    .write()
+                    .unwrap()
+                    .images
+                    .insert(*module, std::borrow::Cow::Owned(fatCubin.to_vec()))
+                    .is_none()
+            );
+        }
+    }
+    'server_execution: {
+        let result = unsafe { cuModuleLoadFatBinary(module__ptr, fatCubin__ptr.cast()) };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            server.modules.push(module);
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 701, parent = cuModuleLoadData)]
 fn cuModuleLoadDataInternal(
     module: *mut CUmodule,
