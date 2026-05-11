@@ -148,6 +148,28 @@ static int write_temp_cubin(const std::vector<char> &cubin, std::string *path)
     return file.good() ? 0 : 1;
 }
 
+static bool expected_driver_unified_lookup_miss(CUresult result, int unified_function_pointers)
+{
+    if (result == CUDA_ERROR_NOT_FOUND) {
+        return true;
+    }
+    if (!unified_function_pointers) {
+        return result == CUDA_ERROR_NOT_SUPPORTED || result == CUDA_ERROR_INVALID_VALUE;
+    }
+    return false;
+}
+
+static bool expected_runtime_unified_lookup_miss(cudaError_t result, int unified_function_pointers)
+{
+    if (result == cudaErrorSymbolNotFound) {
+        return true;
+    }
+    if (!unified_function_pointers) {
+        return result == cudaErrorNotSupported || result == cudaErrorInvalidValue;
+    }
+    return false;
+}
+
 int main()
 {
     CHECK_DRV(cuInit(0));
@@ -158,6 +180,8 @@ int main()
     int minor = 0;
     CHECK_DRV(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
     CHECK_DRV(cuDeviceGetAttribute(&minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
+    int unified_function_pointers = 0;
+    CHECK_DRV(cuDeviceGetAttribute(&unified_function_pointers, CU_DEVICE_ATTRIBUTE_UNIFIED_FUNCTION_POINTERS, device));
 
     CUcontext context;
     CHECK_DRV(cuDevicePrimaryCtxRetain(&context, device));
@@ -275,6 +299,20 @@ int main()
 
     CUdeviceptr d_output = 0;
     CHECK_DRV(cuMemAlloc(&d_output, sizeof(int)));
+
+    void *unified_function = nullptr;
+    CUresult unified_result = cuLibraryGetUnifiedFunction(&unified_function, library, "library_kernel");
+    if (unified_result == CUDA_SUCCESS) {
+        if (unified_function == nullptr) {
+            std::cerr << "cuLibraryGetUnifiedFunction returned null" << std::endl;
+            return 1;
+        }
+        if (launch_and_check(reinterpret_cast<CUfunction>(unified_function), d_output, 66) != 0) {
+            return 1;
+        }
+    } else if (!expected_driver_unified_lookup_miss(unified_result, unified_function_pointers)) {
+        CHECK_DRV(unified_result);
+    }
 
     if (launch_and_check(reinterpret_cast<CUfunction>(kernels[0]), d_output, 33) != 0) {
         return 1;
@@ -413,6 +451,21 @@ int main()
 
     void *runtime_output = nullptr;
     CHECK_CUDA(cudaMalloc(&runtime_output, sizeof(int)));
+    void *runtime_unified_function = nullptr;
+    cudaError_t runtime_unified_result =
+        cudaLibraryGetUnifiedFunction(&runtime_unified_function, runtime_library, "library_kernel");
+    if (runtime_unified_result == cudaSuccess) {
+        if (runtime_unified_function == nullptr) {
+            std::cerr << "cudaLibraryGetUnifiedFunction returned null" << std::endl;
+            return 1;
+        }
+        if (runtime_launch_and_check(reinterpret_cast<cudaKernel_t>(runtime_unified_function), runtime_output, 43, 60) !=
+            0) {
+            return 1;
+        }
+    } else if (!expected_runtime_unified_lookup_miss(runtime_unified_result, unified_function_pointers)) {
+        CHECK_CUDA(runtime_unified_result);
+    }
     if (runtime_launch_and_check(runtime_kernel, runtime_output, 23, 40) != 0) {
         return 1;
     }

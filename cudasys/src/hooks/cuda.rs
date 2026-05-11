@@ -880,6 +880,33 @@ fn cuLibraryGetKernel(pKernel: *mut CUkernel, library: CUlibrary, name: *const c
     }
 }
 
+#[cuda_hook(proc_id = 901104)]
+fn cuLibraryGetUnifiedFunction(
+    fptr: *mut *mut c_void,
+    library: CUlibrary,
+    symbol: *const c_char,
+) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let target_arch = DRIVER_CACHE.read().unwrap().device_arch;
+            let mut driver = DRIVER_CACHE.write().unwrap();
+            let image = driver.library_images.get(&library).unwrap();
+            let function_name = symbol.to_str().unwrap();
+            let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
+                let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
+                fatbin.find_kernel_params(function_name, target_arch)
+            } else {
+                crate::elf::find_kernel_params_or_empty(image, function_name)
+            };
+            let function = (*fptr).cast::<CUfunc_st>();
+            driver.function_params.insert(function, params);
+            driver
+                .function_names
+                .insert(function, std::ffi::CString::new(function_name).unwrap());
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 901023)]
 fn cuLibraryGetKernelCount(count: *mut c_uint, lib: CUlibrary) -> CUresult;
 

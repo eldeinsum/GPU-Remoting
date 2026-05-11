@@ -717,6 +717,20 @@ extern "C" fn cudaLibraryGetManaged(
 }
 
 #[no_mangle]
+extern "C" fn cudaLibraryGetUnifiedFunction(
+    fptr: *mut *mut c_void,
+    library: cudaLibrary_t,
+    symbol: *const c_char,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryGetUnifiedFunction", "");
+    runtime_result(super::cuda_hijack::cuLibraryGetUnifiedFunction(
+        fptr,
+        driver_library(library),
+        symbol,
+    ))
+}
+
+#[no_mangle]
 extern "C" fn cudaLibraryGetKernelCount(count: *mut c_uint, lib: cudaLibrary_t) -> cudaError_t {
     log::debug!(target: "cudaLibraryGetKernelCount", "");
     runtime_result(super::cuda_hijack::cuLibraryGetKernelCount(

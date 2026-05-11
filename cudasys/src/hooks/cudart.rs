@@ -1631,6 +1631,13 @@ fn cudaLibraryGetManaged(
 ) -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
+fn cudaLibraryGetUnifiedFunction(
+    fptr: *mut *mut c_void,
+    library: cudaLibrary_t,
+    symbol: *const c_char,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
 fn cudaLibraryGetKernelCount(count: *mut c_uint, lib: cudaLibrary_t) -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
