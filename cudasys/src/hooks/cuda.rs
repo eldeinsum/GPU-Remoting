@@ -2132,6 +2132,21 @@ fn cuMemGetAccess(
     ptr: CUdeviceptr,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901106)]
+fn cuMemExportToShareableHandle(
+    shareableHandle: *mut c_void,
+    handle: CUmemGenericAllocationHandle,
+    handleType: CUmemAllocationHandleType,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901107)]
+fn cuMemImportFromShareableHandle(
+    handle: *mut CUmemGenericAllocationHandle,
+    osHandle: *mut c_void,
+    shHandleType: CUmemAllocationHandleType,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 901046)]
 fn cuMemGetAllocationGranularity(
     granularity: *mut usize,

@@ -16,6 +16,7 @@ use log::{error, info};
 
 use std::collections::BTreeMap;
 use std::io;
+use std::os::raw::c_int;
 use std::sync::{Arc, Barrier};
 
 struct ServerWorker<C> {
@@ -26,6 +27,8 @@ struct ServerWorker<C> {
     pub libraries: Vec<CUlibrary>,
     pub links: Vec<CUlinkState>,
     pub resources: BTreeMap<usize, usize>,
+    pub shareable_handles: BTreeMap<c_int, c_int>,
+    pub next_shareable_handle: c_int,
     opt_async_api: bool,
     opt_shadow_desc: bool,
 }
@@ -45,6 +48,11 @@ impl<C> Drop for ServerWorker<C> {
         for link in &self.links {
             unsafe {
                 cudasys::cuda::cuLinkDestroy(*link);
+            }
+        }
+        for fd in self.shareable_handles.values() {
+            unsafe {
+                libc::close(*fd);
             }
         }
     }
@@ -168,6 +176,8 @@ pub fn launch_server(
         libraries: Default::default(),
         links: Default::default(),
         resources: Default::default(),
+        shareable_handles: Default::default(),
+        next_shareable_handle: 1_000_000_000,
         opt_async_api: config.opt_async_api,
         opt_shadow_desc: config.opt_shadow_desc,
     };

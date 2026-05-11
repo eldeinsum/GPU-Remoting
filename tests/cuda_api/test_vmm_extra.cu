@@ -2,8 +2,10 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <vector>
+#include <unistd.h>
 
 #define CHECK_CUDA(call)                                                       \
     do {                                                                       \
@@ -121,6 +123,58 @@ int main()
     CHECK_DRV(cuMemUnmap(va, allocation_size));
     CHECK_DRV(cuMemAddressFree(va, allocation_size));
     CHECK_DRV(cuMemRelease(handle));
+
+    int fd_handles_supported = 0;
+    CHECK_DRV(cuDeviceGetAttribute(
+        &fd_handles_supported,
+        CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR_SUPPORTED,
+        device));
+    if (fd_handles_supported) {
+        CUmemAllocationProp share_prop = prop;
+        share_prop.requestedHandleTypes =
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+
+        CUmemGenericAllocationHandle share_handle = 0;
+        CHECK_DRV(cuMemCreate(&share_handle, allocation_size, &share_prop, 0));
+
+        int exported_fd = -1;
+        CHECK_DRV(cuMemExportToShareableHandle(
+            &exported_fd, share_handle,
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+        if (exported_fd < 0) {
+            std::fprintf(stderr, "invalid exported fd %d\n", exported_fd);
+            return 1;
+        }
+
+        CUmemGenericAllocationHandle imported_handle = 0;
+        CHECK_DRV(cuMemImportFromShareableHandle(
+            &imported_handle,
+            reinterpret_cast<void *>(static_cast<intptr_t>(exported_fd)),
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
+        close(exported_fd);
+
+        CUdeviceptr shared_va = 0;
+        CHECK_DRV(cuMemAddressReserve(&shared_va, allocation_size, 0, 0, 0));
+        CHECK_DRV(cuMemMap(shared_va, allocation_size, 0, imported_handle, 0));
+        CHECK_DRV(cuMemSetAccess(shared_va, allocation_size, &access, 1));
+
+        std::fill(output.begin(), output.end(), 0);
+        CHECK_DRV(cuMemsetD32(shared_va, 0xa55aa55au, value_count));
+        CHECK_DRV(cuMemcpyDtoH(
+            output.data(), shared_va, value_count * sizeof(unsigned int)));
+        if (!std::all_of(output.begin(), output.end(), [](unsigned int value) {
+                return value == 0xa55aa55au;
+            })) {
+            return 1;
+        }
+
+        CHECK_DRV(cuMemUnmap(shared_va, allocation_size));
+        CHECK_DRV(cuMemAddressFree(shared_va, allocation_size));
+        CHECK_DRV(cuMemRelease(imported_handle));
+        CHECK_DRV(cuMemRelease(share_handle));
+    } else {
+        std::puts("POSIX shareable VMM handles unsupported on this device");
+    }
 
     std::puts("virtual memory management API test passed");
     return 0;

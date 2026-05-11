@@ -143,6 +143,85 @@ extern "C" fn cuMemHostGetDevicePointer_v2(
 }
 
 #[no_mangle]
+extern "C" fn cuMemExportToShareableHandle(
+    shareableHandle: *mut c_void,
+    handle: CUmemGenericAllocationHandle,
+    handleType: CUmemAllocationHandleType,
+    flags: c_ulonglong,
+) -> CUresult {
+    if shareableHandle.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if handleType != CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemExportToShareableHandle", "[#{}]", client.id);
+
+        901106.send(&client.channel_sender).unwrap();
+        handle.send(&client.channel_sender).unwrap();
+        handleType.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut synthetic_fd = -1 as c_int;
+        synthetic_fd.recv(&client.channel_receiver).unwrap();
+        let result = recv_cu_result(
+            "cuMemExportToShareableHandle",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == CUresult::CUDA_SUCCESS {
+            unsafe {
+                *shareableHandle.cast::<c_int>() = synthetic_fd;
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemImportFromShareableHandle(
+    handle: *mut CUmemGenericAllocationHandle,
+    osHandle: *mut c_void,
+    shHandleType: CUmemAllocationHandleType,
+) -> CUresult {
+    if handle.is_null() || osHandle.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if shHandleType != CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+    let synthetic_fd = osHandle as isize as c_int;
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemImportFromShareableHandle", "[#{}]", client.id);
+
+        901107.send(&client.channel_sender).unwrap();
+        synthetic_fd.send(&client.channel_sender).unwrap();
+        shHandleType.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut imported_handle = 0;
+        imported_handle.recv(&client.channel_receiver).unwrap();
+        let result = recv_cu_result(
+            "cuMemImportFromShareableHandle",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == CUresult::CUDA_SUCCESS {
+            unsafe {
+                *handle = imported_handle;
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuPointerGetAttributes(
     numAttributes: c_uint,
     attributes: *mut CUpointer_attribute,
