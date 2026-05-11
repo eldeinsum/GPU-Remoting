@@ -1965,6 +1965,149 @@ fn cudaProfilerStart() -> cudaError_t;
 #[cuda_hook(proc_id = 900503, async_api = false)]
 fn cudaProfilerStop() -> cudaError_t;
 
+#[cuda_hook(proc_id = 901096, async_api = false)]
+fn cudaLogsCurrent(iterator_out: *mut cudaLogIterator, flags: c_uint) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901097, async_api = false)]
+fn cudaLogsDumpToFile(
+    #[skip] iterator: *mut cudaLogIterator,
+    pathToFile: *const c_char,
+    flags: c_uint,
+) -> cudaError_t {
+    'client_before_send: {
+        if pathToFile.is_null() {
+            return cudaError_t::cudaErrorInvalidValue;
+        }
+        let iterator_present = !iterator.is_null();
+        let iterator_in = if iterator_present {
+            unsafe { *iterator }
+        } else {
+            0
+        };
+    }
+    'client_extra_send: {
+        iterator_present.send(channel_sender).unwrap();
+        iterator_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut iterator_present = false;
+        iterator_present.recv(channel_receiver).unwrap();
+        let mut iterator_storage = 0;
+        iterator_storage.recv(channel_receiver).unwrap();
+        let iterator_ptr = if iterator_present {
+            &raw mut iterator_storage
+        } else {
+            std::ptr::null_mut()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cudaLogsDumpToFile(iterator_ptr, pathToFile__ptr, flags) };
+    }
+    'server_after_send: {
+        if result == cudaError_t::cudaSuccess {
+            iterator_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cudaError_t::cudaSuccess {
+            let mut iterator_out = 0;
+            iterator_out.recv(channel_receiver).unwrap();
+            if !iterator.is_null() {
+                unsafe {
+                    *iterator = iterator_out;
+                }
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 901098, async_api = false)]
+fn cudaLogsDumpToMemory(
+    #[skip] iterator: *mut cudaLogIterator,
+    #[skip] buffer: *mut c_char,
+    #[skip] size: *mut usize,
+    flags: c_uint,
+) -> cudaError_t {
+    'client_before_send: {
+        if size.is_null() {
+            return cudaError_t::cudaErrorInvalidValue;
+        }
+        let capacity = unsafe { *size };
+        if capacity > 0 && buffer.is_null() {
+            return cudaError_t::cudaErrorInvalidValue;
+        }
+        let iterator_present = !iterator.is_null();
+        let iterator_in = if iterator_present {
+            unsafe { *iterator }
+        } else {
+            0
+        };
+    }
+    'client_extra_send: {
+        iterator_present.send(channel_sender).unwrap();
+        iterator_in.send(channel_sender).unwrap();
+        capacity.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut iterator_present = false;
+        iterator_present.recv(channel_receiver).unwrap();
+        let mut iterator_storage = 0;
+        iterator_storage.recv(channel_receiver).unwrap();
+        let mut capacity = 0usize;
+        capacity.recv(channel_receiver).unwrap();
+        let iterator_ptr = if iterator_present {
+            &raw mut iterator_storage
+        } else {
+            std::ptr::null_mut()
+        };
+        let mut log_buffer = vec![0i8; capacity.saturating_add(1)];
+        let buffer_ptr = if capacity == 0 {
+            std::ptr::null_mut()
+        } else {
+            log_buffer.as_mut_ptr()
+        };
+        let mut size_value = capacity;
+    }
+    'server_execution: {
+        let result =
+            unsafe { cudaLogsDumpToMemory(iterator_ptr, buffer_ptr, &raw mut size_value, flags) };
+    }
+    'server_after_send: {
+        if result == cudaError_t::cudaSuccess {
+            iterator_storage.send(channel_sender).unwrap();
+            size_value.send(channel_sender).unwrap();
+            let bytes = log_buffer
+                .iter()
+                .take(size_value.min(capacity))
+                .map(|value| *value as u8)
+                .collect::<Vec<_>>();
+            send_slice(&bytes, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cudaError_t::cudaSuccess {
+            let mut iterator_out = 0;
+            iterator_out.recv(channel_receiver).unwrap();
+            let mut size_out = 0usize;
+            size_out.recv(channel_receiver).unwrap();
+            let bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            if !iterator.is_null() {
+                unsafe {
+                    *iterator = iterator_out;
+                }
+            }
+            unsafe {
+                *size = size_out;
+                if !buffer.is_null() && !bytes.is_empty() {
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr().cast(), buffer, bytes.len());
+                }
+            }
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 900427, async_api = false)]
 fn cudaCtxResetPersistingL2Cache() -> cudaError_t;
 
