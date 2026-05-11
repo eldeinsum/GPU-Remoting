@@ -29,6 +29,49 @@ fn cuArray3DGetDescriptor_v2(
 #[cuda_hook(proc_id = 900579)]
 fn cuArrayGetPlane(pPlaneArray: *mut CUarray, hArray: CUarray, planeIdx: c_uint) -> CUresult;
 
+#[cuda_hook(proc_id = 900580)]
+fn cuArrayGetSparseProperties(
+    #[host(output, len = 1)] sparseProperties: *mut CUDA_ARRAY_SPARSE_PROPERTIES,
+    array: CUarray,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900581)]
+fn cuArrayGetMemoryRequirements(
+    #[host(output, len = 1)] memoryRequirements: *mut CUDA_ARRAY_MEMORY_REQUIREMENTS,
+    array: CUarray,
+    device: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900582)]
+fn cuMipmappedArrayCreate(
+    pHandle: *mut CUmipmappedArray,
+    #[host(len = 1)] pMipmappedArrayDesc: *const CUDA_ARRAY3D_DESCRIPTOR,
+    numMipmapLevels: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900583, async_api = false)]
+fn cuMipmappedArrayDestroy(hMipmappedArray: CUmipmappedArray) -> CUresult;
+
+#[cuda_hook(proc_id = 900584)]
+fn cuMipmappedArrayGetLevel(
+    pLevelArray: *mut CUarray,
+    hMipmappedArray: CUmipmappedArray,
+    level: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900585)]
+fn cuMipmappedArrayGetMemoryRequirements(
+    #[host(output, len = 1)] memoryRequirements: *mut CUDA_ARRAY_MEMORY_REQUIREMENTS,
+    mipmap: CUmipmappedArray,
+    device: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900586)]
+fn cuMipmappedArrayGetSparseProperties(
+    #[host(output, len = 1)] sparseProperties: *mut CUDA_ARRAY_SPARSE_PROPERTIES,
+    mipmap: CUmipmappedArray,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900463, async_api = false)]
 fn cuArrayDestroy(hArray: CUarray) -> CUresult;
 
@@ -181,13 +224,17 @@ fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_ch
         let target_arch = DRIVER_CACHE.read().unwrap().device_arch;
         let mut driver = DRIVER_CACHE.write().unwrap();
         let image = driver.images.get(&hmod).unwrap();
+        let function_name = name.to_str().unwrap();
         let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
             let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
-            fatbin.find_kernel_params(name.to_str().unwrap(), target_arch)
+            fatbin.find_kernel_params(function_name, target_arch)
         } else {
-            crate::elf::find_kernel_params(image, name.to_str().unwrap())
+            crate::elf::find_kernel_params(image, function_name)
         };
         driver.function_params.insert(*hfunc, params);
+        driver
+            .function_names
+            .insert(*hfunc, std::ffi::CString::new(function_name).unwrap());
     }
 }
 
@@ -354,6 +401,9 @@ fn cuKernelGetFunction(pFunc: *mut CUfunction, kernel: CUkernel) -> CUresult {
             {
                 driver.function_params.insert(*pFunc, params);
             }
+            if let Some(name) = driver.kernel_names.get(&kernel).cloned() {
+                driver.function_names.insert(*pFunc, name);
+            }
         }
     }
 }
@@ -401,6 +451,29 @@ fn cuKernelGetParamInfo(
 
 #[cuda_hook(proc_id = 900720)]
 fn cuKernelGetParamCount(kernel: CUkernel, paramCount: *mut usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900721)]
+fn cuFuncGetModule(hmod: *mut CUmodule, hfunc: CUfunction) -> CUresult;
+
+#[cuda_custom_hook]
+fn cuFuncGetName(name: *mut *const c_char, hfunc: CUfunction) -> CUresult;
+
+#[cuda_hook(proc_id = 900722)]
+fn cuFuncGetParamInfo(
+    func: CUfunction,
+    paramIndex: usize,
+    paramOffset: *mut usize,
+    paramSize: *mut usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900723)]
+fn cuFuncGetParamCount(func: CUfunction, paramCount: *mut usize) -> CUresult;
+
+#[cuda_hook(proc_id = 900724)]
+fn cuFuncIsLoaded(state: *mut CUfunctionLoadingState, function: CUfunction) -> CUresult;
+
+#[cuda_hook(proc_id = 900725, async_api = false)]
+fn cuFuncLoad(function: CUfunction) -> CUresult;
 
 #[cuda_hook(proc_id = 640)]
 fn cuDriverGetVersion(driverVersion: *mut c_int) -> CUresult;
@@ -1268,6 +1341,17 @@ fn cuStreamAddCallback(
     callback: CUstreamCallback,
     userData: *mut c_void,
     flags: c_uint,
+) -> CUresult;
+
+#[cuda_custom_hook]
+fn cuLaunchHostFunc(hStream: CUstream, fn_: CUhostFn, userData: *mut c_void) -> CUresult;
+
+#[cuda_custom_hook]
+fn cuLaunchHostFunc_v2(
+    hStream: CUstream,
+    fn_: CUhostFn,
+    userData: *mut c_void,
+    syncMode: c_uint,
 ) -> CUresult;
 
 #[cuda_hook(proc_id = 900432)]

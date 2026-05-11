@@ -1225,6 +1225,20 @@ fn cudaGetSymbolAddress(devPtr: *mut *mut c_void, symbol: *const c_void) -> cuda
 #[cuda_custom_hook] // calls the internal API below
 fn cudaFuncGetAttributes(attr: *mut cudaFuncAttributes, func: *const c_void) -> cudaError_t;
 
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncGetName(name: *mut *const c_char, func: *const c_void) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncGetParamInfo(
+    func: *const c_void,
+    paramIndex: usize,
+    paramOffset: *mut usize,
+    paramSize: *mut usize,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaFuncGetParamCount(func: *const c_void, paramCount: *mut usize) -> cudaError_t;
+
 #[cuda_hook(proc_id = 230, parent = cudaFuncGetAttributes)]
 fn cudaFuncGetAttributesInternal(attr: *mut cudaFuncAttributes, func: CUfunction) -> cudaError_t {
     'server_execution: {

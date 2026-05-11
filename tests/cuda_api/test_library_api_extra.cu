@@ -193,6 +193,34 @@ int main()
 
     CUfunction function;
     CHECK_DRV(cuKernelGetFunction(&function, kernel));
+    const char *function_name = nullptr;
+    CHECK_DRV(cuFuncGetName(&function_name, function));
+    if (function_name == nullptr || std::strcmp(function_name, "library_kernel") != 0) {
+        std::cerr << "cuFuncGetName returned " << (function_name ? function_name : "(null)") << std::endl;
+        return 1;
+    }
+    size_t function_param_count = 0;
+    CHECK_DRV(cuFuncGetParamCount(function, &function_param_count));
+    if (function_param_count != 2) {
+        std::cerr << "unexpected function param count: " << function_param_count << std::endl;
+        return 1;
+    }
+    size_t function_param_offset = 0;
+    size_t function_param_size = 0;
+    CHECK_DRV(cuFuncGetParamInfo(function, 0, &function_param_offset, &function_param_size));
+    if (function_param_size != sizeof(CUdeviceptr)) {
+        std::cerr << "unexpected function first param size: " << function_param_size << std::endl;
+        return 1;
+    }
+    CUmodule function_module = nullptr;
+    CHECK_DRV(cuFuncGetModule(&function_module, function));
+    if (function_module == nullptr) {
+        std::cerr << "cuFuncGetModule returned null" << std::endl;
+        return 1;
+    }
+    CUfunctionLoadingState loading_state;
+    CHECK_DRV(cuFuncIsLoaded(&loading_state, function));
+    CHECK_DRV(cuFuncLoad(function));
     if (launch_and_check(function, d_output, 77) != 0) {
         return 1;
     }
@@ -201,6 +229,17 @@ int main()
     CHECK_DRV(cuLibraryGetModule(&module, library));
     CUfunction module_function;
     CHECK_DRV(cuModuleGetFunction(&module_function, module, "library_kernel"));
+    CHECK_DRV(cuFuncGetName(&function_name, module_function));
+    if (function_name == nullptr || std::strcmp(function_name, "library_kernel") != 0) {
+        std::cerr << "cuFuncGetName for module function returned "
+                  << (function_name ? function_name : "(null)") << std::endl;
+        return 1;
+    }
+    CHECK_DRV(cuFuncGetModule(&function_module, module_function));
+    if (function_module != module) {
+        std::cerr << "cuFuncGetModule returned the wrong module" << std::endl;
+        return 1;
+    }
     if (launch_and_check(module_function, d_output, 91) != 0) {
         return 1;
     }

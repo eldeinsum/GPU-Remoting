@@ -2,6 +2,7 @@
 #include "device_launch_parameters.h"
 #include <chrono>
 #include <iostream>
+#include <string>
 
 #define CHECK_CUDA(expr)                                                                                               \
     do {                                                                                                               \
@@ -55,6 +56,29 @@ int main(int argc, char **argv)
 
     size_t dynamic_smem = 0;
     CHECK_CUDA(cudaOccupancyAvailableDynamicSMemPerBlock(&dynamic_smem, addKernel, active_blocks, 128));
+
+    const void *kernel_ptr = reinterpret_cast<const void *>(addKernel);
+    const char *function_name = nullptr;
+    CHECK_CUDA(cudaFuncGetName(&function_name, kernel_ptr));
+    if (function_name == nullptr || std::string(function_name).find("addKernel") == std::string::npos) {
+        std::cerr << "unexpected runtime function name: "
+                  << (function_name ? function_name : "(null)") << std::endl;
+        return 1;
+    }
+    size_t param_count = 0;
+    CHECK_CUDA(cudaFuncGetParamCount(kernel_ptr, &param_count));
+    if (param_count != 4) {
+        std::cerr << "unexpected runtime function param count: " << param_count << std::endl;
+        return 1;
+    }
+    size_t param_offset = 0;
+    size_t param_size = 0;
+    CHECK_CUDA(cudaFuncGetParamInfo(kernel_ptr, 0, &param_offset, &param_size));
+    if (param_offset != 0 || param_size != sizeof(int *)) {
+        std::cerr << "unexpected runtime function param info: offset="
+                  << param_offset << " size=" << param_size << std::endl;
+        return 1;
+    }
 
     // Allocate GPU buffers for three vectors (two input, one output)
     CHECK_CUDA(cudaMalloc((void **)&dev_a, size * sizeof(int)));

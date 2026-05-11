@@ -268,6 +268,37 @@ pub extern "C" fn cuStreamAddCallback(
 }
 
 #[no_mangle]
+pub extern "C" fn cuLaunchHostFunc(
+    hStream: CUstream,
+    fn_: CUhostFn,
+    userData: *mut c_void,
+) -> CUresult {
+    log::debug!(target: "cuLaunchHostFunc", "");
+    let Some(callback) = fn_ else {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    };
+    let result = super::cuda_hijack::cuStreamSynchronize(hStream);
+    if result.is_error() {
+        return result;
+    }
+    unsafe {
+        callback(userData);
+    }
+    CUresult::CUDA_SUCCESS
+}
+
+#[no_mangle]
+pub extern "C" fn cuLaunchHostFunc_v2(
+    hStream: CUstream,
+    fn_: CUhostFn,
+    userData: *mut c_void,
+    syncMode: c_uint,
+) -> CUresult {
+    log::debug!(target: "cuLaunchHostFunc_v2", "syncMode = {syncMode}");
+    cuLaunchHostFunc(hStream, fn_, userData)
+}
+
+#[no_mangle]
 pub extern "C" fn cuEventDestroy_v2(hEvent: CUevent) -> CUresult {
     CLIENT_THREAD.with_borrow_mut(|client| {
         client.ensure_current_process();
@@ -472,6 +503,25 @@ extern "C" fn cuKernelGetName(name: *mut *const c_char, hfunc: CUkernel) -> CUre
     };
     unsafe {
         *name = kernel_name.as_ptr();
+    }
+    CUresult::CUDA_SUCCESS
+}
+
+#[no_mangle]
+pub extern "C" fn cuFuncGetName(name: *mut *const c_char, hfunc: CUfunction) -> CUresult {
+    if name.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let driver = crate::DRIVER_CACHE.read().unwrap();
+    let Some(function_name) = driver.function_names.get(&hfunc) else {
+        unsafe {
+            *name = std::ptr::null();
+        }
+        return CUresult::CUDA_ERROR_INVALID_HANDLE;
+    };
+    unsafe {
+        *name = function_name.as_ptr();
     }
     CUresult::CUDA_SUCCESS
 }

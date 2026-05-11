@@ -1788,6 +1788,52 @@ extern "C" fn cudaFuncGetAttributes(
 }
 
 #[no_mangle]
+extern "C" fn cudaFuncGetName(name: *mut *const c_char, func: *const c_void) -> cudaError_t {
+    log::debug!(target: "cudaFuncGetName", "");
+    if name.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack_custom::cuFuncGetName(
+            name,
+            get_cufunction(func as HostPtr),
+        ))
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudaFuncGetParamInfo(
+    func: *const c_void,
+    paramIndex: usize,
+    paramOffset: *mut usize,
+    paramSize: *mut usize,
+) -> cudaError_t {
+    log::debug!(target: "cudaFuncGetParamInfo", "");
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuFuncGetParamInfo(
+            get_cufunction(func as HostPtr),
+            paramIndex,
+            paramOffset,
+            paramSize,
+        ))
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudaFuncGetParamCount(func: *const c_void, paramCount: *mut usize) -> cudaError_t {
+    log::debug!(target: "cudaFuncGetParamCount", "");
+    #[expect(clippy::missing_transmute_annotations)]
+    unsafe {
+        std::mem::transmute(super::cuda_hijack::cuFuncGetParamCount(
+            get_cufunction(func as HostPtr),
+            paramCount,
+        ))
+    }
+}
+
+#[no_mangle]
 extern "C" fn cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     numBlocks: *mut c_int,
     func: *const c_void,

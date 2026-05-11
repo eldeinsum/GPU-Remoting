@@ -172,6 +172,8 @@ struct DriverCache {
     library_images: BTreeMap<CUlibrary, Cow<'static, [u8]>>,
     /// Used in `cuLaunchKernel`, populated by `cuModuleGetFunction`.
     function_params: BTreeMap<CUfunction, Box<[KernelParamInfo]>>,
+    /// Used in `cuFuncGetName`, populated by function lookup APIs.
+    function_names: BTreeMap<CUfunction, CString>,
     /// Client-side copies of kernel node parameters whose raw pointers are process-local.
     graph_kernel_nodes: BTreeMap<CUgraphNode, GraphKernelNodeCache>,
     /// Client-side copies of batch mem-op node arrays whose raw pointers are process-local.
@@ -193,6 +195,7 @@ impl DriverCache {
             images: BTreeMap::new(),
             library_images: BTreeMap::new(),
             function_params: BTreeMap::new(),
+            function_names: BTreeMap::new(),
             graph_kernel_nodes: BTreeMap::new(),
             graph_batch_mem_op_nodes: BTreeMap::new(),
             kernel_names: BTreeMap::new(),
@@ -205,6 +208,7 @@ impl DriverCache {
         self.images.clear();
         self.library_images.clear();
         self.function_params.clear();
+        self.function_names.clear();
         self.graph_kernel_nodes.clear();
         self.graph_batch_mem_op_nodes.clear();
         self.kernel_names.clear();

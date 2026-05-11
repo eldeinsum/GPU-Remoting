@@ -1,3 +1,4 @@
+#include <cuda.h>
 #include <cuda_runtime.h>
 
 #include <array>
@@ -9,6 +10,19 @@
         if (result != cudaSuccess) {                                           \
             std::fprintf(stderr, "%s failed: %s (%d)\n", #call,               \
                          cudaGetErrorString(result), static_cast<int>(result)); \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
+
+#define CHECK_DRV(call)                                                        \
+    do {                                                                       \
+        CUresult result = (call);                                              \
+        if (result != CUDA_SUCCESS) {                                          \
+            const char *name = nullptr;                                        \
+            cuGetErrorName(result, &name);                                     \
+            std::fprintf(stderr, "%s failed: %s (%d)\n", #call,               \
+                         name == nullptr ? "unknown" : name,                  \
+                         static_cast<int>(result));                            \
             return 1;                                                          \
         }                                                                      \
     } while (0)
@@ -28,8 +42,8 @@ static int verify_equal(const std::array<unsigned char, N> &actual,
     return 0;
 }
 
-static int check_memory_requirements(
-    const cudaArrayMemoryRequirements &requirements)
+template <typename Requirements>
+static int check_memory_requirements(const Requirements &requirements)
 {
     if (requirements.size == 0 || requirements.alignment == 0) {
         std::fprintf(stderr,
@@ -40,8 +54,8 @@ static int check_memory_requirements(
     return 0;
 }
 
-static int check_sparse_properties(
-    const cudaArraySparseProperties &properties)
+template <typename Properties>
+static int check_sparse_properties(const Properties &properties)
 {
     if (properties.tileExtent.width == 0 || properties.tileExtent.height == 0) {
         std::fprintf(stderr, "unexpected sparse tile extent: %u x %u x %u\n",
@@ -105,6 +119,43 @@ int main()
 
     CHECK_CUDA(cudaFreeMipmappedArray(mipmap));
 
+    CHECK_DRV(cuInit(0));
+    CUdevice device = 0;
+    CHECK_DRV(cuDeviceGet(&device, 0));
+    CUcontext context = nullptr;
+    CHECK_DRV(cuDevicePrimaryCtxRetain(&context, device));
+    CHECK_DRV(cuCtxSetCurrent(context));
+
+    CUDA_ARRAY3D_DESCRIPTOR driver_desc = {};
+    driver_desc.Width = kWidth;
+    driver_desc.Height = kHeight;
+    driver_desc.Depth = 0;
+    driver_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    driver_desc.NumChannels = 1;
+
+    CUmipmappedArray driver_mipmap = nullptr;
+    CHECK_DRV(cuMipmappedArrayCreate(&driver_mipmap, &driver_desc, 3));
+    CUarray driver_level0 = nullptr;
+    CUarray driver_level1 = nullptr;
+    CHECK_DRV(cuMipmappedArrayGetLevel(&driver_level0, driver_mipmap, 0));
+    CHECK_DRV(cuMipmappedArrayGetLevel(&driver_level1, driver_mipmap, 1));
+
+    CUDA_ARRAY_DESCRIPTOR driver_level_desc = {};
+    CHECK_DRV(cuArrayGetDescriptor(&driver_level_desc, driver_level0));
+    if (driver_level_desc.Width != kWidth ||
+        driver_level_desc.Height != kHeight ||
+        driver_level_desc.Format != CU_AD_FORMAT_UNSIGNED_INT8) {
+        std::fprintf(stderr, "unexpected driver mipmap level 0 metadata\n");
+        return 1;
+    }
+    CHECK_DRV(cuArrayGetDescriptor(&driver_level_desc, driver_level1));
+    if (driver_level_desc.Width != kWidth / 2 ||
+        driver_level_desc.Height != kHeight / 2) {
+        std::fprintf(stderr, "unexpected driver mipmap level 1 metadata\n");
+        return 1;
+    }
+    CHECK_DRV(cuMipmappedArrayDestroy(driver_mipmap));
+
     int deferred_mapping_supported = 0;
     CHECK_CUDA(cudaDeviceGetAttribute(
         &deferred_mapping_supported,
@@ -132,6 +183,32 @@ int main()
             return 1;
         }
         CHECK_CUDA(cudaFreeMipmappedArray(deferred_mipmap));
+
+        CUDA_ARRAY3D_DESCRIPTOR deferred_driver_desc = driver_desc;
+        deferred_driver_desc.Width = 64;
+        deferred_driver_desc.Height = 64;
+        deferred_driver_desc.Flags = CUDA_ARRAY3D_DEFERRED_MAPPING;
+        CUarray deferred_driver_array = nullptr;
+        CHECK_DRV(cuArray3DCreate(&deferred_driver_array,
+                                  &deferred_driver_desc));
+        CUDA_ARRAY_MEMORY_REQUIREMENTS driver_array_requirements = {};
+        CHECK_DRV(cuArrayGetMemoryRequirements(&driver_array_requirements,
+                                               deferred_driver_array, device));
+        if (check_memory_requirements(driver_array_requirements) != 0) {
+            return 1;
+        }
+        CHECK_DRV(cuArrayDestroy(deferred_driver_array));
+
+        CUmipmappedArray deferred_driver_mipmap = nullptr;
+        CHECK_DRV(cuMipmappedArrayCreate(&deferred_driver_mipmap,
+                                         &deferred_driver_desc, 4));
+        CUDA_ARRAY_MEMORY_REQUIREMENTS driver_mipmap_requirements = {};
+        CHECK_DRV(cuMipmappedArrayGetMemoryRequirements(
+            &driver_mipmap_requirements, deferred_driver_mipmap, device));
+        if (check_memory_requirements(driver_mipmap_requirements) != 0) {
+            return 1;
+        }
+        CHECK_DRV(cuMipmappedArrayDestroy(deferred_driver_mipmap));
     }
 
     int sparse_supported = 0;
@@ -160,7 +237,34 @@ int main()
             return 1;
         }
         CHECK_CUDA(cudaFreeMipmappedArray(sparse_mipmap));
+
+        CUDA_ARRAY3D_DESCRIPTOR sparse_driver_desc = driver_desc;
+        sparse_driver_desc.Width = 64;
+        sparse_driver_desc.Height = 64;
+        sparse_driver_desc.Flags = CUDA_ARRAY3D_SPARSE;
+        CUarray sparse_driver_array = nullptr;
+        CHECK_DRV(cuArray3DCreate(&sparse_driver_array, &sparse_driver_desc));
+        CUDA_ARRAY_SPARSE_PROPERTIES driver_array_properties = {};
+        CHECK_DRV(cuArrayGetSparseProperties(&driver_array_properties,
+                                             sparse_driver_array));
+        if (check_sparse_properties(driver_array_properties) != 0) {
+            return 1;
+        }
+        CHECK_DRV(cuArrayDestroy(sparse_driver_array));
+
+        CUmipmappedArray sparse_driver_mipmap = nullptr;
+        CHECK_DRV(cuMipmappedArrayCreate(&sparse_driver_mipmap,
+                                         &sparse_driver_desc, 4));
+        CUDA_ARRAY_SPARSE_PROPERTIES driver_mipmap_properties = {};
+        CHECK_DRV(cuMipmappedArrayGetSparseProperties(
+            &driver_mipmap_properties, sparse_driver_mipmap));
+        if (check_sparse_properties(driver_mipmap_properties) != 0) {
+            return 1;
+        }
+        CHECK_DRV(cuMipmappedArrayDestroy(sparse_driver_mipmap));
     }
+
+    CHECK_DRV(cuDevicePrimaryCtxRelease(device));
 
     std::puts("mipmapped array API test passed");
     return 0;
