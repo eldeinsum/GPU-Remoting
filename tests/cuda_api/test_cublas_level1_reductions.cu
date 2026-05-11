@@ -36,6 +36,29 @@ static bool close_value(double got, double want) {
 }
 
 template <typename T>
+static cudaDataType_t cuda_type();
+
+template <>
+cudaDataType_t cuda_type<float>() {
+    return CUDA_R_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<double>() {
+    return CUDA_R_64F;
+}
+
+template <>
+cudaDataType_t cuda_type<cuComplex>() {
+    return CUDA_C_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<cuDoubleComplex>() {
+    return CUDA_C_64F;
+}
+
+template <typename T>
 static T *to_device(const std::vector<T> &host) {
     T *device = nullptr;
     CHECK_CUDA(cudaMalloc(&device, host.size() * sizeof(T)));
@@ -103,6 +126,70 @@ static void run_reduction_case(cublasHandle_t handle,
     CHECK_CUDA(cudaFree(device_input));
 }
 
+template <typename ResultT, typename VecT, typename Fn, typename Fn64>
+static void run_reduction_ex_case(cublasHandle_t handle,
+                                  const std::vector<VecT> &input,
+                                  ResultT expected, Fn fn, Fn64 fn64,
+                                  const char *label) {
+    const int n = static_cast<int>(input.size());
+    VecT *device_input = to_device(input);
+    const cudaDataType_t x_type = cuda_type<VecT>();
+    const cudaDataType_t result_type = cuda_type<ResultT>();
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+
+    ResultT host_result = ResultT{};
+    CHECK_CUBLAS(
+        fn(handle, n, device_input, x_type, 1, &host_result, result_type,
+           result_type));
+    if (!close_value(host_result, expected)) {
+        std::fprintf(stderr, "%s Ex host result mismatch\n", label);
+        std::exit(1);
+    }
+
+    host_result = ResultT{};
+    CHECK_CUBLAS(fn64(handle, static_cast<int64_t>(n), device_input, x_type, 1,
+                     &host_result, result_type, result_type));
+    if (!close_value(host_result, expected)) {
+        std::fprintf(stderr, "%s Ex host 64-bit result mismatch\n", label);
+        std::exit(1);
+    }
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+
+    ResultT zero = ResultT{};
+    ResultT *device_result = nullptr;
+    CHECK_CUDA(cudaMalloc(&device_result, sizeof(ResultT)));
+    CHECK_CUDA(cudaMemcpy(device_result, &zero, sizeof(ResultT),
+                          cudaMemcpyHostToDevice));
+
+    CHECK_CUBLAS(fn(handle, n, device_input, x_type, 1, device_result,
+                    result_type, result_type));
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaMemcpy(&host_result, device_result, sizeof(ResultT),
+                          cudaMemcpyDeviceToHost));
+    if (!close_value(host_result, expected)) {
+        std::fprintf(stderr, "%s Ex device result mismatch\n", label);
+        std::exit(1);
+    }
+
+    CHECK_CUDA(cudaMemcpy(device_result, &zero, sizeof(ResultT),
+                          cudaMemcpyHostToDevice));
+    CHECK_CUBLAS(fn64(handle, static_cast<int64_t>(n), device_input, x_type, 1,
+                     device_result, result_type, result_type));
+    CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaMemcpy(&host_result, device_result, sizeof(ResultT),
+                          cudaMemcpyDeviceToHost));
+    if (!close_value(host_result, expected)) {
+        std::fprintf(stderr, "%s Ex device 64-bit result mismatch\n", label);
+        std::exit(1);
+    }
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_result));
+    CHECK_CUDA(cudaFree(device_input));
+}
+
 static void test_nrm2(cublasHandle_t handle) {
     run_reduction_case<float>(
         handle, std::vector<float>{3.0f, 4.0f, 12.0f}, 13.0f,
@@ -116,6 +203,20 @@ static void test_nrm2(cublasHandle_t handle) {
     run_reduction_case<double>(
         handle, std::vector<cuDoubleComplex>{{3.0, 4.0}, {1.0, -2.0}},
         std::sqrt(30.0), cublasDznrm2_v2, cublasDznrm2_v2_64, "Dznrm2");
+    run_reduction_ex_case<float>(
+        handle, std::vector<float>{3.0f, 4.0f, 12.0f}, 13.0f,
+        cublasNrm2Ex, cublasNrm2Ex_64, "Nrm2Ex float");
+    run_reduction_ex_case<double>(
+        handle, std::vector<double>{3.0, 4.0, 12.0}, 13.0, cublasNrm2Ex,
+        cublasNrm2Ex_64, "Nrm2Ex double");
+    run_reduction_ex_case<float>(
+        handle, std::vector<cuComplex>{{3.0f, 4.0f}, {1.0f, -2.0f}},
+        std::sqrt(30.0f), cublasNrm2Ex, cublasNrm2Ex_64,
+        "Nrm2Ex complex-float");
+    run_reduction_ex_case<double>(
+        handle, std::vector<cuDoubleComplex>{{3.0, 4.0}, {1.0, -2.0}},
+        std::sqrt(30.0), cublasNrm2Ex, cublasNrm2Ex_64,
+        "Nrm2Ex complex-double");
 }
 
 static void test_asum(cublasHandle_t handle) {
@@ -131,6 +232,12 @@ static void test_asum(cublasHandle_t handle) {
     run_reduction_case<double>(
         handle, std::vector<cuDoubleComplex>{{-3.0, 4.0}, {1.0, -2.0}},
         10.0, cublasDzasum_v2, cublasDzasum_v2_64, "Dzasum");
+    run_reduction_ex_case<float>(
+        handle, std::vector<float>{-3.0f, 4.0f, -12.0f}, 19.0f,
+        cublasAsumEx, cublasAsumEx_64, "AsumEx float");
+    run_reduction_ex_case<double>(
+        handle, std::vector<double>{-3.0, 4.0, -12.0}, 19.0, cublasAsumEx,
+        cublasAsumEx_64, "AsumEx double");
 }
 
 int main() {
