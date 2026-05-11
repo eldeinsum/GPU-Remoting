@@ -41,6 +41,136 @@ fn send_result<C: CommChannel>(
     channel_sender.flush_out().unwrap();
 }
 
+fn compact_row_bytes(width: usize, height: usize) -> Result<usize, CUresult> {
+    width
+        .checked_mul(height)
+        .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)
+}
+
+fn allocate_compact_rows(width: usize, height: usize) -> Result<Vec<u8>, CUresult> {
+    let len = compact_row_bytes(width, height)?;
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(len)
+        .map_err(|_| CUresult::CUDA_ERROR_OUT_OF_MEMORY)?;
+    rows.resize(len, 0);
+    Ok(rows)
+}
+
+fn run_memcpy_2d<C, F>(
+    server: &mut ServerWorker<C>,
+    target: &'static str,
+    receive_stream: bool,
+    call: F,
+) where
+    C: CommChannel,
+    F: FnOnce(*const CUDA_MEMCPY2D, Option<CUstream>) -> CUresult,
+{
+    log::debug!(target: target, "[#{}]", server.id);
+
+    let mut copy = std::mem::MaybeUninit::<CUDA_MEMCPY2D>::uninit();
+    copy.recv(&server.channel_receiver).unwrap();
+    let mut copy = unsafe { copy.assume_init() };
+    let stream = if receive_stream {
+        let mut stream = std::mem::MaybeUninit::<CUstream>::uninit();
+        stream.recv(&server.channel_receiver).unwrap();
+        Some(unsafe { stream.assume_init() })
+    } else {
+        None
+    };
+    let host_src_rows = recv_slice::<u8, _>(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let has_host_src = copy.srcMemoryType == CUmemorytype::CU_MEMORYTYPE_HOST;
+    let has_host_dst = copy.dstMemoryType == CUmemorytype::CU_MEMORYTYPE_HOST;
+
+    let mut host_dst_rows = Vec::new();
+    let result = if has_host_src || has_host_dst {
+        let expected_len = match compact_row_bytes(copy.WidthInBytes, copy.Height) {
+            Ok(len) => len,
+            Err(result) => {
+                send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+                send_result(target, server.id, result, &server.channel_sender);
+                return;
+            }
+        };
+        if has_host_src {
+            if host_src_rows.len() != expected_len {
+                send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+                send_result(
+                    target,
+                    server.id,
+                    CUresult::CUDA_ERROR_INVALID_VALUE,
+                    &server.channel_sender,
+                );
+                return;
+            }
+            copy.srcHost = host_src_rows.as_ptr().cast::<c_void>();
+        } else if !host_src_rows.is_empty() {
+            send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+            send_result(
+                target,
+                server.id,
+                CUresult::CUDA_ERROR_INVALID_VALUE,
+                &server.channel_sender,
+            );
+            return;
+        }
+        if has_host_dst {
+            host_dst_rows = match allocate_compact_rows(copy.WidthInBytes, copy.Height) {
+                Ok(rows) => rows,
+                Err(result) => {
+                    send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+                    send_result(target, server.id, result, &server.channel_sender);
+                    return;
+                }
+            };
+            copy.dstHost = host_dst_rows.as_mut_ptr().cast::<c_void>();
+        }
+
+        let result = call(&copy as *const _, stream);
+        if result == CUresult::CUDA_SUCCESS {
+            if let Some(stream) = stream {
+                unsafe { cuStreamSynchronize(stream) }
+            } else {
+                result
+            }
+        } else {
+            result
+        }
+    } else {
+        if !host_src_rows.is_empty() {
+            CUresult::CUDA_ERROR_INVALID_VALUE
+        } else {
+            call(&copy as *const _, stream)
+        }
+    };
+
+    if has_host_dst && result == CUresult::CUDA_SUCCESS {
+        send_slice(&host_dst_rows, &server.channel_sender).unwrap();
+    } else {
+        send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+    }
+    send_result(target, server.id, result, &server.channel_sender);
+}
+
+pub fn cuMemcpy2D_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    run_memcpy_2d(server, "cuMemcpy2D_v2", false, |copy, _| unsafe {
+        cuMemcpy2D_v2(copy)
+    });
+}
+
+pub fn cuMemcpy2DUnaligned_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    run_memcpy_2d(server, "cuMemcpy2DUnaligned_v2", false, |copy, _| unsafe {
+        cuMemcpy2DUnaligned_v2(copy)
+    });
+}
+
+pub fn cuMemcpy2DAsync_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    run_memcpy_2d(server, "cuMemcpy2DAsync_v2", true, |copy, stream| unsafe {
+        cuMemcpy2DAsync_v2(copy, stream.unwrap())
+    });
+}
+
 fn output_len(requested: bool, result: CUresult, count: usize, capacity: usize) -> usize {
     if requested && result == CUresult::CUDA_SUCCESS {
         count.min(capacity)

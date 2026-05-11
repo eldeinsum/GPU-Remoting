@@ -146,6 +146,40 @@ int main()
         return 1;
     }
 
+    CUDA_MEMCPY2D host_to_device2d = {};
+    host_to_device2d.srcMemoryType = CU_MEMORYTYPE_HOST;
+    host_to_device2d.srcHost = input2d.data();
+    host_to_device2d.srcPitch = src_pitch2d;
+    host_to_device2d.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+    host_to_device2d.dstDevice = driver_dst2d;
+    host_to_device2d.dstPitch = dst_pitch2d;
+    host_to_device2d.WidthInBytes = width2d;
+    host_to_device2d.Height = height2d;
+
+    output2d.assign(expected2d.size(), 0);
+    CHECK_DRV(cuMemsetD8(driver_dst2d, 0, expected2d.size()));
+    CHECK_DRV(cuMemcpy2D(&host_to_device2d));
+    CHECK_DRV(cuMemcpyDtoH(output2d.data(), driver_dst2d, output2d.size()));
+    if (verify_equal(output2d, expected2d) != 0) {
+        return 1;
+    }
+
+    CUDA_MEMCPY2D device_to_host2d = {};
+    device_to_host2d.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+    device_to_host2d.srcDevice = driver_src2d;
+    device_to_host2d.srcPitch = src_pitch2d;
+    device_to_host2d.dstMemoryType = CU_MEMORYTYPE_HOST;
+    device_to_host2d.dstHost = output2d.data();
+    device_to_host2d.dstPitch = dst_pitch2d;
+    device_to_host2d.WidthInBytes = width2d;
+    device_to_host2d.Height = height2d;
+
+    output2d.assign(expected2d.size(), 0);
+    CHECK_DRV(cuMemcpy2DUnaligned(&device_to_host2d));
+    if (verify_equal(output2d, expected2d) != 0) {
+        return 1;
+    }
+
     CUstream driver_stream = nullptr;
     CHECK_DRV(cuStreamCreate(&driver_stream, CU_STREAM_DEFAULT));
     output2d.assign(expected2d.size(), 0);
@@ -156,6 +190,50 @@ int main()
     if (verify_equal(output2d, expected2d) != 0) {
         return 1;
     }
+
+    output2d.assign(expected2d.size(), 0);
+    CHECK_DRV(cuMemsetD8(driver_dst2d, 0, expected2d.size()));
+    CHECK_DRV(cuMemcpy2DAsync(&host_to_device2d, driver_stream));
+    CHECK_DRV(cuStreamSynchronize(driver_stream));
+    CHECK_DRV(cuMemcpyDtoH(output2d.data(), driver_dst2d, output2d.size()));
+    if (verify_equal(output2d, expected2d) != 0) {
+        return 1;
+    }
+
+    CUDA_ARRAY_DESCRIPTOR array_desc = {};
+    array_desc.Width = width2d;
+    array_desc.Height = height2d;
+    array_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    array_desc.NumChannels = 1;
+    CUarray driver_array = nullptr;
+    CHECK_DRV(cuArrayCreate(&driver_array, &array_desc));
+
+    CUDA_MEMCPY2D host_to_array2d = {};
+    host_to_array2d.srcMemoryType = CU_MEMORYTYPE_HOST;
+    host_to_array2d.srcHost = input2d.data();
+    host_to_array2d.srcPitch = src_pitch2d;
+    host_to_array2d.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+    host_to_array2d.dstArray = driver_array;
+    host_to_array2d.WidthInBytes = width2d;
+    host_to_array2d.Height = height2d;
+    CHECK_DRV(cuMemcpy2D(&host_to_array2d));
+
+    CUDA_MEMCPY2D array_to_host2d = {};
+    array_to_host2d.srcMemoryType = CU_MEMORYTYPE_ARRAY;
+    array_to_host2d.srcArray = driver_array;
+    array_to_host2d.dstMemoryType = CU_MEMORYTYPE_HOST;
+    array_to_host2d.dstHost = output2d.data();
+    array_to_host2d.dstPitch = dst_pitch2d;
+    array_to_host2d.WidthInBytes = width2d;
+    array_to_host2d.Height = height2d;
+
+    output2d.assign(expected2d.size(), 0);
+    CHECK_DRV(cuMemcpy2DAsync(&array_to_host2d, driver_stream));
+    CHECK_DRV(cuStreamSynchronize(driver_stream));
+    if (verify_equal(output2d, expected2d) != 0) {
+        return 1;
+    }
+    CHECK_DRV(cuArrayDestroy(driver_array));
 
     CUdeviceptr driver_src3d = 0;
     CUdeviceptr driver_dst3d = 0;

@@ -78,6 +78,183 @@ fn host_memory_error(error: super::host_memory::HostMemoryError) -> CUresult {
     }
 }
 
+fn host_row_offset(y: usize, row: usize, pitch: usize, x_in_bytes: usize) -> Option<usize> {
+    y.checked_add(row)?
+        .checked_mul(pitch)?
+        .checked_add(x_in_bytes)
+}
+
+fn validate_host_rows(x_in_bytes: usize, width: usize, pitch: usize) -> Result<(), CUresult> {
+    match x_in_bytes.checked_add(width) {
+        Some(end) if end <= pitch => Ok(()),
+        _ => Err(CUresult::CUDA_ERROR_INVALID_VALUE),
+    }
+}
+
+fn compact_host_source_2d(copy: &CUDA_MEMCPY2D) -> Result<Vec<u8>, CUresult> {
+    if copy.srcHost.is_null() {
+        return Err(CUresult::CUDA_ERROR_INVALID_VALUE);
+    }
+    validate_host_rows(copy.srcXInBytes, copy.WidthInBytes, copy.srcPitch)?;
+    let total = copy
+        .WidthInBytes
+        .checked_mul(copy.Height)
+        .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)?;
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(total)
+        .map_err(|_| CUresult::CUDA_ERROR_OUT_OF_MEMORY)?;
+    rows.resize(total, 0);
+    for row in 0..copy.Height {
+        let src_offset = host_row_offset(copy.srcY, row, copy.srcPitch, copy.srcXInBytes)
+            .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)?;
+        let compact_offset = row
+            .checked_mul(copy.WidthInBytes)
+            .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)?;
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                copy.srcHost.cast::<u8>().add(src_offset),
+                rows.as_mut_ptr().add(compact_offset),
+                copy.WidthInBytes,
+            );
+        }
+    }
+    Ok(rows)
+}
+
+fn scatter_host_destination_2d(copy: &CUDA_MEMCPY2D, rows: &[u8]) -> Result<(), CUresult> {
+    if copy.dstHost.is_null() {
+        return Err(CUresult::CUDA_ERROR_INVALID_VALUE);
+    }
+    validate_host_rows(copy.dstXInBytes, copy.WidthInBytes, copy.dstPitch)?;
+    let expected = copy
+        .WidthInBytes
+        .checked_mul(copy.Height)
+        .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)?;
+    if rows.len() != expected {
+        return Err(CUresult::CUDA_ERROR_INVALID_VALUE);
+    }
+    for row in 0..copy.Height {
+        let dst_offset = host_row_offset(copy.dstY, row, copy.dstPitch, copy.dstXInBytes)
+            .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)?;
+        let compact_offset = row
+            .checked_mul(copy.WidthInBytes)
+            .ok_or(CUresult::CUDA_ERROR_INVALID_VALUE)?;
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                rows.as_ptr().add(compact_offset),
+                copy.dstHost.cast::<u8>().add(dst_offset),
+                copy.WidthInBytes,
+            );
+        }
+    }
+    Ok(())
+}
+
+fn local_host_copy_2d(copy: &CUDA_MEMCPY2D) -> CUresult {
+    let rows = match compact_host_source_2d(copy) {
+        Ok(rows) => rows,
+        Err(result) => return result,
+    };
+    scatter_host_destination_2d(copy, &rows)
+        .map(|_| CUresult::CUDA_SUCCESS)
+        .unwrap_or_else(|result| result)
+}
+
+fn remote_memcpy_2d(
+    proc_id: i32,
+    target: &'static str,
+    copy: &CUDA_MEMCPY2D,
+    stream: Option<CUstream>,
+) -> CUresult {
+    if copy.WidthInBytes == 0 || copy.Height == 0 {
+        return CUresult::CUDA_SUCCESS;
+    }
+
+    let has_host_src = copy.srcMemoryType == CUmemorytype::CU_MEMORYTYPE_HOST;
+    let has_host_dst = copy.dstMemoryType == CUmemorytype::CU_MEMORYTYPE_HOST;
+    if has_host_src && has_host_dst {
+        return local_host_copy_2d(copy);
+    }
+
+    let host_src_rows = if has_host_src {
+        match compact_host_source_2d(copy) {
+            Ok(rows) => rows,
+            Err(result) => return result,
+        }
+    } else {
+        Vec::new()
+    };
+    if has_host_dst {
+        if let Err(result) = validate_host_rows(copy.dstXInBytes, copy.WidthInBytes, copy.dstPitch)
+        {
+            return result;
+        }
+        if copy.dstHost.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+    }
+
+    let mut remote_copy = *copy;
+    if has_host_src {
+        remote_copy.srcHost = std::ptr::null();
+        remote_copy.srcXInBytes = 0;
+        remote_copy.srcY = 0;
+        remote_copy.srcPitch = copy.WidthInBytes;
+    }
+    if has_host_dst {
+        remote_copy.dstHost = std::ptr::null_mut();
+        remote_copy.dstXInBytes = 0;
+        remote_copy.dstY = 0;
+        remote_copy.dstPitch = copy.WidthInBytes;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: target, "[#{}]", client.id);
+
+        proc_id.send(&client.channel_sender).unwrap();
+        remote_copy.send(&client.channel_sender).unwrap();
+        if let Some(stream) = stream {
+            stream.send(&client.channel_sender).unwrap();
+        }
+        send_slice(&host_src_rows, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let host_dst_rows = recv_slice::<u8, _>(&client.channel_receiver).unwrap();
+        let result = recv_cu_result(target, client.id, &client.channel_receiver);
+        if result == CUresult::CUDA_SUCCESS && has_host_dst {
+            return scatter_host_destination_2d(copy, &host_dst_rows)
+                .map(|_| CUresult::CUDA_SUCCESS)
+                .unwrap_or_else(|result| result);
+        }
+        result
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemcpy2D_v2(pCopy: *const CUDA_MEMCPY2D) -> CUresult {
+    if pCopy.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    remote_memcpy_2d(900950, "cuMemcpy2D_v2", unsafe { &*pCopy }, None)
+}
+
+#[no_mangle]
+extern "C" fn cuMemcpy2DUnaligned_v2(pCopy: *const CUDA_MEMCPY2D) -> CUresult {
+    if pCopy.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    remote_memcpy_2d(900951, "cuMemcpy2DUnaligned_v2", unsafe { &*pCopy }, None)
+}
+
+#[no_mangle]
+extern "C" fn cuMemcpy2DAsync_v2(pCopy: *const CUDA_MEMCPY2D, hStream: CUstream) -> CUresult {
+    if pCopy.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    remote_memcpy_2d(900952, "cuMemcpy2DAsync_v2", unsafe { &*pCopy }, Some(hStream))
+}
+
 #[no_mangle]
 extern "C" fn cuMemAllocHost_v2(pp: *mut *mut c_void, bytesize: usize) -> CUresult {
     log::debug!(target: "cuMemAllocHost_v2", "bytesize = {bytesize}");

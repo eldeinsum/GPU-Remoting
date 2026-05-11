@@ -2538,77 +2538,14 @@ fn cuMemcpyHtoAAsync_v2(
     }
 }
 
-#[cuda_hook(proc_id = 900950, async_api)]
-fn cuMemcpy2D_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY2D) -> CUresult {
-    'client_before_send: {
-        assert!(!pCopy.is_null());
-        let params = unsafe { &*pCopy };
-        match params.srcMemoryType {
-            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
-                assert_ne!(params.srcDevice, 0);
-                assert!(params.srcArray.is_null());
-            }
-            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.srcArray.is_null()),
-            _ => panic!("unsupported cuMemcpy2D source memory type"),
-        }
-        match params.dstMemoryType {
-            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
-                assert_ne!(params.dstDevice, 0);
-                assert!(params.dstArray.is_null());
-            }
-            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.dstArray.is_null()),
-            _ => panic!("unsupported cuMemcpy2D destination memory type"),
-        }
-    }
-}
+#[cuda_custom_hook(proc_id = 900950)]
+fn cuMemcpy2D_v2(pCopy: *const CUDA_MEMCPY2D) -> CUresult;
 
-#[cuda_hook(proc_id = 900951, async_api)]
-fn cuMemcpy2DUnaligned_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY2D) -> CUresult {
-    'client_before_send: {
-        assert!(!pCopy.is_null());
-        let params = unsafe { &*pCopy };
-        match params.srcMemoryType {
-            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
-                assert_ne!(params.srcDevice, 0);
-                assert!(params.srcArray.is_null());
-            }
-            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.srcArray.is_null()),
-            _ => panic!("unsupported cuMemcpy2DUnaligned source memory type"),
-        }
-        match params.dstMemoryType {
-            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
-                assert_ne!(params.dstDevice, 0);
-                assert!(params.dstArray.is_null());
-            }
-            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.dstArray.is_null()),
-            _ => panic!("unsupported cuMemcpy2DUnaligned destination memory type"),
-        }
-    }
-}
+#[cuda_custom_hook(proc_id = 900951)]
+fn cuMemcpy2DUnaligned_v2(pCopy: *const CUDA_MEMCPY2D) -> CUresult;
 
-#[cuda_hook(proc_id = 900952, async_api)]
-fn cuMemcpy2DAsync_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY2D, hStream: CUstream) -> CUresult {
-    'client_before_send: {
-        assert!(!pCopy.is_null());
-        let params = unsafe { &*pCopy };
-        match params.srcMemoryType {
-            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
-                assert_ne!(params.srcDevice, 0);
-                assert!(params.srcArray.is_null());
-            }
-            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.srcArray.is_null()),
-            _ => panic!("unsupported cuMemcpy2DAsync source memory type"),
-        }
-        match params.dstMemoryType {
-            CUmemorytype::CU_MEMORYTYPE_DEVICE => {
-                assert_ne!(params.dstDevice, 0);
-                assert!(params.dstArray.is_null());
-            }
-            CUmemorytype::CU_MEMORYTYPE_ARRAY => assert!(!params.dstArray.is_null()),
-            _ => panic!("unsupported cuMemcpy2DAsync destination memory type"),
-        }
-    }
-}
+#[cuda_custom_hook(proc_id = 900952)]
+fn cuMemcpy2DAsync_v2(pCopy: *const CUDA_MEMCPY2D, hStream: CUstream) -> CUresult;
 
 #[cuda_hook(proc_id = 900953, async_api)]
 fn cuMemcpy3D_v2(#[host(len = 1)] pCopy: *const CUDA_MEMCPY3D) -> CUresult {
