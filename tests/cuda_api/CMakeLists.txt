@@ -5,6 +5,7 @@ project(gpu_remoting_test LANGUAGES CXX CUDA)
 # Find CUDA
 set(CUDA_USE_STATIC_CUDA_RUNTIME OFF CACHE INTERNAL "")
 find_package(CUDA REQUIRED)
+find_package(Vulkan QUIET)
 
 # set cuda compiler
 set(CMAKE_CXX_COMPILER g++)
@@ -14,6 +15,10 @@ include_directories(${CUDA_INCLUDE_DIRS})
 message(STATUS "CUDA Libraries: ${CUDA_CUDART_LIBRARY}")
 
 file(GLOB sources RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/*.cu")
+if (NOT Vulkan_FOUND)
+    list(REMOVE_ITEM sources "test_external_semaphore_extra.cu")
+    message(STATUS "Vulkan not found; skipping test_external_semaphore_extra")
+endif()
 foreach(source IN LISTS sources)
     # Get file name without directory
     get_filename_component(source_name ${source} NAME_WE)
@@ -27,6 +32,9 @@ foreach(source IN LISTS sources)
     target_link_libraries(${source_name} PRIVATE cudnn)
     target_link_libraries(${source_name} PRIVATE nvidia-ml)
     target_link_libraries(${source_name} PRIVATE nvrtc)
+    if (${source_name} STREQUAL "test_external_semaphore_extra")
+        target_link_libraries(${source_name} PRIVATE Vulkan::Vulkan)
+    endif()
     # Specify C++11 as the standard for the host compiler
     set_target_properties(${source_name} PROPERTIES
         CUDA_RUNTIME_LIBRARY Shared

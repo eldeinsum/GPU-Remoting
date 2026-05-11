@@ -1,5 +1,6 @@
 #![expect(non_snake_case)]
 
+use super::cuda_exe_utils;
 use crate::ServerWorker;
 use cudasys::cuda::*;
 use network::type_impl::{recv_slice, send_slice};
@@ -487,6 +488,52 @@ pub fn cuImportExternalMemoryExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     external_memory.send(&server.channel_sender).unwrap();
     send_result(
         "cuImportExternalMemory",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuImportExternalSemaphoreExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuImportExternalSemaphore", "[#{}]", server.id);
+
+    let mut desc = std::mem::MaybeUninit::<CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC>::uninit();
+    desc.recv(&server.channel_receiver).unwrap();
+    let mut desc = unsafe { desc.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut external_semaphore = std::ptr::null_mut();
+    let result = if matches!(
+        desc.type_,
+        CUexternalSemaphoreHandleType::CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD
+            | CUexternalSemaphoreHandleType::CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_FD
+    ) {
+        match cuda_exe_utils::receive_client_fd(
+            server,
+            "cuImportExternalSemaphore",
+            CUresult::CUDA_ERROR_INVALID_VALUE,
+        ) {
+            Ok(server_fd) => {
+                desc.handle.fd = server_fd;
+                let result = unsafe { cuImportExternalSemaphore(&mut external_semaphore, &desc) };
+                if result != CUresult::CUDA_SUCCESS {
+                    unsafe {
+                        libc::close(server_fd);
+                    }
+                }
+                result
+            }
+            Err(result) => result,
+        }
+    } else {
+        send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+        server.channel_sender.flush_out().unwrap();
+        CUresult::CUDA_ERROR_NOT_SUPPORTED
+    };
+
+    external_semaphore.send(&server.channel_sender).unwrap();
+    send_result(
+        "cuImportExternalSemaphore",
         server.id,
         result,
         &server.channel_sender,

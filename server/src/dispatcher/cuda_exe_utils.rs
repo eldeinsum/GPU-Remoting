@@ -1,6 +1,15 @@
 use std::os::raw::*;
+use std::fs;
+use std::io;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use cudasys::cuda::*;
+use network::type_impl::send_slice;
+use network::CommChannel;
+
+use crate::ServerWorker;
 
 #[allow(clippy::too_many_arguments)]
 pub fn cu_launch_kernel(
@@ -137,4 +146,88 @@ pub fn cu_func_get_attributes(
         maxDynamicSharedSizeBytes: CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
     }
     CUresult::CUDA_SUCCESS
+}
+
+fn recv_fd(socket: &UnixStream) -> io::Result<c_int> {
+    let mut byte = [0u8; 1];
+    let mut iov = libc::iovec {
+        iov_base: byte.as_mut_ptr().cast(),
+        iov_len: byte.len(),
+    };
+    let mut control = vec![0u8; unsafe {
+        libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize
+    }];
+    let mut msg = unsafe { std::mem::zeroed::<libc::msghdr>() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len();
+
+    unsafe {
+        let received = libc::recvmsg(socket.as_raw_fd(), &mut msg, 0);
+        if received <= 0 {
+            return if received == 0 {
+                Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "socket closed before file descriptor was received",
+                ))
+            } else {
+                Err(io::Error::last_os_error())
+            };
+        }
+        let cmsg = libc::CMSG_FIRSTHDR(&msg);
+        if cmsg.is_null()
+            || (*cmsg).cmsg_level != libc::SOL_SOCKET
+            || (*cmsg).cmsg_type != libc::SCM_RIGHTS
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "missing SCM_RIGHTS file descriptor",
+            ));
+        }
+        Ok(*libc::CMSG_DATA(cmsg).cast::<c_int>())
+    }
+}
+
+pub fn receive_client_fd<C, E>(
+    server: &mut ServerWorker<C>,
+    target: &'static str,
+    error_result: E,
+) -> Result<c_int, E>
+where
+    C: CommChannel,
+    E: Copy,
+{
+    static FD_SOCKET_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let counter = FD_SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = format!(
+        "/tmp/gpu-remoting-fd-{}-{}-{counter}.sock",
+        std::process::id(),
+        server.id
+    );
+    let _ = fs::remove_file(&path);
+    let listener = match UnixListener::bind(&path) {
+        Ok(listener) => listener,
+        Err(error) => {
+            log::error!(target: target, "failed to bind fd socket {path}: {error}");
+            send_slice::<u8, _>(&[], &server.channel_sender).unwrap();
+            server.channel_sender.flush_out().unwrap();
+            return Err(error_result);
+        }
+    };
+    send_slice(path.as_bytes(), &server.channel_sender).unwrap();
+    server.channel_sender.flush_out().unwrap();
+
+    let result = match listener.accept() {
+        Ok((socket, _)) => recv_fd(&socket).map_err(|error| {
+            log::error!(target: target, "failed to receive file descriptor: {error}");
+            error_result
+        }),
+        Err(error) => {
+            log::error!(target: target, "failed to accept fd socket: {error}");
+            Err(error_result)
+        }
+    };
+    let _ = fs::remove_file(&path);
+    result
 }

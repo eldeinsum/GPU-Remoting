@@ -1,4 +1,5 @@
 use super::*;
+use super::cuda_hijack_utils::send_fd;
 use cudasys::types::cuda::*;
 use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
@@ -424,6 +425,62 @@ extern "C" fn cuImportExternalMemory(
             .recv(&client.channel_receiver)
             .unwrap();
         recv_cu_result("cuImportExternalMemory", client.id, &client.channel_receiver)
+    })
+}
+
+fn supported_external_semaphore_type(type_: CUexternalSemaphoreHandleType) -> bool {
+    matches!(
+        type_,
+        CUexternalSemaphoreHandleType::CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD
+            | CUexternalSemaphoreHandleType::CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_FD
+    )
+}
+
+#[no_mangle]
+extern "C" fn cuImportExternalSemaphore(
+    extSem_out: *mut CUexternalSemaphore,
+    semHandleDesc: *const CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC,
+) -> CUresult {
+    if extSem_out.is_null() || semHandleDesc.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let desc = unsafe { *semHandleDesc };
+    if !supported_external_semaphore_type(desc.type_) {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+    let client_fd = unsafe { desc.handle.fd };
+    if client_fd < 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuImportExternalSemaphore", "[#{}]", client.id);
+
+        901125.send(&client.channel_sender).unwrap();
+        desc.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let socket_path = recv_slice::<u8, _>(&client.channel_receiver).unwrap();
+        if !socket_path.is_empty() && send_fd(&socket_path, client_fd).is_err() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+
+        unsafe { &mut *extSem_out }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        let result = recv_cu_result(
+            "cuImportExternalSemaphore",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == CUresult::CUDA_SUCCESS {
+            unsafe {
+                libc::close(client_fd);
+            }
+        }
+        result
     })
 }
 

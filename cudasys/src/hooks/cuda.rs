@@ -2196,6 +2196,31 @@ fn cuExternalMemoryGetMappedMipmappedArray(
 #[cuda_hook(proc_id = 901120, async_api = false)]
 fn cuDestroyExternalMemory(extMem: CUexternalMemory) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901125)]
+fn cuImportExternalSemaphore(
+    extSem_out: *mut CUexternalSemaphore,
+    semHandleDesc: *const CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901126)]
+fn cuSignalExternalSemaphoresAsync(
+    #[host(len = numExtSems as usize)] extSemArray: *const CUexternalSemaphore,
+    #[host(len = numExtSems as usize)] paramsArray: *const CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS,
+    numExtSems: c_uint,
+    stream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901127)]
+fn cuWaitExternalSemaphoresAsync(
+    #[host(len = numExtSems as usize)] extSemArray: *const CUexternalSemaphore,
+    #[host(len = numExtSems as usize)] paramsArray: *const CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS,
+    numExtSems: c_uint,
+    stream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901128, async_api = false)]
+fn cuDestroyExternalSemaphore(extSem: CUexternalSemaphore) -> CUresult;
+
 #[cuda_hook(proc_id = 901049)]
 fn cuMemGetAddressRange_v2(
     pbase: *mut CUdeviceptr,

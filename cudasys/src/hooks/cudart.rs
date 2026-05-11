@@ -77,6 +77,31 @@ fn cudaExternalMemoryGetMappedMipmappedArray(
 #[cuda_hook(proc_id = 901124, async_api = false)]
 fn cudaDestroyExternalMemory(extMem: cudaExternalMemory_t) -> cudaError_t;
 
+#[cuda_custom_hook(proc_id = 901129)]
+fn cudaImportExternalSemaphore(
+    extSem_out: *mut cudaExternalSemaphore_t,
+    semHandleDesc: *const cudaExternalSemaphoreHandleDesc,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901130)]
+fn cudaSignalExternalSemaphoresAsync(
+    #[host(len = numExtSems as usize)] extSemArray: *const cudaExternalSemaphore_t,
+    #[host(len = numExtSems as usize)] paramsArray: *const cudaExternalSemaphoreSignalParams,
+    numExtSems: c_uint,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901131)]
+fn cudaWaitExternalSemaphoresAsync(
+    #[host(len = numExtSems as usize)] extSemArray: *const cudaExternalSemaphore_t,
+    #[host(len = numExtSems as usize)] paramsArray: *const cudaExternalSemaphoreWaitParams,
+    numExtSems: c_uint,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901132, async_api = false)]
+fn cudaDestroyExternalSemaphore(extSem: cudaExternalSemaphore_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900572)]
 fn cudaArrayGetMemoryRequirements(
     memoryRequirements: *mut cudaArrayMemoryRequirements,
