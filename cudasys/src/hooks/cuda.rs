@@ -1645,6 +1645,271 @@ fn cuGraphKernelNodeSetAttribute(
     #[host(len = 1)] value: *const CUkernelNodeAttrValue,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900872)]
+fn cuGraphAddBatchMemOpNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    #[skip] nodeParams: *const CUDA_BATCH_MEM_OP_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        assert!(!nodeParams.is_null());
+        let node_params = unsafe { &*nodeParams };
+        assert!(node_params.count > 0);
+        assert!(!node_params.paramArray.is_null());
+        assert_eq!(node_params.flags, 0);
+        let ops = unsafe {
+            std::slice::from_raw_parts(node_params.paramArray, node_params.count as usize)
+        };
+        for op in ops {
+            match unsafe { op.operation } {
+                CUstreamBatchMemOpType::CU_STREAM_MEM_OP_WRITE_VALUE_32 => {
+                    let write = unsafe { op.writeValue };
+                    assert_ne!(write.address, 0);
+                    assert_eq!(
+                        write.flags,
+                        CUstreamWriteValue_flags::CU_STREAM_WRITE_VALUE_DEFAULT as c_uint
+                    );
+                    assert_eq!(write.alias, 0);
+                }
+                CUstreamBatchMemOpType::CU_STREAM_MEM_OP_WRITE_VALUE_64 => {
+                    let write = unsafe { op.writeValue };
+                    assert_ne!(write.address, 0);
+                    assert_eq!(
+                        write.flags,
+                        CUstreamWriteValue_flags::CU_STREAM_WRITE_VALUE_DEFAULT as c_uint
+                    );
+                    assert_eq!(write.alias, 0);
+                }
+                _ => panic!("unsupported graph batch mem-op operation"),
+            }
+        }
+        let mut packed_params = *node_params;
+        packed_params.paramArray = std::ptr::null_mut();
+    }
+    'client_extra_send: {
+        packed_params.send(channel_sender).unwrap();
+        send_slice(ops, channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            DRIVER_CACHE
+                .write()
+                .unwrap()
+                .graph_batch_mem_op_nodes
+                .insert(
+                    *phGraphNode,
+                    crate::GraphBatchMemOpNodeCache::new(
+                        packed_params,
+                        ops.to_vec().into_boxed_slice(),
+                    ),
+                );
+        }
+    }
+    'server_extra_recv: {
+        let mut packed_params = std::mem::MaybeUninit::<CUDA_BATCH_MEM_OP_NODE_PARAMS>::uninit();
+        packed_params.recv(channel_receiver).unwrap();
+        let mut packed_params = unsafe { packed_params.assume_init() };
+        let mut ops = recv_slice::<CUstreamBatchMemOpParams, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        packed_params.paramArray = ops.as_mut_ptr();
+        let result = unsafe {
+            cuGraphAddBatchMemOpNode(
+                phGraphNode__ptr,
+                hGraph,
+                std::ptr::null(),
+                0,
+                &raw const packed_params,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900873)]
+fn cuGraphBatchMemOpNodeGetParams(
+    hNode: CUgraphNode,
+    #[skip] nodeParams_out: *mut CUDA_BATCH_MEM_OP_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams_out.is_null());
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut params = std::mem::MaybeUninit::<CUDA_BATCH_MEM_OP_NODE_PARAMS>::uninit();
+            params.recv(channel_receiver).unwrap();
+            let params = unsafe { params.assume_init() };
+            let ops = recv_slice::<CUstreamBatchMemOpParams, _>(channel_receiver).unwrap();
+            let mut cache =
+                crate::GraphBatchMemOpNodeCache::new(params, ops.to_vec().into_boxed_slice());
+            unsafe {
+                std::ptr::write(nodeParams_out, cache.params_for_client());
+            }
+            DRIVER_CACHE
+                .write()
+                .unwrap()
+                .graph_batch_mem_op_nodes
+                .insert(hNode, cache);
+        }
+    }
+    'server_execution: {
+        let mut params_out: CUDA_BATCH_MEM_OP_NODE_PARAMS = unsafe { std::mem::zeroed() };
+        let result = unsafe { cuGraphBatchMemOpNodeGetParams(hNode, &raw mut params_out) };
+        let ops: Box<[CUstreamBatchMemOpParams]> = if result == CUresult::CUDA_SUCCESS {
+            assert!(params_out.count > 0);
+            assert!(!params_out.paramArray.is_null());
+            unsafe {
+                std::slice::from_raw_parts(params_out.paramArray, params_out.count as usize)
+                    .to_vec()
+                    .into_boxed_slice()
+            }
+        } else {
+            Box::default()
+        };
+        params_out.paramArray = std::ptr::null_mut();
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            params_out.send(channel_sender).unwrap();
+            send_slice(&ops, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900874)]
+fn cuGraphBatchMemOpNodeSetParams(
+    hNode: CUgraphNode,
+    #[skip] nodeParams: *const CUDA_BATCH_MEM_OP_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let node_params = unsafe { &*nodeParams };
+        assert!(node_params.count > 0);
+        assert!(!node_params.paramArray.is_null());
+        assert_eq!(node_params.flags, 0);
+        let ops = unsafe {
+            std::slice::from_raw_parts(node_params.paramArray, node_params.count as usize)
+        };
+        for op in ops {
+            match unsafe { op.operation } {
+                CUstreamBatchMemOpType::CU_STREAM_MEM_OP_WRITE_VALUE_32 => {
+                    let write = unsafe { op.writeValue };
+                    assert_ne!(write.address, 0);
+                    assert_eq!(
+                        write.flags,
+                        CUstreamWriteValue_flags::CU_STREAM_WRITE_VALUE_DEFAULT as c_uint
+                    );
+                    assert_eq!(write.alias, 0);
+                }
+                CUstreamBatchMemOpType::CU_STREAM_MEM_OP_WRITE_VALUE_64 => {
+                    let write = unsafe { op.writeValue };
+                    assert_ne!(write.address, 0);
+                    assert_eq!(
+                        write.flags,
+                        CUstreamWriteValue_flags::CU_STREAM_WRITE_VALUE_DEFAULT as c_uint
+                    );
+                    assert_eq!(write.alias, 0);
+                }
+                _ => panic!("unsupported graph batch mem-op operation"),
+            }
+        }
+        let mut packed_params = *node_params;
+        packed_params.paramArray = std::ptr::null_mut();
+    }
+    'client_extra_send: {
+        packed_params.send(channel_sender).unwrap();
+        send_slice(ops, channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            DRIVER_CACHE
+                .write()
+                .unwrap()
+                .graph_batch_mem_op_nodes
+                .insert(
+                    hNode,
+                    crate::GraphBatchMemOpNodeCache::new(
+                        packed_params,
+                        ops.to_vec().into_boxed_slice(),
+                    ),
+                );
+        }
+    }
+    'server_extra_recv: {
+        let mut packed_params = std::mem::MaybeUninit::<CUDA_BATCH_MEM_OP_NODE_PARAMS>::uninit();
+        packed_params.recv(channel_receiver).unwrap();
+        let mut packed_params = unsafe { packed_params.assume_init() };
+        let mut ops = recv_slice::<CUstreamBatchMemOpParams, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        packed_params.paramArray = ops.as_mut_ptr();
+        let result = unsafe { cuGraphBatchMemOpNodeSetParams(hNode, &raw const packed_params) };
+    }
+}
+
+#[cuda_hook(proc_id = 900875)]
+fn cuGraphExecBatchMemOpNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    #[skip] nodeParams: *const CUDA_BATCH_MEM_OP_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let node_params = unsafe { &*nodeParams };
+        assert!(node_params.count > 0);
+        assert!(!node_params.paramArray.is_null());
+        assert_eq!(node_params.flags, 0);
+        let ops = unsafe {
+            std::slice::from_raw_parts(node_params.paramArray, node_params.count as usize)
+        };
+        for op in ops {
+            match unsafe { op.operation } {
+                CUstreamBatchMemOpType::CU_STREAM_MEM_OP_WRITE_VALUE_32 => {
+                    let write = unsafe { op.writeValue };
+                    assert_ne!(write.address, 0);
+                    assert_eq!(
+                        write.flags,
+                        CUstreamWriteValue_flags::CU_STREAM_WRITE_VALUE_DEFAULT as c_uint
+                    );
+                    assert_eq!(write.alias, 0);
+                }
+                CUstreamBatchMemOpType::CU_STREAM_MEM_OP_WRITE_VALUE_64 => {
+                    let write = unsafe { op.writeValue };
+                    assert_ne!(write.address, 0);
+                    assert_eq!(
+                        write.flags,
+                        CUstreamWriteValue_flags::CU_STREAM_WRITE_VALUE_DEFAULT as c_uint
+                    );
+                    assert_eq!(write.alias, 0);
+                }
+                _ => panic!("unsupported graph batch mem-op operation"),
+            }
+        }
+        let mut packed_params = *node_params;
+        packed_params.paramArray = std::ptr::null_mut();
+    }
+    'client_extra_send: {
+        packed_params.send(channel_sender).unwrap();
+        send_slice(ops, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut packed_params = std::mem::MaybeUninit::<CUDA_BATCH_MEM_OP_NODE_PARAMS>::uninit();
+        packed_params.recv(channel_receiver).unwrap();
+        let mut packed_params = unsafe { packed_params.assume_init() };
+        let mut ops = recv_slice::<CUstreamBatchMemOpParams, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        packed_params.paramArray = ops.as_mut_ptr();
+        let result = unsafe {
+            cuGraphExecBatchMemOpNodeSetParams(hGraphExec, hNode, &raw const packed_params)
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 900862)]
 fn cuGraphAddNode_v2(
     phGraphNode: *mut CUgraphNode,

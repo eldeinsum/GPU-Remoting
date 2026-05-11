@@ -695,6 +695,74 @@ static int check_stream_capture_graph(CUstream stream)
     return 0;
 }
 
+static int check_batch_mem_op_graph(CUstream stream, CUcontext context)
+{
+    CUdeviceptr device = 0;
+    CHECK_DRV(cuMemAlloc(&device, sizeof(cuuint32_t)));
+    CHECK_DRV(cuMemsetD32(device, 0, 1));
+
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    CUstreamBatchMemOpParams op = {};
+    op.writeValue.operation = CU_STREAM_MEM_OP_WRITE_VALUE_32;
+    op.writeValue.address = device;
+    op.writeValue.value = 0x12345678u;
+    op.writeValue.flags = CU_STREAM_WRITE_VALUE_DEFAULT;
+    op.writeValue.alias = 0;
+
+    CUDA_BATCH_MEM_OP_NODE_PARAMS params = {};
+    params.ctx = context;
+    params.count = 1;
+    params.paramArray = &op;
+    params.flags = 0;
+
+    CUgraphNode node = nullptr;
+    CHECK_DRV(cuGraphAddBatchMemOpNode(&node, graph, nullptr, 0, &params));
+
+    CUDA_BATCH_MEM_OP_NODE_PARAMS queried = {};
+    CHECK_DRV(cuGraphBatchMemOpNodeGetParams(node, &queried));
+    if (queried.count != 1 || queried.paramArray == nullptr ||
+        queried.paramArray[0].operation != CU_STREAM_MEM_OP_WRITE_VALUE_32 ||
+        queried.paramArray[0].writeValue.address != device ||
+        queried.paramArray[0].writeValue.value != 0x12345678u) {
+        std::fprintf(stderr, "unexpected graph batch mem-op params\n");
+        return 1;
+    }
+
+    op.writeValue.value = 0x23456789u;
+    CHECK_DRV(cuGraphBatchMemOpNodeSetParams(node, &params));
+    queried = {};
+    CHECK_DRV(cuGraphBatchMemOpNodeGetParams(node, &queried));
+    if (queried.paramArray == nullptr ||
+        queried.paramArray[0].writeValue.value != 0x23456789u) {
+        std::fprintf(stderr, "graph batch mem-op update did not stick\n");
+        return 1;
+    }
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+
+    op.writeValue.value = 0x3456789au;
+    CHECK_DRV(cuGraphExecBatchMemOpNodeSetParams(exec, node, &params));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    cuuint32_t output = 0;
+    CHECK_DRV(cuMemcpyDtoH(&output, device, sizeof(output)));
+    if (output != 0x3456789au) {
+        std::fprintf(stderr, "batch mem-op graph output mismatch: got 0x%x\n",
+                     output);
+        return 1;
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(graph));
+    CHECK_DRV(cuMemFree(device));
+
+    return 0;
+}
+
 static int check_kernel_graph(CUstream stream, CUdevice device)
 {
     int major = 0;
@@ -861,6 +929,9 @@ int main()
         return 1;
     }
     if (check_stream_capture_graph(stream) != 0) {
+        return 1;
+    }
+    if (check_batch_mem_op_graph(stream, context) != 0) {
         return 1;
     }
     if (check_kernel_graph(stream, device) != 0) {

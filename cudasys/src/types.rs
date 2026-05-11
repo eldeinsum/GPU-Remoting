@@ -169,6 +169,15 @@ pub mod cuda {
                 .finish()
         }
     }
+
+    impl std::fmt::Debug for CUstreamBatchMemOpParams_union {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let pad = unsafe { self.pad };
+            f.debug_struct("CUstreamBatchMemOpParams_union")
+                .field("pad", &pad)
+                .finish()
+        }
+    }
 }
 
 pub mod cudart {

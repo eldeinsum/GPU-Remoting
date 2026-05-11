@@ -26,7 +26,7 @@ mod nvrtc_unimplement;
 
 #[expect(unused_imports)]
 use codegen::{cuda_hook_hijack, use_thread_local};
-use network::type_impl::{MemPtr, recv_slice_to, send_slice};
+use network::type_impl::{MemPtr, recv_slice, recv_slice_to, send_slice};
 use network::{CommChannel, Transportable};
 
 use crate::elf::{FatBinaryHeader, FatBinaryWrapper};

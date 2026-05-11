@@ -30,7 +30,8 @@ use cudasys::types::cublasLt::{
     cudaDataType_t as CublasLtCudaDataType,
 };
 use cudasys::types::cuda::{
-    CUDA_KERNEL_NODE_PARAMS, CUfunction, CUgraphNode, CUkernel, CUlibrary, CUmodule,
+    CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS, CUfunction, CUgraphNode, CUkernel,
+    CUlibrary, CUmodule, CUstreamBatchMemOpParams,
 };
 type FatBinaryHandle = usize;
 type HostPtr = usize;
@@ -172,6 +173,8 @@ struct DriverCache {
     function_params: BTreeMap<CUfunction, Box<[KernelParamInfo]>>,
     /// Client-side copies of kernel node parameters whose raw pointers are process-local.
     graph_kernel_nodes: BTreeMap<CUgraphNode, GraphKernelNodeCache>,
+    /// Client-side copies of batch mem-op node arrays whose raw pointers are process-local.
+    graph_batch_mem_op_nodes: BTreeMap<CUgraphNode, GraphBatchMemOpNodeCache>,
     /// Used in `cuKernelGetName`, populated by `cuLibraryGetKernel`.
     kernel_names: BTreeMap<CUkernel, CString>,
     /// Used to remove library-owned kernel metadata on unload.
@@ -190,6 +193,7 @@ impl DriverCache {
             library_images: BTreeMap::new(),
             function_params: BTreeMap::new(),
             graph_kernel_nodes: BTreeMap::new(),
+            graph_batch_mem_op_nodes: BTreeMap::new(),
             kernel_names: BTreeMap::new(),
             kernel_libraries: BTreeMap::new(),
             device_arch: None,
@@ -201,6 +205,7 @@ impl DriverCache {
         self.library_images.clear();
         self.function_params.clear();
         self.graph_kernel_nodes.clear();
+        self.graph_batch_mem_op_nodes.clear();
         self.kernel_names.clear();
         self.kernel_libraries.clear();
         self.device_arch = None;
@@ -250,6 +255,31 @@ impl GraphKernelNodeCache {
             self.kernel_param_ptrs.as_mut_ptr()
         };
         params.extra = std::ptr::null_mut();
+        params
+    }
+}
+
+struct GraphBatchMemOpNodeCache {
+    params: CUDA_BATCH_MEM_OP_NODE_PARAMS,
+    ops: Box<[CUstreamBatchMemOpParams]>,
+}
+
+impl GraphBatchMemOpNodeCache {
+    fn new(
+        mut params: CUDA_BATCH_MEM_OP_NODE_PARAMS,
+        ops: Box<[CUstreamBatchMemOpParams]>,
+    ) -> Self {
+        params.paramArray = std::ptr::null_mut();
+        Self { params, ops }
+    }
+
+    fn params_for_client(&mut self) -> CUDA_BATCH_MEM_OP_NODE_PARAMS {
+        let mut params = self.params;
+        params.paramArray = if self.ops.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            self.ops.as_mut_ptr()
+        };
         params
     }
 }
