@@ -605,6 +605,43 @@ int main()
         return 1;
     }
 
+    CHECK_DRV_SUCCESS(cuMemsetD32(wait32_device, 0, 1));
+    CHECK_DRV_SUCCESS(cuMemsetD32(wait64_device, 0, 2));
+    const cuuint32_t batch32 = 0xa1b2c3d4u;
+    const cuuint64_t batch64 = 0x1122334455667788ull;
+    CUstreamBatchMemOpParams batch_ops[4] = {};
+    batch_ops[0].operation = CU_STREAM_MEM_OP_WRITE_VALUE_32;
+    batch_ops[0].writeValue.address = wait32_device;
+    batch_ops[0].writeValue.value = batch32;
+    batch_ops[0].writeValue.flags = CU_STREAM_WRITE_VALUE_DEFAULT;
+    batch_ops[0].writeValue.alias = 0;
+    batch_ops[1].operation = CU_STREAM_MEM_OP_WAIT_VALUE_32;
+    batch_ops[1].waitValue.address = wait32_device;
+    batch_ops[1].waitValue.value = batch32;
+    batch_ops[1].waitValue.flags = CU_STREAM_WAIT_VALUE_EQ;
+    batch_ops[1].waitValue.alias = 0;
+    batch_ops[2].operation = CU_STREAM_MEM_OP_WRITE_VALUE_64;
+    batch_ops[2].writeValue.address = wait64_device;
+    batch_ops[2].writeValue.value64 = batch64;
+    batch_ops[2].writeValue.flags = CU_STREAM_WRITE_VALUE_DEFAULT;
+    batch_ops[2].writeValue.alias = 0;
+    batch_ops[3].operation = CU_STREAM_MEM_OP_WAIT_VALUE_64;
+    batch_ops[3].waitValue.address = wait64_device;
+    batch_ops[3].waitValue.value64 = batch64;
+    batch_ops[3].waitValue.flags = CU_STREAM_WAIT_VALUE_EQ;
+    batch_ops[3].waitValue.alias = 0;
+    CHECK_DRV_SUCCESS(cuStreamBatchMemOp(driver_a, 4, batch_ops, 0));
+    CHECK_DRV_SUCCESS(cuStreamSynchronize(driver_a));
+
+    output32 = 0;
+    output64 = 0;
+    CHECK_DRV_SUCCESS(cuMemcpyDtoH(&output32, wait32_device, sizeof(output32)));
+    CHECK_DRV_SUCCESS(cuMemcpyDtoH(&output64, wait64_device, sizeof(output64)));
+    if (output32 != batch32 || output64 != batch64) {
+        std::fprintf(stderr, "stream batch mem-op output mismatch\n");
+        return 1;
+    }
+
     CUevent driver_ctx_event = nullptr;
     CHECK_DRV_SUCCESS(cuEventCreate(&driver_ctx_event, CU_EVENT_DEFAULT));
     CHECK_DRV_SUCCESS(cuCtxRecordEvent(driver_context, driver_ctx_event));

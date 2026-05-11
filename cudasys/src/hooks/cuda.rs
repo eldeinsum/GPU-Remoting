@@ -2708,6 +2708,39 @@ fn cuStreamWriteValue64_v2(
     flags: c_uint,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901099, async_api)]
+fn cuStreamBatchMemOp_v2(
+    stream: CUstream,
+    count: c_uint,
+    #[skip] paramArray: *mut CUstreamBatchMemOpParams,
+    flags: c_uint,
+) -> CUresult {
+    'client_before_send: {
+        if count > 0 && paramArray.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let ops = if count == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(paramArray, count as usize) }
+        };
+    }
+    'client_extra_send: {
+        send_slice(ops, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut ops = recv_slice::<CUstreamBatchMemOpParams, _>(channel_receiver).unwrap();
+        let ops_ptr = if ops.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            ops.as_mut_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cuStreamBatchMemOp_v2(stream, count, ops_ptr, flags) };
+    }
+}
+
 #[cuda_hook(proc_id = 900866, async_api = false)]
 fn cuStreamBeginCapture_v2(hStream: CUstream, mode: CUstreamCaptureMode) -> CUresult;
 
