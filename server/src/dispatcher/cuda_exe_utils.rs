@@ -59,6 +59,41 @@ pub fn cu_launch_kernel_ex(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn cu_launch_cooperative_kernel(
+    f: CUfunction,
+    gridDimX: c_uint,
+    gridDimY: c_uint,
+    gridDimZ: c_uint,
+    blockDimX: c_uint,
+    blockDimY: c_uint,
+    blockDimZ: c_uint,
+    sharedMemBytes: c_uint,
+    hStream: CUstream,
+    args: &[u8],
+    arg_offsets: &[u32],
+) -> CUresult {
+    unsafe {
+        let mut kernel_params = kernel_params_from_packed_args(args, arg_offsets);
+        cuLaunchCooperativeKernel(
+            f,
+            gridDimX,
+            gridDimY,
+            gridDimZ,
+            blockDimX,
+            blockDimY,
+            blockDimZ,
+            sharedMemBytes,
+            hStream,
+            if kernel_params.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                kernel_params.as_mut_ptr()
+            },
+        )
+    }
+}
+
 pub fn kernel_params_from_packed_args(args: &[u8], arg_offsets: &[u32]) -> Vec<*mut c_void> {
     arg_offsets
         .iter()

@@ -173,6 +173,55 @@ fn cuLaunchKernel(
     }
 }
 
+#[cuda_hook(proc_id = 901034, async_api)]
+fn cuLaunchCooperativeKernel(
+    f: CUfunction,
+    gridDimX: c_uint,
+    gridDimY: c_uint,
+    gridDimZ: c_uint,
+    blockDimX: c_uint,
+    blockDimY: c_uint,
+    blockDimZ: c_uint,
+    sharedMemBytes: c_uint,
+    hStream: CUstream,
+    #[skip] kernelParams: *mut *mut c_void,
+) -> CUresult {
+    'client_before_send: {
+        let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+            kernelParams,
+            DRIVER_CACHE
+                .read()
+                .unwrap()
+                .function_params
+                .get(&f)
+                .unwrap(),
+        );
+    }
+    'client_extra_send: {
+        send_slice(&arg_offsets, channel_sender).unwrap();
+        send_slice(&args, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
+        let args = recv_slice::<u8, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let result = super::cuda_exe_utils::cu_launch_cooperative_kernel(
+            f,
+            gridDimX,
+            gridDimY,
+            gridDimZ,
+            blockDimX,
+            blockDimY,
+            blockDimZ,
+            sharedMemBytes,
+            hStream,
+            &args,
+            &arg_offsets,
+        );
+    }
+}
+
 #[cuda_hook(proc_id = 919, async_api)]
 fn cuLaunchKernelEx(
     #[host] config: *const CUlaunchConfig,
