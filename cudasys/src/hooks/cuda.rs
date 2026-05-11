@@ -2069,6 +2069,13 @@ fn cuMemHostUnregister(p: *mut c_void) -> CUresult;
 #[cuda_custom_hook] // local
 fn cuMemHostGetFlags(pFlags: *mut c_uint, p: *mut c_void) -> CUresult;
 
+#[cuda_custom_hook] // unsupported across the remoting boundary
+fn cuMemHostGetDevicePointer_v2(
+    pdptr: *mut CUdeviceptr,
+    p: *mut c_void,
+    Flags: c_uint,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900402, async_api = false)]
 fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
 

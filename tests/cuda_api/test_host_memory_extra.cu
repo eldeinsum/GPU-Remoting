@@ -42,6 +42,46 @@ static int check_values(const std::vector<int> &values, int base)
     return 0;
 }
 
+static int check_runtime_host_device_pointer(void *host)
+{
+    void *device = nullptr;
+    cudaError_t result = cudaHostGetDevicePointer(&device, host, 0);
+    if (result == cudaSuccess) {
+        if (device == nullptr) {
+            std::fprintf(stderr, "runtime host device pointer is null\n");
+            return 1;
+        }
+        return 0;
+    }
+    if (result == cudaErrorNotSupported && device == nullptr) {
+        return 0;
+    }
+    std::fprintf(stderr, "cudaHostGetDevicePointer failed: %s (%d)\n",
+                 cudaGetErrorString(result), static_cast<int>(result));
+    return 1;
+}
+
+static int check_driver_host_device_pointer(void *host)
+{
+    CUdeviceptr device = 0;
+    CUresult result = cuMemHostGetDevicePointer(&device, host, 0);
+    if (result == CUDA_SUCCESS) {
+        if (device == 0) {
+            std::fprintf(stderr, "driver host device pointer is null\n");
+            return 1;
+        }
+        return 0;
+    }
+    if (result == CUDA_ERROR_NOT_SUPPORTED && device == 0) {
+        return 0;
+    }
+    const char *name = nullptr;
+    cuGetErrorName(result, &name);
+    std::fprintf(stderr, "cuMemHostGetDevicePointer failed: %s (%d)\n",
+                 name == nullptr ? "unknown" : name, static_cast<int>(result));
+    return 1;
+}
+
 static int run_runtime_host_memory()
 {
     constexpr int kCount = 64;
@@ -60,6 +100,9 @@ static int run_runtime_host_memory()
     CHECK_CUDA(cudaHostGetFlags(&flags, host + 3));
     if ((flags & cudaHostAllocPortable) == 0) {
         std::fprintf(stderr, "runtime host allocation flags mismatch: %u\n", flags);
+        return 1;
+    }
+    if (check_runtime_host_device_pointer(host) != 0) {
         return 1;
     }
 
@@ -111,6 +154,9 @@ static int run_driver_host_memory()
     CHECK_DRV(cuMemHostGetFlags(&flags, host + 5));
     if ((flags & CU_MEMHOSTALLOC_PORTABLE) == 0) {
         std::fprintf(stderr, "driver host allocation flags mismatch: %u\n", flags);
+        return 1;
+    }
+    if (check_driver_host_device_pointer(host) != 0) {
         return 1;
     }
 

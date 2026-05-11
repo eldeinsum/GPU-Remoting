@@ -127,6 +127,22 @@ extern "C" fn cuMemHostGetFlags(pFlags: *mut c_uint, p: *mut c_void) -> CUresult
 }
 
 #[no_mangle]
+extern "C" fn cuMemHostGetDevicePointer_v2(
+    pdptr: *mut CUdeviceptr,
+    p: *mut c_void,
+    Flags: c_uint,
+) -> CUresult {
+    log::debug!(target: "cuMemHostGetDevicePointer_v2", "flags = {Flags}");
+    if pdptr.is_null() || p.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    unsafe {
+        *pdptr = 0;
+    }
+    CUresult::CUDA_ERROR_NOT_SUPPORTED
+}
+
+#[no_mangle]
 extern "C" fn cuPointerGetAttributes(
     numAttributes: c_uint,
     attributes: *mut CUpointer_attribute,
