@@ -579,6 +579,122 @@ static int check_generic_node_graph(CUstream stream, CUcontext context)
     return 0;
 }
 
+static int check_stream_capture_graph(CUstream stream)
+{
+    const size_t bytes = 64;
+    CUdeviceptr device = 0;
+    CHECK_DRV(cuMemAlloc(&device, bytes));
+    CHECK_DRV(cuMemsetD8(device, 0, bytes));
+
+    CHECK_DRV(cuStreamBeginCapture(stream, CU_STREAM_CAPTURE_MODE_THREAD_LOCAL));
+
+    CUstreamCaptureStatus status = CU_STREAM_CAPTURE_STATUS_NONE;
+    CHECK_DRV(cuStreamIsCapturing(stream, &status));
+    if (status != CU_STREAM_CAPTURE_STATUS_ACTIVE) {
+        std::fprintf(stderr, "unexpected stream capture status: %d\n",
+                     static_cast<int>(status));
+        return 1;
+    }
+    cuuint64_t capture_id = 0;
+    CHECK_DRV(cuStreamGetCaptureInfo(stream, &status, &capture_id, nullptr,
+                                     nullptr, nullptr, nullptr));
+    if (status != CU_STREAM_CAPTURE_STATUS_ACTIVE || capture_id == 0) {
+        std::fprintf(stderr, "unexpected stream capture info\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuMemsetD8Async(device, 0x54, bytes, stream));
+    CUgraph captured = nullptr;
+    CHECK_DRV(cuStreamEndCapture(stream, &captured));
+    if (captured == nullptr) {
+        std::fprintf(stderr, "stream capture returned a null graph\n");
+        return 1;
+    }
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, captured, 0));
+    CHECK_DRV(cuMemsetD8(device, 0, bytes));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    unsigned char output[bytes];
+    CHECK_DRV(cuMemcpyDtoH(output, device, bytes));
+    for (size_t i = 0; i < bytes; ++i) {
+        if (output[i] != 0x54) {
+            std::fprintf(stderr,
+                         "captured graph output mismatch at %zu: got %u\n",
+                         i, static_cast<unsigned int>(output[i]));
+            return 1;
+        }
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(captured));
+
+    CUgraph capture_graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&capture_graph, 0));
+    CUgraphNode capture_dependency = nullptr;
+    CHECK_DRV(cuGraphAddEmptyNode(&capture_dependency, capture_graph,
+                                  nullptr, 0));
+    CUgraphNode capture_updated_dependency = nullptr;
+    CHECK_DRV(cuGraphAddEmptyNode(&capture_updated_dependency, capture_graph,
+                                  nullptr, 0));
+
+    CUgraphNode capture_dependencies[] = {capture_dependency};
+    CHECK_DRV(cuStreamBeginCaptureToGraph(
+        stream, capture_graph, capture_dependencies, nullptr, 1,
+        CU_STREAM_CAPTURE_MODE_THREAD_LOCAL));
+    CUgraphNode updated_dependencies[] = {capture_updated_dependency};
+    CHECK_DRV(cuStreamUpdateCaptureDependencies(
+        stream, updated_dependencies, nullptr, 1,
+        CU_STREAM_SET_CAPTURE_DEPENDENCIES));
+    CHECK_DRV(cuMemsetD8Async(device, 0x65, bytes, stream));
+    CUgraph captured_to_graph = nullptr;
+    CHECK_DRV(cuStreamEndCapture(stream, &captured_to_graph));
+    if (captured_to_graph == nullptr) {
+        std::fprintf(stderr, "capture-to-graph returned a null graph\n");
+        return 1;
+    }
+
+    size_t nodes = 0;
+    CHECK_DRV(cuGraphGetNodes(captured_to_graph, nullptr, &nodes));
+    if (nodes != 3) {
+        std::fprintf(stderr, "unexpected capture-to-graph node count: %zu\n",
+                     nodes);
+        return 1;
+    }
+    size_t edges = 0;
+    CHECK_DRV(cuGraphGetEdges(captured_to_graph, nullptr, nullptr, nullptr,
+                              &edges));
+    if (edges != 1) {
+        std::fprintf(stderr, "unexpected capture-to-graph edge count: %zu\n",
+                     edges);
+        return 1;
+    }
+
+    exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, captured_to_graph, 0));
+    CHECK_DRV(cuMemsetD8(device, 0, bytes));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    CHECK_DRV(cuMemcpyDtoH(output, device, bytes));
+    for (size_t i = 0; i < bytes; ++i) {
+        if (output[i] != 0x65) {
+            std::fprintf(stderr,
+                         "capture-to-graph output mismatch at %zu: got %u\n",
+                         i, static_cast<unsigned int>(output[i]));
+            return 1;
+        }
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(captured_to_graph));
+    CHECK_DRV(cuMemFree(device));
+
+    return 0;
+}
+
 static int check_kernel_graph(CUstream stream, CUdevice device)
 {
     int major = 0;
@@ -742,6 +858,9 @@ int main()
         return 1;
     }
     if (check_generic_node_graph(stream, context) != 0) {
+        return 1;
+    }
+    if (check_stream_capture_graph(stream) != 0) {
         return 1;
     }
     if (check_kernel_graph(stream, device) != 0) {

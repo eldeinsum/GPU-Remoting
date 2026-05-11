@@ -876,6 +876,62 @@ fn cuStreamWaitEvent(hStream: CUstream, hEvent: CUevent, Flags: c_uint) -> CUres
 #[cuda_hook(proc_id = 900432)]
 fn cuStreamCopyAttributes(dst: CUstream, src: CUstream) -> CUresult;
 
+#[cuda_hook(proc_id = 900866, async_api = false)]
+fn cuStreamBeginCapture_v2(hStream: CUstream, mode: CUstreamCaptureMode) -> CUresult;
+
+#[cuda_hook(proc_id = 900867)]
+fn cuStreamBeginCaptureToGraph(
+    hStream: CUstream,
+    hGraph: CUgraph,
+    #[host(len = numDependencies)] dependencies: *const CUgraphNode,
+    #[device] dependencyData: *const CUgraphEdgeData,
+    numDependencies: usize,
+    mode: CUstreamCaptureMode,
+) -> CUresult {
+    'client_before_send: {
+        assert!(numDependencies > 0);
+        assert!(dependencyData.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900868)]
+fn cuStreamEndCapture(hStream: CUstream, phGraph: *mut CUgraph) -> CUresult;
+
+#[cuda_hook(proc_id = 900869)]
+fn cuStreamIsCapturing(hStream: CUstream, captureStatus: *mut CUstreamCaptureStatus) -> CUresult;
+
+#[cuda_hook(proc_id = 900870)]
+fn cuStreamGetCaptureInfo_v3(
+    hStream: CUstream,
+    captureStatus_out: *mut CUstreamCaptureStatus,
+    id_out: *mut cuuint64_t,
+    #[device] graph_out: *mut CUgraph,
+    #[device] dependencies_out: *mut *const CUgraphNode,
+    #[device] edgeData_out: *mut *const CUgraphEdgeData,
+    #[device] numDependencies_out: *mut usize,
+) -> CUresult {
+    'client_before_send: {
+        assert!(graph_out.is_null());
+        assert!(dependencies_out.is_null());
+        assert!(edgeData_out.is_null());
+        assert!(numDependencies_out.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900871)]
+fn cuStreamUpdateCaptureDependencies_v2(
+    hStream: CUstream,
+    #[host(input, len = numDependencies)] dependencies: *mut CUgraphNode,
+    #[device] dependencyData: *const CUgraphEdgeData,
+    numDependencies: usize,
+    flags: c_uint,
+) -> CUresult {
+    'client_before_send: {
+        assert!(numDependencies > 0);
+        assert!(dependencyData.is_null());
+    }
+}
+
 #[cuda_hook(proc_id = 900210, async_api = false)]
 fn cuStreamSynchronize(hStream: CUstream) -> CUresult;
 
