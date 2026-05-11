@@ -4,6 +4,7 @@ mod cublasLt_hijack;
 mod cublasLt_hijack_custom;
 mod cublasLt_unimplement;
 mod cublas_hijack;
+mod cublas_hijack_custom;
 mod cublas_unimplement;
 mod cuda_hijack;
 mod cuda_hijack_custom;

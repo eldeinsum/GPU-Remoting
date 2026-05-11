@@ -1,5 +1,5 @@
 use crate::types::cublas::*;
-use codegen::cuda_hook;
+use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
 
 #[cuda_hook(proc_id = 1100)]
@@ -56,8 +56,305 @@ fn cublasSetPointerMode_v2(handle: cublasHandle_t, mode: cublasPointerMode_t) ->
 #[cuda_hook(proc_id = 1104, async_api)]
 fn cublasSetStream_v2(handle: cublasHandle_t, streamId: cudaStream_t) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1106)]
+fn cublasGetVersion_v2(handle: cublasHandle_t, version: *mut c_int) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1107)]
+fn cublasGetProperty(type_: libraryPropertyType, value: *mut c_int) -> cublasStatus_t;
+
+#[cuda_custom_hook] // local: derived from remoted runtime version query
+fn cublasGetCudartVersion() -> usize;
+
+#[cuda_hook(proc_id = 1108)]
+fn cublasGetStream_v2(handle: cublasHandle_t, streamId: *mut cudaStream_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1109)]
+fn cublasGetAtomicsMode(handle: cublasHandle_t, mode: *mut cublasAtomicsMode_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1110)]
+fn cublasSetAtomicsMode(handle: cublasHandle_t, mode: cublasAtomicsMode_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1113)]
+fn cublasSetVector(
+    n: c_int,
+    elemSize: c_int,
+    #[skip] x: *const c_void,
+    incx: c_int,
+    #[device] devicePtr: *mut c_void,
+    incy: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let n_usize = if n > 0 {
+            usize::try_from(n).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let incx_isize = isize::try_from(incx).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        let mut packed = vec![0u8; n_usize * elem_size];
+        if !packed.is_empty() {
+            assert!(!x.is_null());
+            assert!(incx != 0);
+            for i in 0..n_usize {
+                let src = unsafe {
+                    x.cast::<u8>()
+                        .offset(isize::try_from(i).unwrap() * incx_isize * elem_size_isize)
+                };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        src,
+                        packed.as_mut_ptr().add(i * elem_size),
+                        elem_size,
+                    );
+                }
+            }
+        }
+    }
+    'client_extra_send: {
+        send_slice(&packed, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+        let x_arg = if packed.is_empty() {
+            std::ptr::null()
+        } else {
+            packed.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSetVector(n, elemSize, x_arg, 1, devicePtr, incy) };
+    }
+}
+
+#[cuda_hook(proc_id = 1114)]
+fn cublasGetVector(
+    n: c_int,
+    elemSize: c_int,
+    #[device] x: *const c_void,
+    incx: c_int,
+    #[skip] y: *mut c_void,
+    incy: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let n_usize = if n > 0 {
+            usize::try_from(n).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let incy_isize = isize::try_from(incy).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        if n_usize * elem_size > 0 {
+            assert!(!y.is_null());
+            assert!(incy != 0);
+        }
+    }
+    'server_extra_recv: {
+        let n_usize = if n > 0 {
+            usize::try_from(n).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let mut packed = vec![0u8; n_usize * elem_size];
+        let y_arg = if packed.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            packed.as_mut_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasGetVector(n, elemSize, x, incx, y_arg, 1) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            send_slice(&packed, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert_eq!(packed.len(), n_usize * elem_size);
+            for i in 0..n_usize {
+                let dst = unsafe {
+                    y.cast::<u8>()
+                        .offset(isize::try_from(i).unwrap() * incy_isize * elem_size_isize)
+                };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        packed.as_ptr().add(i * elem_size),
+                        dst,
+                        elem_size,
+                    );
+                }
+            }
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 1119, async_api)]
 fn cublasSetMathMode(handle: cublasHandle_t, mode: cublasMath_t) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1121)]
+fn cublasSetVector_64(
+    n: i64,
+    elemSize: i64,
+    #[skip] x: *const c_void,
+    incx: i64,
+    #[device] devicePtr: *mut c_void,
+    incy: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let n_usize = if n > 0 {
+            usize::try_from(n).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let incx_isize = isize::try_from(incx).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        let mut packed = vec![0u8; n_usize * elem_size];
+        if !packed.is_empty() {
+            assert!(!x.is_null());
+            assert!(incx != 0);
+            for i in 0..n_usize {
+                let src = unsafe {
+                    x.cast::<u8>()
+                        .offset(isize::try_from(i).unwrap() * incx_isize * elem_size_isize)
+                };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        src,
+                        packed.as_mut_ptr().add(i * elem_size),
+                        elem_size,
+                    );
+                }
+            }
+        }
+    }
+    'client_extra_send: {
+        send_slice(&packed, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+        let x_arg = if packed.is_empty() {
+            std::ptr::null()
+        } else {
+            packed.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSetVector_64(n, elemSize, x_arg, 1, devicePtr, incy) };
+    }
+}
+
+#[cuda_hook(proc_id = 1122)]
+fn cublasGetVector_64(
+    n: i64,
+    elemSize: i64,
+    #[device] x: *const c_void,
+    incx: i64,
+    #[skip] y: *mut c_void,
+    incy: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let n_usize = if n > 0 {
+            usize::try_from(n).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let incy_isize = isize::try_from(incy).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        if n_usize * elem_size > 0 {
+            assert!(!y.is_null());
+            assert!(incy != 0);
+        }
+    }
+    'server_extra_recv: {
+        let n_usize = if n > 0 {
+            usize::try_from(n).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let mut packed = vec![0u8; n_usize * elem_size];
+        let y_arg = if packed.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            packed.as_mut_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasGetVector_64(n, elemSize, x, incx, y_arg, 1) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            send_slice(&packed, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert_eq!(packed.len(), n_usize * elem_size);
+            for i in 0..n_usize {
+                let dst = unsafe {
+                    y.cast::<u8>()
+                        .offset(isize::try_from(i).unwrap() * incy_isize * elem_size_isize)
+                };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        packed.as_ptr().add(i * elem_size),
+                        dst,
+                        elem_size,
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1123)]
+fn cublasGetSmCountTarget(handle: cublasHandle_t, smCountTarget: *mut c_int) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1124)]
+fn cublasSetSmCountTarget(handle: cublasHandle_t, smCountTarget: c_int) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1125)]
+fn cublasGetVersion(version: *mut c_int) -> cublasStatus_t;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn cublasGetStatusName(status: cublasStatus_t) -> *const c_char;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn cublasGetStatusString(status: cublasStatus_t) -> *const c_char;
 
 #[cuda_hook(proc_id = 1300, async_api)]
 fn cublasSgemm_v2(
