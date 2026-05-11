@@ -330,6 +330,16 @@ fn cublasLtMatrixLayoutCreate(
     ld: i64,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1551)]
+fn cublasLtGroupedMatrixLayoutCreate(
+    matLayout: *mut cublasLtMatrixLayout_t,
+    type_: cudaDataType,
+    groupCount: c_int,
+    #[device] rows_array: *const c_void,
+    #[device] cols_array: *const c_void,
+    #[device] ld_array: *const c_void,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1531)]
 fn cublasLtMatrixLayoutDestroy(matLayout: cublasLtMatrixLayout_t) -> cublasStatus_t;
 
