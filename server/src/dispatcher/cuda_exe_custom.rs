@@ -267,9 +267,7 @@ pub fn cuMemExportToShareableHandleExe<C: CommChannel>(server: &mut ServerWorker
                 )
             };
             if result == CUresult::CUDA_SUCCESS {
-                synthetic_fd = server.next_shareable_handle;
-                server.next_shareable_handle += 1;
-                server.shareable_handles.insert(synthetic_fd, server_fd);
+                synthetic_fd = server.insert_shareable_handle(server_fd);
             }
             result
         } else {
@@ -297,7 +295,7 @@ pub fn cuMemImportFromShareableHandleExe<C: CommChannel>(server: &mut ServerWork
     let mut handle = 0;
     let result =
         if handle_type == CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
-            if let Some(server_fd) = server.shareable_handles.remove(&synthetic_fd) {
+            if let Some(server_fd) = server.take_shareable_handle(synthetic_fd) {
                 let result = unsafe {
                     cuMemImportFromShareableHandle(
                         &mut handle,
@@ -310,7 +308,7 @@ pub fn cuMemImportFromShareableHandleExe<C: CommChannel>(server: &mut ServerWork
                         libc::close(server_fd);
                     }
                 } else {
-                    server.shareable_handles.insert(synthetic_fd, server_fd);
+                    server.restore_shareable_handle(synthetic_fd, server_fd);
                 }
                 result
             } else {
@@ -445,6 +443,134 @@ pub fn cuMemPoolGetAccessExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let result = unsafe { cuMemPoolGetAccess(&raw mut flags, pool, &raw mut location) };
     flags.send(channel_sender).unwrap();
     send_result("cuMemPoolGetAccess", server.id, result, channel_sender);
+}
+
+pub fn cuMemPoolExportToShareableHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuMemPoolExportToShareableHandle", "[#{}]", server.id);
+
+    let mut pool = std::mem::MaybeUninit::<CUmemoryPool>::uninit();
+    pool.recv(&server.channel_receiver).unwrap();
+    let pool = unsafe { pool.assume_init() };
+    let mut handle_type = CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_NONE;
+    handle_type.recv(&server.channel_receiver).unwrap();
+    let mut flags = 0u64;
+    flags.recv(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut synthetic_fd = -1 as c_int;
+    let result =
+        if handle_type == CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
+            let mut server_fd = -1 as c_int;
+            let result = unsafe {
+                cuMemPoolExportToShareableHandle(
+                    (&mut server_fd as *mut c_int).cast(),
+                    pool,
+                    handle_type,
+                    flags,
+                )
+            };
+            if result == CUresult::CUDA_SUCCESS {
+                synthetic_fd = server.insert_shareable_handle(server_fd);
+            }
+            result
+        } else {
+            CUresult::CUDA_ERROR_NOT_SUPPORTED
+        };
+
+    synthetic_fd.send(&server.channel_sender).unwrap();
+    send_result(
+        "cuMemPoolExportToShareableHandle",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuMemPoolImportFromShareableHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuMemPoolImportFromShareableHandle", "[#{}]", server.id);
+
+    let mut synthetic_fd = -1 as c_int;
+    synthetic_fd.recv(&server.channel_receiver).unwrap();
+    let mut handle_type = CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_NONE;
+    handle_type.recv(&server.channel_receiver).unwrap();
+    let mut flags = 0u64;
+    flags.recv(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut pool = std::ptr::null_mut();
+    let result =
+        if handle_type == CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
+            if let Some(server_fd) = server.take_shareable_handle(synthetic_fd) {
+                let result = unsafe {
+                    cuMemPoolImportFromShareableHandle(
+                        &mut pool,
+                        server_fd as isize as *mut c_void,
+                        handle_type,
+                        flags,
+                    )
+                };
+                if result == CUresult::CUDA_SUCCESS {
+                    unsafe {
+                        libc::close(server_fd);
+                    }
+                } else {
+                    server.restore_shareable_handle(synthetic_fd, server_fd);
+                }
+                result
+            } else {
+                CUresult::CUDA_ERROR_INVALID_VALUE
+            }
+        } else {
+            CUresult::CUDA_ERROR_NOT_SUPPORTED
+        };
+
+    pool.send(&server.channel_sender).unwrap();
+    send_result(
+        "cuMemPoolImportFromShareableHandle",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuMemPoolExportPointerExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuMemPoolExportPointer", "[#{}]", server.id);
+
+    let mut ptr = 0;
+    ptr.recv(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut share_data = unsafe { std::mem::zeroed::<CUmemPoolPtrExportData>() };
+    let result = unsafe { cuMemPoolExportPointer(&mut share_data, ptr) };
+    share_data.send(&server.channel_sender).unwrap();
+    send_result(
+        "cuMemPoolExportPointer",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuMemPoolImportPointerExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuMemPoolImportPointer", "[#{}]", server.id);
+
+    let mut pool = std::mem::MaybeUninit::<CUmemoryPool>::uninit();
+    pool.recv(&server.channel_receiver).unwrap();
+    let pool = unsafe { pool.assume_init() };
+    let mut share_data = std::mem::MaybeUninit::<CUmemPoolPtrExportData>::uninit();
+    share_data.recv(&server.channel_receiver).unwrap();
+    let mut share_data = unsafe { share_data.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut ptr = 0;
+    let result = unsafe { cuMemPoolImportPointer(&mut ptr, pool, &mut share_data) };
+    ptr.send(&server.channel_sender).unwrap();
+    send_result(
+        "cuMemPoolImportPointer",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
 }
 
 pub fn cuTexObjectCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {

@@ -1816,6 +1816,35 @@ fn cudaMemPoolGetAccess(
     #[host(input, len = 1)] location: *mut cudaMemLocation,
 ) -> cudaError_t;
 
+#[cuda_custom_hook(proc_id = 901112)]
+fn cudaMemPoolExportToShareableHandle(
+    shareableHandle: *mut c_void,
+    memPool: cudaMemPool_t,
+    handleType: cudaMemAllocationHandleType,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901113)]
+fn cudaMemPoolImportFromShareableHandle(
+    memPool: *mut cudaMemPool_t,
+    shareableHandle: *mut c_void,
+    handleType: cudaMemAllocationHandleType,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901114)]
+fn cudaMemPoolExportPointer(
+    exportData: *mut cudaMemPoolPtrExportData,
+    ptr: *mut c_void,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901115)]
+fn cudaMemPoolImportPointer(
+    ptr: *mut *mut c_void,
+    memPool: cudaMemPool_t,
+    exportData: *mut cudaMemPoolPtrExportData,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900446)]
 fn cudaMallocFromPoolAsync(
     ptr: *mut *mut c_void,

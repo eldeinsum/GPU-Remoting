@@ -2370,6 +2370,35 @@ fn cuMemPoolGetAccess(
     location: *mut CUmemLocation,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901108)]
+fn cuMemPoolExportToShareableHandle(
+    handle_out: *mut c_void,
+    pool: CUmemoryPool,
+    handleType: CUmemAllocationHandleType,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901109)]
+fn cuMemPoolImportFromShareableHandle(
+    pool_out: *mut CUmemoryPool,
+    handle: *mut c_void,
+    handleType: CUmemAllocationHandleType,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901110)]
+fn cuMemPoolExportPointer(
+    shareData_out: *mut CUmemPoolPtrExportData,
+    ptr: CUdeviceptr,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901111)]
+fn cuMemPoolImportPointer(
+    ptr_out: *mut CUdeviceptr,
+    pool: CUmemoryPool,
+    shareData: *mut CUmemPoolPtrExportData,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900439)]
 fn cuMemAllocFromPoolAsync(
     dptr: *mut CUdeviceptr,

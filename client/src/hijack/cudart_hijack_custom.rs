@@ -123,6 +123,138 @@ pub extern "C" fn cudaMemRangeGetAttributes(
 }
 
 #[no_mangle]
+pub extern "C" fn cudaMemPoolExportToShareableHandle(
+    shareableHandle: *mut c_void,
+    memPool: cudaMemPool_t,
+    handleType: cudaMemAllocationHandleType,
+    flags: c_uint,
+) -> cudaError_t {
+    if shareableHandle.is_null() || memPool.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if handleType != cudaMemAllocationHandleType::cudaMemHandleTypePosixFileDescriptor {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaMemPoolExportToShareableHandle", "[#{}]", client.id);
+
+        901112.send(&client.channel_sender).unwrap();
+        memPool.send(&client.channel_sender).unwrap();
+        handleType.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut synthetic_fd = -1 as c_int;
+        synthetic_fd.recv(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaMemPoolExportToShareableHandle",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            unsafe {
+                *shareableHandle.cast::<c_int>() = synthetic_fd;
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemPoolImportFromShareableHandle(
+    memPool: *mut cudaMemPool_t,
+    shareableHandle: *mut c_void,
+    handleType: cudaMemAllocationHandleType,
+    flags: c_uint,
+) -> cudaError_t {
+    if memPool.is_null() || shareableHandle.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if handleType != cudaMemAllocationHandleType::cudaMemHandleTypePosixFileDescriptor {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let synthetic_fd = shareableHandle as isize as c_int;
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaMemPoolImportFromShareableHandle", "[#{}]", client.id);
+
+        901113.send(&client.channel_sender).unwrap();
+        synthetic_fd.send(&client.channel_sender).unwrap();
+        handleType.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *memPool }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaMemPoolImportFromShareableHandle",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemPoolExportPointer(
+    exportData: *mut cudaMemPoolPtrExportData,
+    ptr: *mut c_void,
+) -> cudaError_t {
+    if exportData.is_null() || ptr.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaMemPoolExportPointer", "[#{}]", client.id);
+
+        901114.send(&client.channel_sender).unwrap();
+        ptr.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *exportData }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaMemPoolExportPointer",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaMemPoolImportPointer(
+    ptr: *mut *mut c_void,
+    memPool: cudaMemPool_t,
+    exportData: *mut cudaMemPoolPtrExportData,
+) -> cudaError_t {
+    if ptr.is_null() || memPool.is_null() || exportData.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaMemPoolImportPointer", "[#{}]", client.id);
+
+        901115.send(&client.channel_sender).unwrap();
+        memPool.send(&client.channel_sender).unwrap();
+        unsafe { &*exportData }.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *ptr }.recv(&client.channel_receiver).unwrap();
+        recv_cuda_result(
+            "cudaMemPoolImportPointer",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn cudaCreateTextureObject(
     pTexObject: *mut cudaTextureObject_t,
     pResDesc: *const cudaResourceDesc,

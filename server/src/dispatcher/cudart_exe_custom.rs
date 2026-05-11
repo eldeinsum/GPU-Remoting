@@ -4,7 +4,7 @@ use super::*;
 use cudasys::cudart::*;
 use cudasys::types::cuda::{CUDA_KERNEL_NODE_PARAMS, CUgraph, CUgraphExec, CUgraphNode, CUresult};
 use std::collections::BTreeMap;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Default)]
@@ -96,6 +96,135 @@ pub fn cudaMemRangeGetAttributesExe<C: CommChannel>(server: &mut ServerWorker<C>
         server.id,
         result,
         channel_sender,
+    );
+}
+
+pub fn cudaMemPoolExportToShareableHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cudaMemPoolExportToShareableHandle", "[#{}]", server.id);
+
+    let mut mem_pool = std::mem::MaybeUninit::<cudaMemPool_t>::uninit();
+    mem_pool.recv(&server.channel_receiver).unwrap();
+    let mem_pool = unsafe { mem_pool.assume_init() };
+    let mut handle_type = cudaMemAllocationHandleType::cudaMemHandleTypeNone;
+    handle_type.recv(&server.channel_receiver).unwrap();
+    let mut flags = 0u32;
+    flags.recv(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut synthetic_fd = -1 as c_int;
+    let result = if handle_type == cudaMemAllocationHandleType::cudaMemHandleTypePosixFileDescriptor
+    {
+        let mut server_fd = -1 as c_int;
+        let result = unsafe {
+            cudaMemPoolExportToShareableHandle(
+                (&mut server_fd as *mut c_int).cast(),
+                mem_pool,
+                handle_type,
+                flags,
+            )
+        };
+        if result == cudaError_t::cudaSuccess {
+            synthetic_fd = server.insert_shareable_handle(server_fd);
+        }
+        result
+    } else {
+        cudaError_t::cudaErrorNotSupported
+    };
+
+    synthetic_fd.send(&server.channel_sender).unwrap();
+    send_result(
+        "cudaMemPoolExportToShareableHandle",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cudaMemPoolImportFromShareableHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cudaMemPoolImportFromShareableHandle", "[#{}]", server.id);
+
+    let mut synthetic_fd = -1 as c_int;
+    synthetic_fd.recv(&server.channel_receiver).unwrap();
+    let mut handle_type = cudaMemAllocationHandleType::cudaMemHandleTypeNone;
+    handle_type.recv(&server.channel_receiver).unwrap();
+    let mut flags = 0u32;
+    flags.recv(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut mem_pool = std::ptr::null_mut();
+    let result = if handle_type == cudaMemAllocationHandleType::cudaMemHandleTypePosixFileDescriptor
+    {
+        if let Some(server_fd) = server.take_shareable_handle(synthetic_fd) {
+            let result = unsafe {
+                cudaMemPoolImportFromShareableHandle(
+                    &mut mem_pool,
+                    server_fd as isize as *mut c_void,
+                    handle_type,
+                    flags,
+                )
+            };
+            if result == cudaError_t::cudaSuccess {
+                unsafe {
+                    libc::close(server_fd);
+                }
+            } else {
+                server.restore_shareable_handle(synthetic_fd, server_fd);
+            }
+            result
+        } else {
+            cudaError_t::cudaErrorInvalidValue
+        }
+    } else {
+        cudaError_t::cudaErrorNotSupported
+    };
+
+    mem_pool.send(&server.channel_sender).unwrap();
+    send_result(
+        "cudaMemPoolImportFromShareableHandle",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cudaMemPoolExportPointerExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cudaMemPoolExportPointer", "[#{}]", server.id);
+
+    let mut ptr = std::mem::MaybeUninit::<*mut c_void>::uninit();
+    ptr.recv(&server.channel_receiver).unwrap();
+    let ptr = unsafe { ptr.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut export_data = unsafe { std::mem::zeroed::<cudaMemPoolPtrExportData>() };
+    let result = unsafe { cudaMemPoolExportPointer(&mut export_data, ptr) };
+    export_data.send(&server.channel_sender).unwrap();
+    send_result(
+        "cudaMemPoolExportPointer",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cudaMemPoolImportPointerExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cudaMemPoolImportPointer", "[#{}]", server.id);
+
+    let mut mem_pool = std::mem::MaybeUninit::<cudaMemPool_t>::uninit();
+    mem_pool.recv(&server.channel_receiver).unwrap();
+    let mem_pool = unsafe { mem_pool.assume_init() };
+    let mut export_data = std::mem::MaybeUninit::<cudaMemPoolPtrExportData>::uninit();
+    export_data.recv(&server.channel_receiver).unwrap();
+    let mut export_data = unsafe { export_data.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut ptr = std::ptr::null_mut();
+    let result = unsafe { cudaMemPoolImportPointer(&mut ptr, mem_pool, &mut export_data) };
+    ptr.send(&server.channel_sender).unwrap();
+    send_result(
+        "cudaMemPoolImportPointer",
+        server.id,
+        result,
+        &server.channel_sender,
     );
 }
 

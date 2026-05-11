@@ -1,8 +1,10 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <unistd.h>
 
 #define CHECK_CUDA(call)                                                       \
     do {                                                                       \
@@ -132,6 +134,76 @@ int main()
     CHECK_CUDA(cudaFreeAsync(runtime_ptr, runtime_stream));
     CHECK_CUDA(cudaStreamSynchronize(runtime_stream));
     CHECK_CUDA(cudaStreamDestroy(runtime_stream));
+
+    int runtime_pool_handle_types = 0;
+    CHECK_CUDA(cudaDeviceGetAttribute(
+        &runtime_pool_handle_types, cudaDevAttrMemoryPoolSupportedHandleTypes,
+        0));
+    if (runtime_pool_handle_types & cudaMemHandleTypePosixFileDescriptor) {
+        cudaMemPoolProps runtime_ipc_props = runtime_pool_props;
+        runtime_ipc_props.handleTypes = cudaMemHandleTypePosixFileDescriptor;
+
+        cudaMemPool_t runtime_ipc_pool = nullptr;
+        CHECK_CUDA(cudaMemPoolCreate(&runtime_ipc_pool, &runtime_ipc_props));
+
+        int runtime_exported_fd = -1;
+        CHECK_CUDA(cudaMemPoolExportToShareableHandle(
+            &runtime_exported_fd, runtime_ipc_pool,
+            cudaMemHandleTypePosixFileDescriptor, 0));
+        if (runtime_exported_fd < 0) {
+            std::fprintf(stderr, "invalid runtime mempool fd %d\n",
+                         runtime_exported_fd);
+            return 1;
+        }
+
+        cudaMemPool_t runtime_imported_pool = nullptr;
+        CHECK_CUDA(cudaMemPoolImportFromShareableHandle(
+            &runtime_imported_pool,
+            reinterpret_cast<void *>(
+                static_cast<intptr_t>(runtime_exported_fd)),
+            cudaMemHandleTypePosixFileDescriptor, 0));
+        close(runtime_exported_fd);
+
+        runtime_stream = nullptr;
+        void *runtime_exported_ptr = nullptr;
+        CHECK_CUDA(cudaStreamCreate(&runtime_stream));
+        CHECK_CUDA(cudaMallocFromPoolAsync(
+            &runtime_exported_ptr, 64, runtime_ipc_pool, runtime_stream));
+        CHECK_CUDA(cudaMemsetAsync(runtime_exported_ptr, 0x4c, 64,
+                                   runtime_stream));
+        CHECK_CUDA(cudaStreamSynchronize(runtime_stream));
+
+        cudaMemPoolPtrExportData runtime_export_data = {};
+        CHECK_CUDA(cudaMemPoolExportPointer(&runtime_export_data,
+                                            runtime_exported_ptr));
+
+        void *runtime_imported_ptr = nullptr;
+        CHECK_CUDA(cudaMemPoolImportPointer(
+            &runtime_imported_ptr, runtime_imported_pool,
+            &runtime_export_data));
+        if (runtime_imported_ptr == nullptr) {
+            return 1;
+        }
+
+        std::array<unsigned char, 64> runtime_host = {};
+        CHECK_CUDA(cudaMemcpy(runtime_host.data(), runtime_imported_ptr,
+                              runtime_host.size(), cudaMemcpyDeviceToHost));
+        for (unsigned char value : runtime_host) {
+            if (value != 0x4c) {
+                return 1;
+            }
+        }
+
+        CHECK_CUDA(cudaFree(runtime_imported_ptr));
+        CHECK_CUDA(cudaFreeAsync(runtime_exported_ptr, runtime_stream));
+        CHECK_CUDA(cudaStreamSynchronize(runtime_stream));
+        CHECK_CUDA(cudaStreamDestroy(runtime_stream));
+        CHECK_CUDA(cudaMemPoolDestroy(runtime_imported_pool));
+        CHECK_CUDA(cudaMemPoolDestroy(runtime_ipc_pool));
+    } else {
+        std::puts("runtime POSIX memory pool handles unsupported on this device");
+    }
+
     CHECK_CUDA(cudaMemSetMemPool(
         &runtime_location, cudaMemAllocationTypePinned,
         runtime_location_default_pool));
@@ -234,6 +306,72 @@ int main()
     CHECK_DRV(cuMemFreeAsync(driver_ptr, driver_stream));
     CHECK_DRV(cuStreamSynchronize(driver_stream));
     CHECK_DRV(cuStreamDestroy(driver_stream));
+
+    if (runtime_pool_handle_types & cudaMemHandleTypePosixFileDescriptor) {
+        CUmemPoolProps driver_ipc_props = driver_pool_props;
+        driver_ipc_props.handleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+
+        CUmemoryPool driver_ipc_pool = nullptr;
+        CHECK_DRV(cuMemPoolCreate(&driver_ipc_pool, &driver_ipc_props));
+
+        int driver_exported_fd = -1;
+        CHECK_DRV(cuMemPoolExportToShareableHandle(
+            &driver_exported_fd, driver_ipc_pool,
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+        if (driver_exported_fd < 0) {
+            std::fprintf(stderr, "invalid driver mempool fd %d\n",
+                         driver_exported_fd);
+            return 1;
+        }
+
+        CUmemoryPool driver_imported_pool = nullptr;
+        CHECK_DRV(cuMemPoolImportFromShareableHandle(
+            &driver_imported_pool,
+            reinterpret_cast<void *>(
+                static_cast<intptr_t>(driver_exported_fd)),
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+        close(driver_exported_fd);
+
+        driver_stream = nullptr;
+        CUdeviceptr driver_exported_ptr = 0;
+        CHECK_DRV(cuStreamCreate(&driver_stream, CU_STREAM_DEFAULT));
+        CHECK_DRV(cuMemAllocFromPoolAsync(
+            &driver_exported_ptr, 64, driver_ipc_pool, driver_stream));
+        CHECK_DRV(cuMemsetD8Async(driver_exported_ptr, 0x7d, 64,
+                                  driver_stream));
+        CHECK_DRV(cuStreamSynchronize(driver_stream));
+
+        CUmemPoolPtrExportData driver_export_data = {};
+        CHECK_DRV(cuMemPoolExportPointer(&driver_export_data,
+                                         driver_exported_ptr));
+
+        CUdeviceptr driver_imported_ptr = 0;
+        CHECK_DRV(cuMemPoolImportPointer(
+            &driver_imported_ptr, driver_imported_pool,
+            &driver_export_data));
+        if (driver_imported_ptr == 0) {
+            return 1;
+        }
+
+        std::array<unsigned char, 64> driver_host = {};
+        CHECK_DRV(cuMemcpyDtoH(driver_host.data(), driver_imported_ptr,
+                               driver_host.size()));
+        for (unsigned char value : driver_host) {
+            if (value != 0x7d) {
+                return 1;
+            }
+        }
+
+        CHECK_DRV(cuMemFree(driver_imported_ptr));
+        CHECK_DRV(cuMemFreeAsync(driver_exported_ptr, driver_stream));
+        CHECK_DRV(cuStreamSynchronize(driver_stream));
+        CHECK_DRV(cuStreamDestroy(driver_stream));
+        CHECK_DRV(cuMemPoolDestroy(driver_imported_pool));
+        CHECK_DRV(cuMemPoolDestroy(driver_ipc_pool));
+    } else {
+        std::puts("driver POSIX memory pool handles unsupported on this device");
+    }
+
     CHECK_DRV(cuMemSetMemPool(
         &driver_location, CU_MEM_ALLOCATION_TYPE_PINNED,
         driver_location_default_pool));

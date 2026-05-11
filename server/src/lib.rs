@@ -33,6 +33,23 @@ struct ServerWorker<C> {
     opt_shadow_desc: bool,
 }
 
+impl<C> ServerWorker<C> {
+    fn insert_shareable_handle(&mut self, fd: c_int) -> c_int {
+        let synthetic_fd = self.next_shareable_handle;
+        self.next_shareable_handle += 1;
+        self.shareable_handles.insert(synthetic_fd, fd);
+        synthetic_fd
+    }
+
+    fn take_shareable_handle(&mut self, synthetic_fd: c_int) -> Option<c_int> {
+        self.shareable_handles.remove(&synthetic_fd)
+    }
+
+    fn restore_shareable_handle(&mut self, synthetic_fd: c_int, fd: c_int) {
+        self.shareable_handles.insert(synthetic_fd, fd);
+    }
+}
+
 impl<C> Drop for ServerWorker<C> {
     fn drop(&mut self) {
         for module in &self.modules {

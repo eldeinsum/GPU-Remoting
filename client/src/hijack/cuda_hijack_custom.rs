@@ -680,6 +680,132 @@ extern "C" fn cuMemPoolGetAccess(
 }
 
 #[no_mangle]
+extern "C" fn cuMemPoolExportToShareableHandle(
+    handle_out: *mut c_void,
+    pool: CUmemoryPool,
+    handleType: CUmemAllocationHandleType,
+    flags: c_ulonglong,
+) -> CUresult {
+    if handle_out.is_null() || pool.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if handleType != CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolExportToShareableHandle", "[#{}]", client.id);
+
+        901108.send(&client.channel_sender).unwrap();
+        pool.send(&client.channel_sender).unwrap();
+        handleType.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut synthetic_fd = -1 as c_int;
+        synthetic_fd.recv(&client.channel_receiver).unwrap();
+        let result = recv_cu_result(
+            "cuMemPoolExportToShareableHandle",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == CUresult::CUDA_SUCCESS {
+            unsafe {
+                *handle_out.cast::<c_int>() = synthetic_fd;
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemPoolImportFromShareableHandle(
+    pool_out: *mut CUmemoryPool,
+    handle: *mut c_void,
+    handleType: CUmemAllocationHandleType,
+    flags: c_ulonglong,
+) -> CUresult {
+    if pool_out.is_null() || handle.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if handleType != CUmemAllocationHandleType::CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+    let synthetic_fd = handle as isize as c_int;
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolImportFromShareableHandle", "[#{}]", client.id);
+
+        901109.send(&client.channel_sender).unwrap();
+        synthetic_fd.send(&client.channel_sender).unwrap();
+        handleType.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pool_out }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result(
+            "cuMemPoolImportFromShareableHandle",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemPoolExportPointer(
+    shareData_out: *mut CUmemPoolPtrExportData,
+    ptr: CUdeviceptr,
+) -> CUresult {
+    if shareData_out.is_null() || ptr == 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolExportPointer", "[#{}]", client.id);
+
+        901110.send(&client.channel_sender).unwrap();
+        ptr.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *shareData_out }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuMemPoolExportPointer", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemPoolImportPointer(
+    ptr_out: *mut CUdeviceptr,
+    pool: CUmemoryPool,
+    shareData: *mut CUmemPoolPtrExportData,
+) -> CUresult {
+    if ptr_out.is_null() || pool.is_null() || shareData.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolImportPointer", "[#{}]", client.id);
+
+        901111.send(&client.channel_sender).unwrap();
+        pool.send(&client.channel_sender).unwrap();
+        unsafe { &*shareData }.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *ptr_out }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuMemPoolImportPointer", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuTexObjectCreate(
     pTexObject: *mut CUtexObject,
     pResDesc: *const CUDA_RESOURCE_DESC,
