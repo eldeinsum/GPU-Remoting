@@ -972,6 +972,1294 @@ fn cublasZgemv_v2_64(
     }
 }
 
+#[cuda_hook(proc_id = 1294, async_api)]
+fn cublasSgemvBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const f32,
+    #[device] Aarray: *const *const f32,
+    lda: c_int,
+    #[device] xarray: *const *const f32,
+    incx: c_int,
+    #[skip] beta: *const f32,
+    #[device] yarray: *const *mut f32,
+    incy: c_int,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f32;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f32
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasSgemvBatched(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1295, async_api)]
+fn cublasSgemvBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const f32,
+    #[device] Aarray: *const *const f32,
+    lda: i64,
+    #[device] xarray: *const *const f32,
+    incx: i64,
+    #[skip] beta: *const f32,
+    #[device] yarray: *const *mut f32,
+    incy: i64,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f32;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f32
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasSgemvBatched_64(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1296, async_api)]
+fn cublasDgemvBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const f64,
+    #[device] Aarray: *const *const f64,
+    lda: c_int,
+    #[device] xarray: *const *const f64,
+    incx: c_int,
+    #[skip] beta: *const f64,
+    #[device] yarray: *const *mut f64,
+    incy: c_int,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f64;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f64
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasDgemvBatched(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1297, async_api)]
+fn cublasDgemvBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const f64,
+    #[device] Aarray: *const *const f64,
+    lda: i64,
+    #[device] xarray: *const *const f64,
+    incx: i64,
+    #[skip] beta: *const f64,
+    #[device] yarray: *const *mut f64,
+    incy: i64,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f64;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f64
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasDgemvBatched_64(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1298, async_api)]
+fn cublasCgemvBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const cuComplex,
+    #[device] Aarray: *const *const cuComplex,
+    lda: c_int,
+    #[device] xarray: *const *const cuComplex,
+    incx: c_int,
+    #[skip] beta: *const cuComplex,
+    #[device] yarray: *const *mut cuComplex,
+    incy: c_int,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasCgemvBatched(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1299, async_api)]
+fn cublasCgemvBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const cuComplex,
+    #[device] Aarray: *const *const cuComplex,
+    lda: i64,
+    #[device] xarray: *const *const cuComplex,
+    incx: i64,
+    #[skip] beta: *const cuComplex,
+    #[device] yarray: *const *mut cuComplex,
+    incy: i64,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasCgemvBatched_64(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1301, async_api)]
+fn cublasZgemvBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const cuDoubleComplex,
+    #[device] Aarray: *const *const cuDoubleComplex,
+    lda: c_int,
+    #[device] xarray: *const *const cuDoubleComplex,
+    incx: c_int,
+    #[skip] beta: *const cuDoubleComplex,
+    #[device] yarray: *const *mut cuDoubleComplex,
+    incy: c_int,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuDoubleComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuDoubleComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasZgemvBatched(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1302, async_api)]
+fn cublasZgemvBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const cuDoubleComplex,
+    #[device] Aarray: *const *const cuDoubleComplex,
+    lda: i64,
+    #[device] xarray: *const *const cuDoubleComplex,
+    incx: i64,
+    #[skip] beta: *const cuDoubleComplex,
+    #[device] yarray: *const *mut cuDoubleComplex,
+    incy: i64,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuDoubleComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuDoubleComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasZgemvBatched_64(
+                handle, trans, m, n, alpha_arg, Aarray, lda, xarray, incx, beta_arg, yarray, incy,
+                batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1303, async_api)]
+fn cublasSgemvStridedBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const f32,
+    #[device] A: *const f32,
+    lda: c_int,
+    strideA: c_longlong,
+    #[device] x: *const f32,
+    incx: c_int,
+    stridex: c_longlong,
+    #[skip] beta: *const f32,
+    #[device] y: *mut f32,
+    incy: c_int,
+    stridey: c_longlong,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f32;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f32
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasSgemvStridedBatched(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1304, async_api)]
+fn cublasSgemvStridedBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const f32,
+    #[device] A: *const f32,
+    lda: i64,
+    strideA: c_longlong,
+    #[device] x: *const f32,
+    incx: i64,
+    stridex: c_longlong,
+    #[skip] beta: *const f32,
+    #[device] y: *mut f32,
+    incy: i64,
+    stridey: c_longlong,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f32;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f32
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasSgemvStridedBatched_64(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1305, async_api)]
+fn cublasDgemvStridedBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const f64,
+    #[device] A: *const f64,
+    lda: c_int,
+    strideA: c_longlong,
+    #[device] x: *const f64,
+    incx: c_int,
+    stridex: c_longlong,
+    #[skip] beta: *const f64,
+    #[device] y: *mut f64,
+    incy: c_int,
+    stridey: c_longlong,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f64;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f64
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasDgemvStridedBatched(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1306, async_api)]
+fn cublasDgemvStridedBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const f64,
+    #[device] A: *const f64,
+    lda: i64,
+    strideA: c_longlong,
+    #[device] x: *const f64,
+    incx: i64,
+    stridex: c_longlong,
+    #[skip] beta: *const f64,
+    #[device] y: *mut f64,
+    incy: i64,
+    stridey: c_longlong,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            0.0
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = 0.0f64;
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const f64
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasDgemvStridedBatched_64(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1307, async_api)]
+fn cublasCgemvStridedBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const cuComplex,
+    #[device] A: *const cuComplex,
+    lda: c_int,
+    strideA: c_longlong,
+    #[device] x: *const cuComplex,
+    incx: c_int,
+    stridex: c_longlong,
+    #[skip] beta: *const cuComplex,
+    #[device] y: *mut cuComplex,
+    incy: c_int,
+    stridey: c_longlong,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasCgemvStridedBatched(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1308, async_api)]
+fn cublasCgemvStridedBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const cuComplex,
+    #[device] A: *const cuComplex,
+    lda: i64,
+    strideA: c_longlong,
+    #[device] x: *const cuComplex,
+    incx: i64,
+    stridex: c_longlong,
+    #[skip] beta: *const cuComplex,
+    #[device] y: *mut cuComplex,
+    incy: i64,
+    stridey: c_longlong,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasCgemvStridedBatched_64(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1309, async_api)]
+fn cublasZgemvStridedBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    #[skip] alpha: *const cuDoubleComplex,
+    #[device] A: *const cuDoubleComplex,
+    lda: c_int,
+    strideA: c_longlong,
+    #[device] x: *const cuDoubleComplex,
+    incx: c_int,
+    stridex: c_longlong,
+    #[skip] beta: *const cuDoubleComplex,
+    #[device] y: *mut cuDoubleComplex,
+    incy: c_int,
+    stridey: c_longlong,
+    batchCount: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuDoubleComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuDoubleComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasZgemvStridedBatched(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1310, async_api)]
+fn cublasZgemvStridedBatched_64(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: i64,
+    n: i64,
+    #[skip] alpha: *const cuDoubleComplex,
+    #[device] A: *const cuDoubleComplex,
+    lda: i64,
+    strideA: c_longlong,
+    #[device] x: *const cuDoubleComplex,
+    incx: i64,
+    stridex: c_longlong,
+    #[skip] beta: *const cuDoubleComplex,
+    #[device] y: *mut cuDoubleComplex,
+    incy: i64,
+    stridey: c_longlong,
+    batchCount: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let beta_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!beta.is_null());
+            unsafe { *beta }
+        };
+        let alpha_addr = alpha as usize;
+        let beta_addr = beta as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        beta_value.send(channel_sender).unwrap();
+        beta_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let mut beta_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        beta_value.recv(channel_receiver).unwrap();
+        let mut beta_addr = 0usize;
+        beta_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuDoubleComplex
+        } else {
+            &raw const alpha_value
+        };
+        let beta_arg = if device_pointer_mode {
+            beta_addr as *const cuDoubleComplex
+        } else {
+            &raw const beta_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasZgemvStridedBatched_64(
+                handle, trans, m, n, alpha_arg, A, lda, strideA, x, incx, stridex, beta_arg, y,
+                incy, stridey, batchCount,
+            )
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 1300, async_api)]
 fn cublasSgemm_v2(
     handle: cublasHandle_t,
