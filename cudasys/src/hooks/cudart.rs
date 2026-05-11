@@ -1329,6 +1329,50 @@ fn cudaFuncGetParamInfo(
 #[cuda_custom_hook] // calls driver API
 fn cudaFuncGetParamCount(func: *const c_void, paramCount: *mut usize) -> cudaError_t;
 
+#[cuda_custom_hook(proc_id = 900967)]
+fn cudaCreateTextureObject(
+    pTexObject: *mut cudaTextureObject_t,
+    pResDesc: *const cudaResourceDesc,
+    pTexDesc: *const cudaTextureDesc,
+    pResViewDesc: *const cudaResourceViewDesc,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900968)]
+fn cudaDestroyTextureObject(texObject: cudaTextureObject_t) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900969)]
+fn cudaGetTextureObjectResourceDesc(
+    pResDesc: *mut cudaResourceDesc,
+    texObject: cudaTextureObject_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900970)]
+fn cudaGetTextureObjectTextureDesc(
+    #[host(output, len = 1)] pTexDesc: *mut cudaTextureDesc,
+    texObject: cudaTextureObject_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900971)]
+fn cudaGetTextureObjectResourceViewDesc(
+    #[host(output, len = 1)] pResViewDesc: *mut cudaResourceViewDesc,
+    texObject: cudaTextureObject_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900972)]
+fn cudaCreateSurfaceObject(
+    pSurfObject: *mut cudaSurfaceObject_t,
+    pResDesc: *const cudaResourceDesc,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900973)]
+fn cudaDestroySurfaceObject(surfObject: cudaSurfaceObject_t) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 900974)]
+fn cudaGetSurfaceObjectResourceDesc(
+    pResDesc: *mut cudaResourceDesc,
+    surfObject: cudaSurfaceObject_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 230, parent = cudaFuncGetAttributes)]
 fn cudaFuncGetAttributesInternal(attr: *mut cudaFuncAttributes, func: CUfunction) -> cudaError_t {
     'server_execution: {

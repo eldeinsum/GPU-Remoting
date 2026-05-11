@@ -47,6 +47,113 @@ fn output_len(requested: bool, result: cudaError_t, count: usize, capacity: usiz
     }
 }
 
+pub fn cudaCreateTextureObjectExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaCreateTextureObject", "[#{}]", server.id);
+
+    let mut res_desc = std::mem::MaybeUninit::<cudaResourceDesc>::uninit();
+    res_desc.recv(channel_receiver).unwrap();
+    let res_desc = unsafe { res_desc.assume_init() };
+
+    let mut tex_desc = std::mem::MaybeUninit::<cudaTextureDesc>::uninit();
+    tex_desc.recv(channel_receiver).unwrap();
+    let tex_desc = unsafe { tex_desc.assume_init() };
+
+    let mut has_view_desc = false;
+    has_view_desc.recv(channel_receiver).unwrap();
+    let mut view_desc = std::mem::MaybeUninit::<cudaResourceViewDesc>::uninit();
+    let view_desc_ptr = if has_view_desc {
+        view_desc.recv(channel_receiver).unwrap();
+        unsafe { view_desc.assume_init_ref() as *const cudaResourceViewDesc }
+    } else {
+        std::ptr::null()
+    };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut tex_object = 0;
+    let result = unsafe {
+        cudaCreateTextureObject(
+            &raw mut tex_object,
+            &raw const res_desc,
+            &raw const tex_desc,
+            view_desc_ptr,
+        )
+    };
+    tex_object.send(channel_sender).unwrap();
+    send_result("cudaCreateTextureObject", server.id, result, channel_sender);
+}
+
+pub fn cudaGetTextureObjectResourceDescExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGetTextureObjectResourceDesc", "[#{}]", server.id);
+
+    let mut tex_object = std::mem::MaybeUninit::<cudaTextureObject_t>::uninit();
+    tex_object.recv(channel_receiver).unwrap();
+    let tex_object = unsafe { tex_object.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut res_desc = unsafe { std::mem::zeroed::<cudaResourceDesc>() };
+    let result = unsafe { cudaGetTextureObjectResourceDesc(&raw mut res_desc, tex_object) };
+    res_desc.send(channel_sender).unwrap();
+    send_result(
+        "cudaGetTextureObjectResourceDesc",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaCreateSurfaceObjectExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaCreateSurfaceObject", "[#{}]", server.id);
+
+    let mut res_desc = std::mem::MaybeUninit::<cudaResourceDesc>::uninit();
+    res_desc.recv(channel_receiver).unwrap();
+    let res_desc = unsafe { res_desc.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut surf_object = 0;
+    let result = unsafe { cudaCreateSurfaceObject(&raw mut surf_object, &raw const res_desc) };
+    surf_object.send(channel_sender).unwrap();
+    send_result("cudaCreateSurfaceObject", server.id, result, channel_sender);
+}
+
+pub fn cudaGetSurfaceObjectResourceDescExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGetSurfaceObjectResourceDesc", "[#{}]", server.id);
+
+    let mut surf_object = std::mem::MaybeUninit::<cudaSurfaceObject_t>::uninit();
+    surf_object.recv(channel_receiver).unwrap();
+    let surf_object = unsafe { surf_object.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut res_desc = unsafe { std::mem::zeroed::<cudaResourceDesc>() };
+    let result = unsafe { cudaGetSurfaceObjectResourceDesc(&raw mut res_desc, surf_object) };
+    res_desc.send(channel_sender).unwrap();
+    send_result(
+        "cudaGetSurfaceObjectResourceDesc",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
 fn driver_result_to_runtime(result: CUresult) -> cudaError_t {
     if result == CUresult::CUDA_SUCCESS {
         cudaError_t::cudaSuccess

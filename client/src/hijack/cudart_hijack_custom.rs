@@ -54,6 +54,136 @@ fn recv_cuda_result<C: CommChannel>(
     result
 }
 
+#[no_mangle]
+pub extern "C" fn cudaCreateTextureObject(
+    pTexObject: *mut cudaTextureObject_t,
+    pResDesc: *const cudaResourceDesc,
+    pTexDesc: *const cudaTextureDesc,
+    pResViewDesc: *const cudaResourceViewDesc,
+) -> cudaError_t {
+    if pTexObject.is_null() || pResDesc.is_null() || pTexDesc.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaCreateTextureObject", "[#{}]", client.id);
+
+        900967.send(&client.channel_sender).unwrap();
+        unsafe { &*pResDesc }.send(&client.channel_sender).unwrap();
+        unsafe { &*pTexDesc }.send(&client.channel_sender).unwrap();
+        let has_view_desc = !pResViewDesc.is_null();
+        has_view_desc.send(&client.channel_sender).unwrap();
+        if has_view_desc {
+            unsafe { &*pResViewDesc }
+                .send(&client.channel_sender)
+                .unwrap();
+        }
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pTexObject }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaCreateTextureObject",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetTextureObjectResourceDesc(
+    pResDesc: *mut cudaResourceDesc,
+    texObject: cudaTextureObject_t,
+) -> cudaError_t {
+    if pResDesc.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(
+            target: "cudaGetTextureObjectResourceDesc",
+            "[#{}]",
+            client.id
+        );
+
+        900969.send(&client.channel_sender).unwrap();
+        texObject.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pResDesc }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaGetTextureObjectResourceDesc",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaCreateSurfaceObject(
+    pSurfObject: *mut cudaSurfaceObject_t,
+    pResDesc: *const cudaResourceDesc,
+) -> cudaError_t {
+    if pSurfObject.is_null() || pResDesc.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaCreateSurfaceObject", "[#{}]", client.id);
+
+        900972.send(&client.channel_sender).unwrap();
+        unsafe { &*pResDesc }.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pSurfObject }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaCreateSurfaceObject",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGetSurfaceObjectResourceDesc(
+    pResDesc: *mut cudaResourceDesc,
+    surfObject: cudaSurfaceObject_t,
+) -> cudaError_t {
+    if pResDesc.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(
+            target: "cudaGetSurfaceObjectResourceDesc",
+            "[#{}]",
+            client.id
+        );
+
+        900974.send(&client.channel_sender).unwrap();
+        surfObject.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pResDesc }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaGetSurfaceObjectResourceDesc",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
 fn recv_graph_node_slice<C: CommChannel>(
     target: &'static str,
     dst: *mut cudaGraphNode_t,
