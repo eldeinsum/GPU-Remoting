@@ -775,6 +775,166 @@ fn cublasGetMatrix(
     ldb: c_int,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1126)]
+fn cublasScopy_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *const f32,
+    incx: c_int,
+    #[device] y: *mut f32,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1127)]
+fn cublasScopy_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *const f32,
+    incx: i64,
+    #[device] y: *mut f32,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1128)]
+fn cublasDcopy_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *const f64,
+    incx: c_int,
+    #[device] y: *mut f64,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1129)]
+fn cublasDcopy_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *const f64,
+    incx: i64,
+    #[device] y: *mut f64,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1130)]
+fn cublasCcopy_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *const cuComplex,
+    incx: c_int,
+    #[device] y: *mut cuComplex,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1131)]
+fn cublasCcopy_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *const cuComplex,
+    incx: i64,
+    #[device] y: *mut cuComplex,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1132)]
+fn cublasZcopy_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *const cuDoubleComplex,
+    incx: c_int,
+    #[device] y: *mut cuDoubleComplex,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1133)]
+fn cublasZcopy_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *const cuDoubleComplex,
+    incx: i64,
+    #[device] y: *mut cuDoubleComplex,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1134)]
+fn cublasSswap_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut f32,
+    incx: c_int,
+    #[device] y: *mut f32,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1135)]
+fn cublasSswap_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut f32,
+    incx: i64,
+    #[device] y: *mut f32,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1136)]
+fn cublasDswap_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut f64,
+    incx: c_int,
+    #[device] y: *mut f64,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1137)]
+fn cublasDswap_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut f64,
+    incx: i64,
+    #[device] y: *mut f64,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1138)]
+fn cublasCswap_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut cuComplex,
+    incx: c_int,
+    #[device] y: *mut cuComplex,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1139)]
+fn cublasCswap_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut cuComplex,
+    incx: i64,
+    #[device] y: *mut cuComplex,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1140)]
+fn cublasZswap_v2(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut cuDoubleComplex,
+    incx: c_int,
+    #[device] y: *mut cuDoubleComplex,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1141)]
+fn cublasZswap_v2_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut cuDoubleComplex,
+    incx: i64,
+    #[device] y: *mut cuDoubleComplex,
+    incy: i64,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1182)]
 fn cublasSscal_v2(
     handle: cublasHandle_t,
