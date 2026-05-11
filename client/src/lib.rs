@@ -301,6 +301,8 @@ struct RuntimeCache {
     lazy_functions: BTreeMap<HostPtr, (FatBinaryHandle, *const c_char)>,
     /// Populated by `__cudaRegisterVar`.
     lazy_variables: BTreeMap<HostPtr, (FatBinaryHandle, *const c_char)>,
+    /// Keeps client-side placeholders for managed variable host pointers alive.
+    managed_variable_shadows: BTreeMap<HostPtr, ManagedVariableShadow>,
     /// Result of `cuModuleLoadData` calls.
     loaded_modules: BTreeMap<FatBinaryHandle, CUmodule>,
     /// Used in `cudaLaunchKernel`. Cache of `cuModuleGetFunction` calls.
@@ -320,6 +322,7 @@ impl RuntimeCache {
             lazy_fatbins: Vec::new(),
             lazy_functions: BTreeMap::new(),
             lazy_variables: BTreeMap::new(),
+            managed_variable_shadows: BTreeMap::new(),
             loaded_modules: BTreeMap::new(),
             loaded_functions: BTreeMap::new(),
             graph_kernel_nodes: BTreeMap::new(),
@@ -331,6 +334,18 @@ impl RuntimeCache {
         self.loaded_modules.clear();
         self.loaded_functions.clear();
         self.graph_kernel_nodes.clear();
+    }
+}
+
+struct ManagedVariableShadow {
+    bytes: Box<[u8]>,
+    synced_bytes: Box<[u8]>,
+    size: usize,
+}
+
+impl ManagedVariableShadow {
+    fn ptr(&self) -> HostPtr {
+        self.bytes.as_ptr() as HostPtr
     }
 }
 

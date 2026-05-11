@@ -525,7 +525,7 @@ fn cudaGetLastError() -> cudaError_t;
 #[cuda_hook(proc_id = 153, async_api = false)]
 fn cudaPeekAtLastError() -> cudaError_t;
 
-#[cuda_hook(proc_id = 178, async_api = false)]
+#[cuda_custom_hook] // calls driver API
 fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t;
 
 #[cuda_custom_hook]
@@ -1526,6 +1526,9 @@ fn __cudaRegisterFatBinaryEnd(fatCubinHandle: *mut *mut c_void);
 fn __cudaUnregisterFatBinary(fatCubinHandle: *mut *mut c_void);
 
 #[cuda_custom_hook] // local
+fn __cudaInitModule(fatCubinHandle: *mut *mut c_void) -> c_char;
+
+#[cuda_custom_hook] // local
 fn __cudaRegisterFunction(
     fatCubinHandle: *mut *mut c_void,
     hostFun: *const c_char,
@@ -1543,6 +1546,18 @@ fn __cudaRegisterFunction(
 fn __cudaRegisterVar(
     fatCubinHandle: *mut *mut c_void,
     hostVar: *mut c_char,
+    deviceAddress: *mut c_char,
+    deviceName: *const c_char,
+    ext: c_int,
+    size: usize,
+    constant: c_int,
+    global: c_int,
+);
+
+#[cuda_custom_hook] // local
+fn __cudaRegisterManagedVar(
+    fatCubinHandle: *mut *mut c_void,
+    hostVarPtrAddress: *mut *mut c_void,
     deviceAddress: *mut c_char,
     deviceName: *const c_char,
     ext: c_int,
@@ -1858,7 +1873,7 @@ fn cudaEventRecord(event: cudaEvent_t, stream: cudaStream_t) -> cudaError_t;
 fn cudaEventRecordWithFlags(event: cudaEvent_t, stream: cudaStream_t, flags: c_uint)
 -> cudaError_t;
 
-#[cuda_hook(proc_id = 900104, async_api = false)]
+#[cuda_custom_hook] // calls driver API
 fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 180, async_api = false)]
@@ -1934,7 +1949,7 @@ fn cudaIpcCloseMemHandle(#[device] devPtr: *mut c_void) -> cudaError_t;
 #[cuda_hook(proc_id = 204, async_api = false)]
 fn cudaEventQuery(event: cudaEvent_t) -> cudaError_t;
 
-#[cuda_hook(proc_id = 119, async_api = false)]
+#[cuda_custom_hook] // calls driver API
 fn cudaDeviceSynchronize() -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
@@ -2879,7 +2894,7 @@ fn cudaGraphExecMemcpyNodeSetParamsFromSymbol(
 #[cuda_hook(proc_id = 900514, async_api)]
 fn cudaGraphUpload(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;
 
-#[cuda_hook(proc_id = 573, async_api)]
+#[cuda_custom_hook] // calls driver API
 fn cudaGraphLaunch(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900551)]

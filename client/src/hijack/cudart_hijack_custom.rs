@@ -520,6 +520,73 @@ fn runtime_result(result: CUresult) -> cudaError_t {
     unsafe { std::mem::transmute(result) }
 }
 
+fn ensure_runtime_context_for_driver_sync() -> cudaError_t {
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    ensure_runtime_device(&mut runtime)
+}
+
+fn synchronize_managed_variables_with_driver<F>(driver_call: F) -> cudaError_t
+where
+    F: FnOnce() -> CUresult,
+{
+    let result = ensure_runtime_context_for_driver_sync();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
+    let result = flush_managed_variables_to_device();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
+    let result = runtime_result(driver_call());
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
+    refresh_managed_variables_from_device()
+}
+
+#[no_mangle]
+pub extern "C" fn cudaDeviceSynchronize() -> cudaError_t {
+    log::debug!(target: "cudaDeviceSynchronize", "");
+    synchronize_managed_variables_with_driver(|| super::cuda_hijack::cuCtxSynchronize())
+}
+
+#[no_mangle]
+pub extern "C" fn cudaStreamSynchronize(stream: cudaStream_t) -> cudaError_t {
+    log::debug!(target: "cudaStreamSynchronize", "");
+    synchronize_managed_variables_with_driver(|| {
+        super::cuda_hijack::cuStreamSynchronize(stream.cast())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t {
+    log::debug!(target: "cudaEventSynchronize", "");
+    synchronize_managed_variables_with_driver(|| {
+        super::cuda_hijack::cuEventSynchronize(event.cast())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphLaunch(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t {
+    log::debug!(target: "cudaGraphLaunch", "");
+    let result = ensure_runtime_context_for_driver_sync();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
+    let result = flush_managed_variables_to_device();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+    runtime_result(super::cuda_hijack::cuGraphLaunch(
+        graphExec.cast(),
+        stream.cast(),
+    ))
+}
+
 fn cache_runtime_library_kernel(kernel: cudaKernel_t) -> cudaError_t {
     if kernel.is_null() {
         return cudaError_t::cudaErrorInvalidResourceHandle;
@@ -783,7 +850,17 @@ pub extern "C" fn cudaMemcpy(
     }
 
     let kind = resolve_memcpy_kind(dst, src, kind);
-    match kind {
+    if matches!(
+        kind,
+        cudaMemcpyKind::cudaMemcpyDeviceToHost | cudaMemcpyKind::cudaMemcpyDeviceToDevice
+    ) {
+        let result = flush_managed_variables_to_device();
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    let result = match kind {
         cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
             std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
             cudaError_t::cudaSuccess
@@ -797,6 +874,17 @@ pub extern "C" fn cudaMemcpy(
         cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
             super::cudart_hijack::cudaMemcpyDtod(dst, src, count, kind)
         }
+        cudaMemcpyKind::cudaMemcpyDefault => unreachable!(),
+    };
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
+    match kind {
+        cudaMemcpyKind::cudaMemcpyHostToDevice => update_managed_shadow_from_host(dst, src, count),
+        cudaMemcpyKind::cudaMemcpyDeviceToHost => update_managed_shadow_from_host(src, dst, count),
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => refresh_managed_variables_from_device(),
+        cudaMemcpyKind::cudaMemcpyHostToHost => cudaError_t::cudaSuccess,
         cudaMemcpyKind::cudaMemcpyDefault => unreachable!(),
     }
 }
@@ -817,7 +905,7 @@ pub extern "C" fn cudaMemcpyAsync(
     let kind = resolve_memcpy_kind(dst, src, kind);
     match kind {
         cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
-            super::cudart_hijack::cudaStreamSynchronize(stream);
+            cudaStreamSynchronize(stream);
             std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
             cudaError_t::cudaSuccess
         },
@@ -1367,6 +1455,237 @@ fn runtime_symbol_metadata(symbol: *const c_void) -> Result<(CUdeviceptr, usize)
     Ok((dptr, bytes))
 }
 
+struct ManagedVariableDeviceEntry {
+    host_key: HostPtr,
+    device_ptr: CUdeviceptr,
+    bytes: usize,
+}
+
+fn managed_variable_device_entries(
+    runtime: &mut RuntimeCache,
+) -> Result<Vec<ManagedVariableDeviceEntry>, cudaError_t> {
+    if runtime.managed_variable_shadows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let result = ensure_runtime_device(runtime);
+    if result != cudaError_t::cudaSuccess {
+        return Err(result);
+    }
+
+    let keys = runtime
+        .managed_variable_shadows
+        .keys()
+        .copied()
+        .collect::<Vec<_>>();
+    let mut entries = Vec::with_capacity(keys.len());
+
+    for host_key in keys {
+        let Some(shadow) = runtime.managed_variable_shadows.get(&host_key) else {
+            continue;
+        };
+        let shadow_ptr = shadow.ptr();
+        let shadow_size = shadow.size;
+        if shadow_size == 0 {
+            continue;
+        }
+
+        let Some(&(fatCubinHandle, deviceName)) = runtime
+            .lazy_variables
+            .get(&shadow_ptr)
+            .or_else(|| runtime.lazy_variables.get(&host_key))
+        else {
+            continue;
+        };
+
+        let module = load_module_for_fatbin(runtime, fatCubinHandle);
+        let mut device_ptr: CUdeviceptr = 0;
+        let mut device_bytes: usize = 0;
+        let result = super::cuda_hijack::cuModuleGetGlobal_v2(
+            &raw mut device_ptr,
+            &raw mut device_bytes,
+            module,
+            deviceName,
+        );
+        if result != CUresult::CUDA_SUCCESS {
+            return Err(cudaError_t::cudaErrorInvalidSymbol);
+        }
+        if device_bytes != shadow_size {
+            log::warn!("managed variable size mismatch: host={shadow_size}, device={device_bytes}");
+        }
+        entries.push(ManagedVariableDeviceEntry {
+            host_key,
+            device_ptr,
+            bytes: std::cmp::min(shadow_size, device_bytes),
+        });
+    }
+
+    Ok(entries)
+}
+
+pub(crate) fn flush_managed_variables_to_device() -> cudaError_t {
+    let plans = {
+        let mut runtime = RUNTIME_CACHE.write().unwrap();
+        let entries = match managed_variable_device_entries(&mut runtime) {
+            Ok(entries) => entries,
+            Err(error) => return error,
+        };
+        let mut plans = Vec::new();
+        for entry in entries {
+            let Some(shadow) = runtime.managed_variable_shadows.get(&entry.host_key) else {
+                continue;
+            };
+            let bytes = entry.bytes;
+            if bytes == 0 || shadow.bytes[..bytes] == shadow.synced_bytes[..bytes] {
+                continue;
+            }
+            plans.push((
+                entry.host_key,
+                entry.device_ptr,
+                shadow.bytes[..bytes].to_vec(),
+            ));
+        }
+        plans
+    };
+
+    for (host_key, device_ptr, bytes) in plans {
+        let result = super::cudart_hijack::cudaMemcpyHtod(
+            device_ptr as *mut c_void,
+            bytes.as_ptr().cast(),
+            bytes.len(),
+            cudaMemcpyKind::cudaMemcpyHostToDevice,
+        );
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+
+        let mut runtime = RUNTIME_CACHE.write().unwrap();
+        if let Some(shadow) = runtime.managed_variable_shadows.get_mut(&host_key) {
+            let len = bytes.len();
+            if shadow.bytes[..len] == bytes[..] {
+                shadow.synced_bytes[..len].copy_from_slice(&bytes);
+            }
+        }
+    }
+
+    cudaError_t::cudaSuccess
+}
+
+pub(crate) fn refresh_managed_variables_from_device() -> cudaError_t {
+    let entries = {
+        let mut runtime = RUNTIME_CACHE.write().unwrap();
+        match managed_variable_device_entries(&mut runtime) {
+            Ok(entries) => entries,
+            Err(error) => return error,
+        }
+    };
+
+    for entry in entries {
+        if entry.bytes == 0 {
+            continue;
+        }
+
+        let mut bytes = vec![0u8; entry.bytes];
+        let result = super::cudart_hijack::cudaMemcpyDtoh(
+            bytes.as_mut_ptr().cast(),
+            entry.device_ptr as *const c_void,
+            bytes.len(),
+            cudaMemcpyKind::cudaMemcpyDeviceToHost,
+        );
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+
+        let mut runtime = RUNTIME_CACHE.write().unwrap();
+        if let Some(shadow) = runtime.managed_variable_shadows.get_mut(&entry.host_key) {
+            let len = std::cmp::min(bytes.len(), shadow.size);
+            shadow.bytes[..len].copy_from_slice(&bytes[..len]);
+            shadow.synced_bytes[..len].copy_from_slice(&bytes[..len]);
+        }
+    }
+
+    cudaError_t::cudaSuccess
+}
+
+struct ManagedVariableHostCopy {
+    host_key: HostPtr,
+    host_offset: usize,
+    shadow_offset: usize,
+    bytes: usize,
+}
+
+fn managed_variable_overlaps(
+    device_ptr: *const c_void,
+    count: usize,
+) -> Result<Vec<ManagedVariableHostCopy>, cudaError_t> {
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let start = device_ptr as usize;
+    let Some(end) = start.checked_add(count) else {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    };
+
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    let entries = managed_variable_device_entries(&mut runtime)?;
+    let mut copies = Vec::new();
+    for entry in entries {
+        let entry_start = entry.device_ptr as usize;
+        let Some(entry_end) = entry_start.checked_add(entry.bytes) else {
+            return Err(cudaError_t::cudaErrorInvalidValue);
+        };
+        let overlap_start = std::cmp::max(start, entry_start);
+        let overlap_end = std::cmp::min(end, entry_end);
+        if overlap_start >= overlap_end {
+            continue;
+        }
+        copies.push(ManagedVariableHostCopy {
+            host_key: entry.host_key,
+            host_offset: overlap_start - start,
+            shadow_offset: overlap_start - entry_start,
+            bytes: overlap_end - overlap_start,
+        });
+    }
+    Ok(copies)
+}
+
+fn update_managed_shadow_from_host(
+    device_ptr: *const c_void,
+    host_ptr: *const c_void,
+    count: usize,
+) -> cudaError_t {
+    if host_ptr.is_null() && count > 0 {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let copies = match managed_variable_overlaps(device_ptr, count) {
+        Ok(copies) => copies,
+        Err(error) => return error,
+    };
+    if copies.is_empty() {
+        return cudaError_t::cudaSuccess;
+    }
+
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    for copy in copies {
+        let Some(shadow) = runtime.managed_variable_shadows.get_mut(&copy.host_key) else {
+            continue;
+        };
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                host_ptr.cast::<u8>().add(copy.host_offset),
+                shadow.bytes.as_mut_ptr().add(copy.shadow_offset),
+                copy.bytes,
+            );
+        }
+        let shadow_range = copy.shadow_offset..copy.shadow_offset + copy.bytes;
+        shadow.synced_bytes[shadow_range.clone()].copy_from_slice(&shadow.bytes[shadow_range]);
+    }
+
+    cudaError_t::cudaSuccess
+}
+
 fn symbol_device_address(symbol: *const c_void, offset: usize) -> Result<*mut c_void, cudaError_t> {
     let (base, _) = runtime_symbol_metadata(symbol)?;
     Ok(unsafe { (base as *mut u8).add(offset).cast() })
@@ -1614,6 +1933,11 @@ pub extern "C" fn cudaLaunchKernel(
 ) -> cudaError_t {
     log::debug!(target: "cudaLaunchKernel", "");
 
+    let result = flush_managed_variables_to_device();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
     let cufunc = get_cufunction(func);
 
     unsafe {
@@ -1643,6 +1967,11 @@ pub extern "C" fn cudaLaunchCooperativeKernel(
     stream: cudaStream_t,
 ) -> cudaError_t {
     log::debug!(target: "cudaLaunchCooperativeKernel", "");
+
+    let result = flush_managed_variables_to_device();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
 
     let cufunc = get_cufunction(func);
 
@@ -1720,6 +2049,11 @@ pub extern "C" fn cudaLaunchKernelExC(
     args: *mut *mut ::std::os::raw::c_void,
 ) -> cudaError_t {
     log::debug!(target: "cudaLaunchKernelExC", "");
+    let result = flush_managed_variables_to_device();
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
     let launch_config = match driver_launch_config(config) {
         Ok(config) => config,
         Err(error) => return error,
@@ -1810,7 +2144,7 @@ pub extern "C" fn cudaLaunchHostFunc(
     let Some(callback) = fn_ else {
         return cudaError_t::cudaErrorInvalidValue;
     };
-    let result = super::cudart_hijack::cudaStreamSynchronize(stream);
+    let result = cudaStreamSynchronize(stream);
     if result.is_error() {
         return result;
     }
@@ -1905,7 +2239,7 @@ pub extern "C" fn cudaStreamAddCallback(
     let Some(callback) = callback else {
         return cudaError_t::cudaErrorInvalidValue;
     };
-    let status = super::cudart_hijack::cudaStreamSynchronize(stream);
+    let status = cudaStreamSynchronize(stream);
     unsafe {
         callback(stream, status, userData);
     }
