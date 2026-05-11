@@ -6,11 +6,11 @@
 // https://github.com/llvm/llvm-project/blob/main/clang/lib/Interpreter/DeviceOffload.cpp
 
 use std::borrow::Cow;
-use std::ffi::{c_int, c_uint, c_ulonglong, c_ushort, CStr};
+use std::ffi::{CStr, c_int, c_uint, c_ulonglong, c_ushort};
 use std::{ptr, slice};
 
-use elf::endian::NativeEndian;
 use elf::ElfBytes;
+use elf::endian::NativeEndian;
 use lz4_flex::decompress as decompress_lz4;
 
 #[repr(C, packed)]
@@ -319,12 +319,26 @@ fn validate_cubin(cubin: &[u8]) {
     }
 }
 
-pub fn find_kernel_params(cubin: &[u8], name: &str) -> Box<[KernelParamInfo]> {
-    try_find_kernel_params(cubin, name).unwrap_or_else(|| panic!("Failed to find section header"))
+pub fn find_kernel_params_or_empty(cubin: &[u8], name: &str) -> Box<[KernelParamInfo]> {
+    let Ok(file) = ElfBytes::<NativeEndian>::minimal_parse(cubin) else {
+        log::debug!("kernel parameter metadata unavailable for {name}");
+        return Box::default();
+    };
+    try_find_kernel_params_in_file(&file, name)
+        .unwrap_or_else(|| panic!("Failed to find section header"))
 }
 
 fn try_find_kernel_params(cubin: &[u8], name: &str) -> Option<Box<[KernelParamInfo]>> {
-    let file = ElfBytes::<NativeEndian>::minimal_parse(cubin).unwrap();
+    let Ok(file) = ElfBytes::<NativeEndian>::minimal_parse(cubin) else {
+        return None;
+    };
+    try_find_kernel_params_in_file(&file, name)
+}
+
+fn try_find_kernel_params_in_file(
+    file: &ElfBytes<'_, NativeEndian>,
+    name: &str,
+) -> Option<Box<[KernelParamInfo]>> {
     let Ok(Some(shdr)) = file.section_header_by_name(&[".nv.info.", name].concat()) else {
         return None;
     };

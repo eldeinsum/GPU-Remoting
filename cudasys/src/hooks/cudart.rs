@@ -1815,6 +1815,20 @@ fn cudaOccupancyAvailableDynamicSMemPerBlock(
     blockSize: c_int,
 ) -> cudaError_t;
 
+#[cuda_custom_hook] // calls driver API
+fn cudaOccupancyMaxPotentialClusterSize(
+    clusterSize: *mut c_int,
+    func: *const c_void,
+    launchConfig: *const cudaLaunchConfig_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaOccupancyMaxActiveClusters(
+    numClusters: *mut c_int,
+    func: *const c_void,
+    launchConfig: *const cudaLaunchConfig_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 126)]
 fn cudaIpcGetMemHandle(
     handle: *mut cudaIpcMemHandle_t,

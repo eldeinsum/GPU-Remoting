@@ -1374,23 +1374,18 @@ pub extern "C" fn __cudaLaunchKernel_ptsz(
     cudaLaunchKernel(kernel as MemPtr, gridDim, blockDim, args, sharedMem, stream)
 }
 
-#[no_mangle]
-pub extern "C" fn cudaLaunchKernelExC(
-    config: *const cudaLaunchConfig_t,
-    func: MemPtr,
-    args: *mut *mut ::std::os::raw::c_void,
-) -> cudaError_t {
-    log::debug!(target: "cudaLaunchKernelExC", "");
+fn driver_launch_config(config: *const cudaLaunchConfig_t) -> Result<CUlaunchConfig, cudaError_t> {
     if config.is_null() {
-        return cudaError_t::cudaErrorInvalidValue;
+        return Err(cudaError_t::cudaErrorInvalidValue);
     }
 
     let config = unsafe { &*config };
     let shared_mem = match config.dynamicSmemBytes.try_into() {
         Ok(shared_mem) => shared_mem,
-        Err(_) => return cudaError_t::cudaErrorInvalidValue,
+        Err(_) => return Err(cudaError_t::cudaErrorInvalidValue),
     };
-    let launch_config = CUlaunchConfig {
+
+    Ok(CUlaunchConfig {
         gridDimX: config.gridDim.x,
         gridDimY: config.gridDim.y,
         gridDimZ: config.gridDim.z,
@@ -1401,6 +1396,19 @@ pub extern "C" fn cudaLaunchKernelExC(
         hStream: config.stream.cast(),
         attrs: config.attrs.cast::<CUlaunchAttribute>(),
         numAttrs: config.numAttrs,
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaLaunchKernelExC(
+    config: *const cudaLaunchConfig_t,
+    func: MemPtr,
+    args: *mut *mut ::std::os::raw::c_void,
+) -> cudaError_t {
+    log::debug!(target: "cudaLaunchKernelExC", "");
+    let launch_config = match driver_launch_config(config) {
+        Ok(config) => config,
+        Err(error) => return error,
     };
     let cufunc = get_cufunction(func);
 
@@ -2165,6 +2173,44 @@ extern "C" fn cudaOccupancyAvailableDynamicSMemPerBlock(
         get_cufunction(func as HostPtr),
         numBlocks,
         blockSize,
+    );
+    unsafe { std::mem::transmute(result) }
+}
+
+#[no_mangle]
+extern "C" fn cudaOccupancyMaxPotentialClusterSize(
+    clusterSize: *mut c_int,
+    func: *const c_void,
+    launchConfig: *const cudaLaunchConfig_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaOccupancyMaxPotentialClusterSize", "");
+    let launch_config = match driver_launch_config(launchConfig) {
+        Ok(config) => config,
+        Err(error) => return error,
+    };
+    let result = super::cuda_hijack::cuOccupancyMaxPotentialClusterSize(
+        clusterSize,
+        get_cufunction(func as HostPtr),
+        &launch_config,
+    );
+    unsafe { std::mem::transmute(result) }
+}
+
+#[no_mangle]
+extern "C" fn cudaOccupancyMaxActiveClusters(
+    numClusters: *mut c_int,
+    func: *const c_void,
+    launchConfig: *const cudaLaunchConfig_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaOccupancyMaxActiveClusters", "");
+    let launch_config = match driver_launch_config(launchConfig) {
+        Ok(config) => config,
+        Err(error) => return error,
+    };
+    let result = super::cuda_hijack::cuOccupancyMaxActiveClusters(
+        numClusters,
+        get_cufunction(func as HostPtr),
+        &launch_config,
     );
     unsafe { std::mem::transmute(result) }
 }

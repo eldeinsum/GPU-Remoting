@@ -273,7 +273,7 @@ fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_ch
             let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
             fatbin.find_kernel_params(function_name, target_arch)
         } else {
-            crate::elf::find_kernel_params(image, function_name)
+            crate::elf::find_kernel_params_or_empty(image, function_name)
         };
         driver.function_params.insert(*hfunc, params);
         driver
@@ -409,7 +409,7 @@ fn cuLibraryGetKernel(pKernel: *mut CUkernel, library: CUlibrary, name: *const c
                 let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
                 fatbin.find_kernel_params(kernel_name, target_arch)
             } else {
-                crate::elf::find_kernel_params(image, kernel_name)
+                crate::elf::find_kernel_params_or_empty(image, kernel_name)
             };
             driver
                 .function_params
@@ -2056,6 +2056,64 @@ fn cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     flags: c_uint,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901017)]
+fn cuOccupancyMaxPotentialBlockSize(
+    minGridSize: *mut c_int,
+    blockSize: *mut c_int,
+    func: CUfunction,
+    #[skip] blockSizeToDynamicSMemSize: CUoccupancyB2DSize,
+    dynamicSMemSize: usize,
+    blockSizeLimit: c_int,
+) -> CUresult {
+    'client_before_send: {
+        if blockSizeToDynamicSMemSize.is_some() {
+            return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+        }
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuOccupancyMaxPotentialBlockSize(
+                minGridSize__ptr,
+                blockSize__ptr,
+                func,
+                None,
+                dynamicSMemSize,
+                blockSizeLimit,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 901018)]
+fn cuOccupancyMaxPotentialBlockSizeWithFlags(
+    minGridSize: *mut c_int,
+    blockSize: *mut c_int,
+    func: CUfunction,
+    #[skip] blockSizeToDynamicSMemSize: CUoccupancyB2DSize,
+    dynamicSMemSize: usize,
+    blockSizeLimit: c_int,
+    flags: c_uint,
+) -> CUresult {
+    'client_before_send: {
+        if blockSizeToDynamicSMemSize.is_some() {
+            return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+        }
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuOccupancyMaxPotentialBlockSizeWithFlags(
+                minGridSize__ptr,
+                blockSize__ptr,
+                func,
+                None,
+                dynamicSMemSize,
+                blockSizeLimit,
+                flags,
+            )
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 912, async_api = false)]
 fn cuFuncSetAttribute(hfunc: CUfunction, attrib: CUfunction_attribute, value: c_int) -> CUresult;
 
@@ -2080,6 +2138,86 @@ fn cuOccupancyAvailableDynamicSMemPerBlock(
     numBlocks: c_int,
     blockSize: c_int,
 ) -> CUresult;
+
+#[cuda_hook(proc_id = 901019)]
+fn cuOccupancyMaxPotentialClusterSize(
+    clusterSize: *mut c_int,
+    func: CUfunction,
+    #[host] config: *const CUlaunchConfig,
+) -> CUresult {
+    'client_before_send: {
+        if config.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let config_ref = unsafe { &*config };
+        let attrs = if config_ref.numAttrs == 0 {
+            &[][..]
+        } else {
+            if config_ref.attrs.is_null() {
+                return CUresult::CUDA_ERROR_INVALID_VALUE;
+            }
+            unsafe { std::slice::from_raw_parts(config_ref.attrs, config_ref.numAttrs as usize) }
+        };
+    }
+    'client_extra_send: {
+        send_slice(attrs, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let _ = config__ptr;
+        let attrs = recv_slice::<CUlaunchAttribute, _>(channel_receiver).unwrap();
+        let mut launch_config = config;
+        launch_config.attrs = if attrs.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            attrs.as_ptr().cast_mut()
+        };
+        launch_config.numAttrs = attrs.len() as _;
+    }
+    'server_execution: {
+        let result =
+            unsafe { cuOccupancyMaxPotentialClusterSize(clusterSize__ptr, func, &launch_config) };
+    }
+}
+
+#[cuda_hook(proc_id = 901020)]
+fn cuOccupancyMaxActiveClusters(
+    numClusters: *mut c_int,
+    func: CUfunction,
+    #[host] config: *const CUlaunchConfig,
+) -> CUresult {
+    'client_before_send: {
+        if config.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let config_ref = unsafe { &*config };
+        let attrs = if config_ref.numAttrs == 0 {
+            &[][..]
+        } else {
+            if config_ref.attrs.is_null() {
+                return CUresult::CUDA_ERROR_INVALID_VALUE;
+            }
+            unsafe { std::slice::from_raw_parts(config_ref.attrs, config_ref.numAttrs as usize) }
+        };
+    }
+    'client_extra_send: {
+        send_slice(attrs, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let _ = config__ptr;
+        let attrs = recv_slice::<CUlaunchAttribute, _>(channel_receiver).unwrap();
+        let mut launch_config = config;
+        launch_config.attrs = if attrs.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            attrs.as_ptr().cast_mut()
+        };
+        launch_config.numAttrs = attrs.len() as _;
+    }
+    'server_execution: {
+        let result =
+            unsafe { cuOccupancyMaxActiveClusters(numClusters__ptr, func, &launch_config) };
+    }
+}
 
 #[cuda_hook(proc_id = 900800)]
 fn cuGraphCreate(phGraph: *mut CUgraph, flags: c_uint) -> CUresult;
