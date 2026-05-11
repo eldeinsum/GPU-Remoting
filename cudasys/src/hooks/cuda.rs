@@ -473,6 +473,9 @@ fn cuCtxSetLimit(limit: CUlimit, value: usize) -> CUresult;
 #[cuda_hook(proc_id = 900310, async_api = false)]
 fn cuCtxSetSharedMemConfig(config: CUsharedconfig) -> CUresult;
 
+#[cuda_hook(proc_id = 900922, async_api = false)]
+fn cuCtxSetFlags(flags: c_uint) -> CUresult;
+
 #[cuda_hook(proc_id = 900200, async_api = false)]
 fn cuCtxSynchronize() -> CUresult;
 
@@ -566,11 +569,31 @@ fn cuDeviceGetTexture1DLinearMaxWidth(
     dev: CUdevice,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900919)]
+fn cuDeviceGetLuid(
+    #[host(output, len = 8)] luid: *mut c_char,
+    deviceNodeMask: *mut c_uint,
+    dev: CUdevice,
+) -> CUresult {
+    'server_before_execution: {
+        unsafe {
+            std::ptr::write_bytes(luid__ptr, 0, 8);
+            *deviceNodeMask__ptr = 0;
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 900918)]
 fn cuDeviceGetExecAffinitySupport(
     pi: *mut c_int,
     type_: CUexecAffinityType,
     dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900920, async_api = false)]
+fn cuFlushGPUDirectRDMAWrites(
+    target: CUflushGPUDirectRDMAWritesTarget,
+    scope: CUflushGPUDirectRDMAWritesScope,
 ) -> CUresult;
 
 #[cuda_hook(proc_id = 900890)]
@@ -605,6 +628,29 @@ fn cuDevicePrimaryCtxRetain(pctx: *mut CUcontext, dev: CUdevice) -> CUresult;
 
 #[cuda_hook(proc_id = 900321, async_api = false)]
 fn cuDevicePrimaryCtxRelease_v2(dev: CUdevice) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 900923)]
+fn cuCtxCreate_v4(
+    pctx: *mut CUcontext,
+    ctxCreateParams: *mut CUctxCreateParams,
+    flags: c_uint,
+    dev: CUdevice,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900924, async_api = false)]
+fn cuCtxDestroy_v2(ctx: CUcontext) -> CUresult;
+
+#[cuda_hook(proc_id = 900925)]
+fn cuCtxGetExecAffinity(
+    #[host(output, len = 1)] pExecAffinity: *mut CUexecAffinityParam,
+    type_: CUexecAffinityType,
+) -> CUresult {
+    'server_before_execution: {
+        unsafe {
+            *pExecAffinity__ptr = std::mem::zeroed();
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 900433)]
 fn cuDeviceGetDefaultMemPool(pool_out: *mut CUmemoryPool, dev: CUdevice) -> CUresult;

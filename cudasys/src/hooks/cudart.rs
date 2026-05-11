@@ -133,6 +133,12 @@ fn cudaDeviceGetP2PAttribute(
     dstDevice: c_int,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900921, async_api = false)]
+fn cudaDeviceFlushGPUDirectRDMAWrites(
+    target: cudaFlushGPUDirectRDMAWritesTarget,
+    scope: cudaFlushGPUDirectRDMAWritesScope,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900448)]
 fn cudaDeviceGetP2PAtomicCapabilities(
     #[host(output, len = count as usize)] capabilities: *mut c_uint,

@@ -2,7 +2,7 @@
 
 use crate::ServerWorker;
 use cudasys::cuda::*;
-use network::type_impl::send_slice;
+use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
 use std::os::raw::c_char;
@@ -152,6 +152,47 @@ pub fn cuIpcOpenEventHandleExe<C: CommChannel>(server: &mut ServerWorker<C>) {
 
     event.send(channel_sender).unwrap();
     send_result("cuIpcOpenEventHandle", server.id, result, channel_sender);
+}
+
+pub fn cuCtxCreate_v4Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCtxCreate_v4", "[#{}]", server.id);
+
+    let mut has_params = false;
+    has_params.recv(channel_receiver).unwrap();
+    let mut params = unsafe { std::mem::zeroed::<CUctxCreateParams>() };
+    let mut _affinity_params = None;
+    if has_params {
+        params.recv(channel_receiver).unwrap();
+        let mut affinity_params = recv_slice::<CUexecAffinityParam, _>(channel_receiver).unwrap();
+        params.execAffinityParams = if affinity_params.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            affinity_params.as_mut_ptr()
+        };
+        params.numExecAffinityParams = affinity_params.len() as _;
+        _affinity_params = Some(affinity_params);
+    }
+    let mut flags = 0u32;
+    flags.recv(channel_receiver).unwrap();
+    let mut dev = 0;
+    dev.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut context: CUcontext = std::ptr::null_mut();
+    let params_ptr = if has_params {
+        &raw mut params
+    } else {
+        std::ptr::null_mut()
+    };
+    let result = unsafe { cuCtxCreate_v4(&raw mut context, params_ptr, flags, dev) };
+
+    context.send(channel_sender).unwrap();
+    send_result("cuCtxCreate_v4", server.id, result, channel_sender);
 }
 
 pub fn cuGraphGetNodesExe<C: CommChannel>(server: &mut ServerWorker<C>) {

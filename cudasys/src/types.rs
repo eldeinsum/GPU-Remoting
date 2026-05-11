@@ -179,6 +179,24 @@ pub mod cuda {
         }
     }
 
+    impl std::fmt::Debug for CUexecAffinityParam_st {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CUexecAffinityParam_st")
+                .field("type_", &self.type_)
+                .field("param", &self.param)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for CUexecAffinityParam_st__bindgen_ty_1 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let sm_count = unsafe { self.smCount };
+            f.debug_struct("CUexecAffinityParam_st__bindgen_ty_1")
+                .field("smCount", &sm_count)
+                .finish()
+        }
+    }
+
     impl std::fmt::Debug for CUdevResource_st {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("CUdevResource_st")

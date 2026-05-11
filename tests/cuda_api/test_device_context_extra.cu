@@ -27,6 +27,30 @@
         }                                                                      \
     } while (0)
 
+static int check_cuda_optional(cudaError_t result, const char *call,
+                               cudaError_t allowed)
+{
+    if (result == cudaSuccess || result == allowed) {
+        return 0;
+    }
+    std::fprintf(stderr, "%s failed: %s (%d)\n", call,
+                 cudaGetErrorString(result), static_cast<int>(result));
+    return 1;
+}
+
+static int check_driver_optional(CUresult result, const char *call,
+                                 CUresult allowed)
+{
+    if (result == CUDA_SUCCESS || result == allowed) {
+        return 0;
+    }
+    const char *name = nullptr;
+    cuGetErrorName(result, &name);
+    std::fprintf(stderr, "%s failed: %s (%d)\n", call,
+                 name == nullptr ? "unknown" : name, static_cast<int>(result));
+    return 1;
+}
+
 int main()
 {
     int runtime_version = 0;
@@ -74,6 +98,13 @@ int main()
     size_t runtime_stack_limit = 0;
     CHECK_CUDA(cudaDeviceGetLimit(&runtime_stack_limit, cudaLimitStackSize));
     CHECK_CUDA(cudaDeviceSetLimit(cudaLimitStackSize, runtime_stack_limit));
+    if (check_cuda_optional(cudaDeviceFlushGPUDirectRDMAWrites(
+                                cudaFlushGPUDirectRDMAWritesTargetCurrentDevice,
+                                cudaFlushGPUDirectRDMAWritesToOwner),
+                            "cudaDeviceFlushGPUDirectRDMAWrites",
+                            cudaErrorNotSupported)) {
+        return 1;
+    }
 
     CHECK_DRV(cuInit(0));
     int driver_count = 0;
@@ -118,6 +149,23 @@ int main()
 
     CUuuid uuid = {};
     CHECK_DRV(cuDeviceGetUuid(&uuid, device));
+    char luid[8] = {};
+    unsigned int device_node_mask = 0;
+    if (check_driver_optional(cuDeviceGetLuid(luid, &device_node_mask, device),
+                              "cuDeviceGetLuid",
+                              CUDA_ERROR_NOT_SUPPORTED)) {
+        return 1;
+    }
+    int exec_affinity_supported = 0;
+    CHECK_DRV(cuDeviceGetExecAffinitySupport(
+        &exec_affinity_supported, CU_EXEC_AFFINITY_TYPE_SM_COUNT, device));
+    if (check_driver_optional(cuFlushGPUDirectRDMAWrites(
+                                  CU_FLUSH_GPU_DIRECT_RDMA_WRITES_TARGET_CURRENT_CTX,
+                                  CU_FLUSH_GPU_DIRECT_RDMA_WRITES_TO_OWNER),
+                              "cuFlushGPUDirectRDMAWrites",
+                              CUDA_ERROR_NOT_SUPPORTED)) {
+        return 1;
+    }
 
     int driver_peer_access = 0;
     CHECK_DRV(cuDeviceCanAccessPeer(
@@ -158,6 +206,27 @@ int main()
 
     unsigned int context_flags = 0;
     CHECK_DRV(cuCtxGetFlags(&context_flags));
+    if (check_driver_optional(cuCtxSetFlags(context_flags), "cuCtxSetFlags",
+                              CUDA_ERROR_INVALID_CONTEXT)) {
+        return 1;
+    }
+    CUexecAffinityParam exec_affinity = {};
+    CUresult exec_affinity_result = cuCtxGetExecAffinity(
+        &exec_affinity, CU_EXEC_AFFINITY_TYPE_SM_COUNT);
+    if (exec_affinity_result == CUDA_SUCCESS) {
+        if (exec_affinity.type != CU_EXEC_AFFINITY_TYPE_SM_COUNT) {
+            std::fprintf(stderr, "unexpected exec affinity type\n");
+            return 1;
+        }
+    } else if (exec_affinity_result != CUDA_ERROR_UNSUPPORTED_EXEC_AFFINITY &&
+               exec_affinity_result != CUDA_ERROR_NOT_SUPPORTED) {
+        const char *name = nullptr;
+        cuGetErrorName(exec_affinity_result, &name);
+        std::fprintf(stderr, "cuCtxGetExecAffinity failed: %s (%d)\n",
+                     name == nullptr ? "unknown" : name,
+                     static_cast<int>(exec_affinity_result));
+        return 1;
+    }
 
     CUfunc_cache cache_config = CU_FUNC_CACHE_PREFER_NONE;
     CHECK_DRV(cuCtxGetCacheConfig(&cache_config));
@@ -176,6 +245,16 @@ int main()
     CHECK_DRV(cuCtxGetStreamPriorityRange(&least_priority, &greatest_priority));
 
     CHECK_DRV(cuCtxResetPersistingL2Cache());
+
+    CUcontext created = nullptr;
+    CHECK_DRV(cuCtxCreate(&created, nullptr, 0, device));
+    if (created == nullptr) {
+        std::fprintf(stderr, "cuCtxCreate returned a null context\n");
+        return 1;
+    }
+    CHECK_DRV(cuCtxDestroy(created));
+    CHECK_DRV(cuCtxSetCurrent(current));
+
     CHECK_DRV(cuDevicePrimaryCtxRelease(device));
 
     std::puts("device/context extra API test passed");

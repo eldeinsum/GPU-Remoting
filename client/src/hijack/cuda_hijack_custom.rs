@@ -1,6 +1,6 @@
 use super::*;
 use cudasys::types::cuda::*;
-use network::type_impl::recv_slice;
+use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
@@ -323,6 +323,61 @@ pub extern "C" fn cuIpcOpenEventHandle(
             .recv(&client.channel_receiver)
             .unwrap();
         recv_cu_result("cuIpcOpenEventHandle", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cuCtxCreate_v4(
+    pctx: *mut CUcontext,
+    ctxCreateParams: *mut CUctxCreateParams,
+    flags: c_uint,
+    dev: CUdevice,
+) -> CUresult {
+    if pctx.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let has_params = !ctxCreateParams.is_null();
+    let mut params = unsafe { std::mem::zeroed::<CUctxCreateParams>() };
+    let mut affinity_params = Vec::new();
+    if has_params {
+        params = unsafe { *ctxCreateParams };
+        if !params.cigParams.is_null() {
+            return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+        }
+        if params.numExecAffinityParams < 0 {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        if params.numExecAffinityParams > 0 {
+            if params.execAffinityParams.is_null() {
+                return CUresult::CUDA_ERROR_INVALID_VALUE;
+            }
+            let affinity_len = params.numExecAffinityParams as usize;
+            affinity_params.extend_from_slice(unsafe {
+                std::slice::from_raw_parts(params.execAffinityParams, affinity_len)
+            });
+            params.execAffinityParams = std::ptr::null_mut();
+        }
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuCtxCreate_v4", "[#{}]", client.id);
+
+        900923.send(&client.channel_sender).unwrap();
+        has_params.send(&client.channel_sender).unwrap();
+        if has_params {
+            params.send(&client.channel_sender).unwrap();
+            send_slice(&affinity_params, &client.channel_sender).unwrap();
+        }
+        flags.send(&client.channel_sender).unwrap();
+        dev.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pctx }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuCtxCreate_v4", client.id, &client.channel_receiver)
     })
 }
 
