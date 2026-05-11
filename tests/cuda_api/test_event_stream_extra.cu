@@ -505,6 +505,13 @@ int main()
         std::fprintf(stderr, "unexpected driver green stream SM resource\n");
         return 1;
     }
+    CUevent driver_green_event = nullptr;
+    CHECK_DRV_SUCCESS(cuEventCreate(&driver_green_event, CU_EVENT_DEFAULT));
+    CHECK_DRV_SUCCESS(cuGreenCtxRecordEvent(driver_green, driver_green_event));
+    CHECK_DRV_SUCCESS(cuGreenCtxWaitEvent(driver_green, driver_green_event));
+    CHECK_DRV_SUCCESS(cuCtxSynchronize_v2(driver_green_primary));
+    CHECK_DRV(cuEventQuery(driver_green_event));
+    CHECK_DRV_SUCCESS(cuEventDestroy(driver_green_event));
     CHECK_DRV_SUCCESS(cuStreamDestroy(driver_green_stream));
     CHECK_DRV_SUCCESS(cuGreenCtxDestroy(driver_green));
 

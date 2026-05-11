@@ -934,6 +934,9 @@ fn cuGreenCtxGetDevResource(
 #[cuda_hook(proc_id = 900938)]
 fn cuGreenCtxGetId(greenCtx: CUgreenCtx, greenCtxId: *mut c_ulonglong) -> CUresult;
 
+#[cuda_hook(proc_id = 900947, async_api)]
+fn cuGreenCtxRecordEvent(hCtx: CUgreenCtx, hEvent: CUevent) -> CUresult;
+
 #[cuda_hook(proc_id = 900939)]
 fn cuGreenCtxStreamCreate(
     phStream: *mut CUstream,
@@ -941,6 +944,9 @@ fn cuGreenCtxStreamCreate(
     flags: c_uint,
     priority: c_int,
 ) -> CUresult;
+
+#[cuda_hook(proc_id = 900948, async_api)]
+fn cuGreenCtxWaitEvent(hCtx: CUgreenCtx, hEvent: CUevent) -> CUresult;
 
 #[cuda_hook(proc_id = 900433)]
 fn cuDeviceGetDefaultMemPool(pool_out: *mut CUmemoryPool, dev: CUdevice) -> CUresult;
