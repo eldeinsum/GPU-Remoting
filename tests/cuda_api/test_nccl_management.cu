@@ -403,6 +403,136 @@ int main(void) {
     }
   }
 
+  ncclRedOp_t sum_ops[nranks] = {ncclSum, ncclSum};
+  ncclComm_t split_comms[nranks] = {NULL, NULL};
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(split)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
+        !nccl_ok(ncclCommSplit(comms[rank], 0, rank, &split_comms[rank],
+                               NULL),
+                 "ncclCommSplit")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(split)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    int split_count = 0;
+    int split_rank = -1;
+    if (!nccl_ok(ncclCommCount(split_comms[rank], &split_count),
+                 "ncclCommCount(split)") ||
+        !nccl_ok(ncclCommUserRank(split_comms[rank], &split_rank),
+                 "ncclCommUserRank(split)") ||
+        split_count != nranks || split_rank != rank) {
+      fprintf(stderr, "NCCL split communicator mismatch for rank %d\n", rank);
+      return EXIT_FAILURE;
+    }
+  }
+  if (!allreduce_sum(devs, split_comms, streams, send, recv, sum_ops,
+                     elem_count)) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    float actual[elem_count] = {0.0f};
+    if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
+        !cuda_ok(cudaMemcpy(actual, recv[rank], elem_count * sizeof(float),
+                            cudaMemcpyDeviceToHost),
+                 "cudaMemcpy D2H(split)") ||
+        !check_values("split allreduce", rank, actual, sum_expected,
+                      elem_count) ||
+        !cuda_ok(cudaMemset(recv[rank], 0, elem_count * sizeof(float)),
+                 "cudaMemset(split)")) {
+      return EXIT_FAILURE;
+    }
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!nccl_ok(ncclCommDestroy(split_comms[rank]),
+                 "ncclCommDestroy(split)")) {
+      return EXIT_FAILURE;
+    }
+  }
+
+  int shrink_exclude[1] = {1};
+  ncclComm_t shrink_comm = NULL;
+  if (!cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !nccl_ok(ncclCommShrink(comms[0], shrink_exclude, 1, &shrink_comm,
+                              NULL, NCCL_SHRINK_DEFAULT),
+               "ncclCommShrink")) {
+    return EXIT_FAILURE;
+  }
+  int shrink_count = 0;
+  int shrink_rank = -1;
+  if (!nccl_ok(ncclCommCount(shrink_comm, &shrink_count),
+               "ncclCommCount(shrink)") ||
+      !nccl_ok(ncclCommUserRank(shrink_comm, &shrink_rank),
+               "ncclCommUserRank(shrink)") ||
+      shrink_count != 1 || shrink_rank != 0) {
+    fprintf(stderr, "NCCL shrink communicator mismatch\n");
+    return EXIT_FAILURE;
+  }
+
+  ncclUniqueId grow_id;
+  ncclComm_t grow_comms[nranks] = {NULL, NULL};
+  if (!nccl_ok(ncclCommGetUniqueId(shrink_comm, &grow_id),
+               "ncclCommGetUniqueId(grow)") ||
+      !nccl_ok(ncclGroupStart(), "ncclGroupStart(grow)")) {
+    return EXIT_FAILURE;
+  }
+  if (!cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !nccl_ok(ncclCommGrow(shrink_comm, nranks, &grow_id, -1,
+                            &grow_comms[0], NULL),
+               "ncclCommGrow(existing)") ||
+      !cuda_ok(cudaSetDevice(devs[1]), "cudaSetDevice") ||
+      !nccl_ok(ncclCommGrow(NULL, nranks, &grow_id, 1, &grow_comms[1],
+                            NULL),
+               "ncclCommGrow(new)")) {
+    return EXIT_FAILURE;
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(grow)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    int grow_count = 0;
+    int grow_rank = -1;
+    if (!nccl_ok(ncclCommCount(grow_comms[rank], &grow_count),
+                 "ncclCommCount(grow)") ||
+        !nccl_ok(ncclCommUserRank(grow_comms[rank], &grow_rank),
+                 "ncclCommUserRank(grow)") ||
+        grow_count != nranks || grow_rank != rank) {
+      fprintf(stderr, "NCCL grow communicator mismatch for rank %d\n", rank);
+      return EXIT_FAILURE;
+    }
+  }
+  if (!allreduce_sum(devs, grow_comms, streams, send, recv, sum_ops,
+                     elem_count)) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    float actual[elem_count] = {0.0f};
+    if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
+        !cuda_ok(cudaMemcpy(actual, recv[rank], elem_count * sizeof(float),
+                            cudaMemcpyDeviceToHost),
+                 "cudaMemcpy D2H(grow)") ||
+        !check_values("grow allreduce", rank, actual, sum_expected,
+                      elem_count) ||
+        !cuda_ok(cudaMemset(recv[rank], 0, elem_count * sizeof(float)),
+                 "cudaMemset(grow)")) {
+      return EXIT_FAILURE;
+    }
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!nccl_ok(ncclCommDestroy(grow_comms[rank]),
+                 "ncclCommDestroy(grow)")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclCommDestroy(shrink_comm), "ncclCommDestroy(shrink)")) {
+    return EXIT_FAILURE;
+  }
+
   ncclSimInfo_t sim_info = NCCL_SIM_INFO_INITIALIZER;
   if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(simulate)")) {
     return EXIT_FAILURE;
@@ -421,7 +551,6 @@ int main(void) {
     return EXIT_FAILURE;
   }
 
-  ncclRedOp_t sum_ops[nranks] = {ncclSum, ncclSum};
   if (!allreduce_sum(devs, comms, streams, send, recv, sum_ops,
                      elem_count)) {
     return EXIT_FAILURE;

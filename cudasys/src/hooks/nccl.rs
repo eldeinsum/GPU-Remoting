@@ -282,6 +282,35 @@ fn ncclCommInitRankScalable(
     }
 }
 
+#[cuda_custom_hook(proc_id = 3245)] // remoted: communicator handles may complete at group end
+fn ncclCommSplit(
+    comm: ncclComm_t,
+    color: c_int,
+    key: c_int,
+    newcomm: *mut ncclComm_t,
+    config: *mut ncclConfig_t,
+) -> ncclResult_t;
+
+#[cuda_custom_hook(proc_id = 3246)] // remoted: communicator handles may complete at group end
+fn ncclCommShrink(
+    comm: ncclComm_t,
+    excludeRanksList: *mut c_int,
+    excludeRanksCount: c_int,
+    newcomm: *mut ncclComm_t,
+    config: *mut ncclConfig_t,
+    shrinkFlags: c_int,
+) -> ncclResult_t;
+
+#[cuda_custom_hook(proc_id = 3247)] // remoted: communicator handles may complete at group end
+fn ncclCommGrow(
+    comm: ncclComm_t,
+    nRanks: c_int,
+    uniqueId: *const ncclUniqueId,
+    rank: c_int,
+    newcomm: *mut ncclComm_t,
+    config: *mut ncclConfig_t,
+) -> ncclResult_t;
+
 #[cuda_hook(proc_id = 3231)]
 fn ncclRedOpCreatePreMulSum(
     op: *mut ncclRedOp_t,
