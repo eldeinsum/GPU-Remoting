@@ -411,6 +411,53 @@ extern "C" fn cuMemRangeGetAttributes(
 }
 
 #[no_mangle]
+extern "C" fn cuMemBatchDecompressAsync(
+    paramsArray: *mut CUmemDecompressParams,
+    count: usize,
+    flags: c_uint,
+    errorIndex: *mut usize,
+    stream: CUstream,
+) -> CUresult {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemBatchDecompressAsync", "[#{}]", client.id);
+
+        901105.send(&client.channel_sender).unwrap();
+        let has_params = !paramsArray.is_null();
+        has_params.send(&client.channel_sender).unwrap();
+        if has_params {
+            let params = unsafe { std::slice::from_raw_parts(paramsArray, count) };
+            send_slice(params, &client.channel_sender).unwrap();
+        }
+        count.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        let has_error_index = !errorIndex.is_null();
+        has_error_index.send(&client.channel_sender).unwrap();
+        stream.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut remote_error_index = usize::MAX;
+        if has_error_index {
+            remote_error_index.recv(&client.channel_receiver).unwrap();
+        }
+        let result = recv_cu_result(
+            "cuMemBatchDecompressAsync",
+            client.id,
+            &client.channel_receiver,
+        );
+        if has_error_index
+            && result != CUresult::CUDA_SUCCESS
+            && result != CUresult::CUDA_ERROR_NOT_SUPPORTED
+        {
+            unsafe {
+                *errorIndex = remote_error_index;
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuMemPoolCreate(
     pool: *mut CUmemoryPool,
     poolProps: *const CUmemPoolProps,

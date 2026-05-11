@@ -192,6 +192,57 @@ pub fn cuMemRangeGetAttributesExe<C: CommChannel>(server: &mut ServerWorker<C>) 
     send_result("cuMemRangeGetAttributes", server.id, result, channel_sender);
 }
 
+pub fn cuMemBatchDecompressAsyncExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemBatchDecompressAsync", "[#{}]", server.id);
+
+    let mut has_params = false;
+    has_params.recv(channel_receiver).unwrap();
+    let mut params = if has_params {
+        recv_slice::<CUmemDecompressParams, _>(channel_receiver).unwrap()
+    } else {
+        Vec::new().into_boxed_slice()
+    };
+    let mut count = 0usize;
+    count.recv(channel_receiver).unwrap();
+    let mut flags = 0u32;
+    flags.recv(channel_receiver).unwrap();
+    let mut has_error_index = false;
+    has_error_index.recv(channel_receiver).unwrap();
+    let mut stream = std::mem::MaybeUninit::<CUstream>::uninit();
+    stream.recv(channel_receiver).unwrap();
+    let stream = unsafe { stream.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let params_ptr = if has_params {
+        params.as_mut_ptr()
+    } else {
+        std::ptr::null_mut()
+    };
+    let mut error_index = usize::MAX;
+    let error_index_ptr = if has_error_index {
+        &raw mut error_index
+    } else {
+        std::ptr::null_mut()
+    };
+    let result =
+        unsafe { cuMemBatchDecompressAsync(params_ptr, count, flags, error_index_ptr, stream) };
+
+    if has_error_index {
+        error_index.send(channel_sender).unwrap();
+    }
+    send_result(
+        "cuMemBatchDecompressAsync",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
 pub fn cuMemPoolCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,

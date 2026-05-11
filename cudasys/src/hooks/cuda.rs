@@ -2207,6 +2207,15 @@ fn cuMemRangeGetAttributes(
     count: usize,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901105)]
+fn cuMemBatchDecompressAsync(
+    paramsArray: *mut CUmemDecompressParams,
+    count: usize,
+    flags: c_uint,
+    errorIndex: *mut usize,
+    stream: CUstream,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 901009, async_api)]
 fn cuMemPrefetchBatchAsync(
     #[host(input, len = count)] dptrs: *mut CUdeviceptr,
