@@ -79,12 +79,28 @@ int main(int argc, char **argv)
                   << param_offset << " size=" << param_size << std::endl;
         return 1;
     }
+    cudaFunction_t function_handle = nullptr;
+    CHECK_CUDA(cudaGetFuncBySymbol(&function_handle, kernel_ptr));
+    if (function_handle == nullptr) {
+        std::cerr << "cudaGetFuncBySymbol returned null" << std::endl;
+        return 1;
+    }
+    const void *function_ptr = reinterpret_cast<const void *>(function_handle);
 
     // Allocate GPU buffers for three vectors (two input, one output)
     CHECK_CUDA(cudaMalloc((void **)&dev_a, size * sizeof(int)));
 
     // Copy input vectors from host memory to GPU buffers.
     CHECK_CUDA(cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice));
+
+    void *symbol_args[] = {
+        (void *)&dev_a,
+        (void *)&dev_a,
+        (void *)&dev_a,
+        (void *)&size,
+    };
+    CHECK_CUDA(cudaLaunchKernel(function_ptr, dim3(1), dim3(1), symbol_args, 0, nullptr));
+    CHECK_CUDA(cudaDeviceSynchronize());
 
     // remove initial overhead
     for (int i = 0; i < 10; i++) {

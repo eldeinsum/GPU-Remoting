@@ -1577,6 +1577,9 @@ fn cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> 
 #[cuda_custom_hook] // local
 fn __cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> cudaError_t;
 
+#[cuda_custom_hook] // local
+fn cudaGetFuncBySymbol(functionPtr: *mut cudaFunction_t, symbolPtr: *const c_void) -> cudaError_t;
+
 #[cuda_custom_hook] // calls driver API
 fn cudaLibraryLoadData(
     library: *mut cudaLibrary_t,

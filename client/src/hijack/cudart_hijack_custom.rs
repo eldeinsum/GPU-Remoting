@@ -1574,6 +1574,22 @@ pub extern "C" fn cudaGetKernel(kernel: *mut cudaKernel_t, entryFuncAddr: MemPtr
 }
 
 #[no_mangle]
+extern "C" fn cudaGetFuncBySymbol(
+    functionPtr: *mut cudaFunction_t,
+    symbolPtr: *const c_void,
+) -> cudaError_t {
+    log::debug!(target: "cudaGetFuncBySymbol", "");
+    if functionPtr.is_null() || symbolPtr.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    unsafe {
+        *functionPtr = get_cufunction(symbolPtr as HostPtr).cast();
+    }
+    cudaError_t::cudaSuccess
+}
+
+#[no_mangle]
 pub extern "C" fn cudaLaunchKernel(
     func: MemPtr,
     gridDim: dim3,
