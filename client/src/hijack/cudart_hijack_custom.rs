@@ -892,6 +892,40 @@ fn cache_runtime_graph_kernel_node(
     );
 }
 
+fn symbol_device_address(symbol: *const c_void, offset: usize) -> Result<*mut c_void, cudaError_t> {
+    if symbol.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidSymbol);
+    }
+    let mut base = std::ptr::null_mut();
+    let result = cudaGetSymbolAddress(&mut base, symbol);
+    if result != cudaError_t::cudaSuccess {
+        return Err(result);
+    }
+    Ok(unsafe { base.cast::<u8>().add(offset).cast() })
+}
+
+fn symbol_copy_to_kind(src: *const c_void, kind: cudaMemcpyKind) -> cudaMemcpyKind {
+    if kind != cudaMemcpyKind::cudaMemcpyDefault {
+        return kind;
+    }
+    if is_device_pointer(src) {
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice
+    } else {
+        cudaMemcpyKind::cudaMemcpyHostToDevice
+    }
+}
+
+fn symbol_copy_from_kind(dst: *const c_void, kind: cudaMemcpyKind) -> cudaMemcpyKind {
+    if kind != cudaMemcpyKind::cudaMemcpyDefault {
+        return kind;
+    }
+    if is_device_pointer(dst) {
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice
+    } else {
+        cudaMemcpyKind::cudaMemcpyDeviceToHost
+    }
+}
+
 fn write_driver_entry_point(
     symbol: *const c_char,
     funcPtr: *mut *mut c_void,
@@ -1390,6 +1424,156 @@ pub extern "C" fn cudaGraphExecKernelNodeSetParams(
             &client.channel_receiver,
         )
     })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphAddMemcpyNodeToSymbol(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    let kind = symbol_copy_to_kind(src, kind);
+    if kind != cudaMemcpyKind::cudaMemcpyDeviceToDevice {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let dst = match symbol_device_address(symbol, offset) {
+        Ok(ptr) => ptr,
+        Err(error) => return error,
+    };
+    super::cudart_hijack::cudaGraphAddMemcpyNode1D(
+        pGraphNode,
+        graph,
+        pDependencies,
+        numDependencies,
+        dst,
+        src,
+        count,
+        kind,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphAddMemcpyNodeFromSymbol(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    let kind = symbol_copy_from_kind(dst.cast_const(), kind);
+    if kind != cudaMemcpyKind::cudaMemcpyDeviceToDevice {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let src = match symbol_device_address(symbol, offset) {
+        Ok(ptr) => ptr.cast_const(),
+        Err(error) => return error,
+    };
+    super::cudart_hijack::cudaGraphAddMemcpyNode1D(
+        pGraphNode,
+        graph,
+        pDependencies,
+        numDependencies,
+        dst,
+        src,
+        count,
+        kind,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphMemcpyNodeSetParamsToSymbol(
+    node: cudaGraphNode_t,
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    let kind = symbol_copy_to_kind(src, kind);
+    if kind != cudaMemcpyKind::cudaMemcpyDeviceToDevice {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let dst = match symbol_device_address(symbol, offset) {
+        Ok(ptr) => ptr,
+        Err(error) => return error,
+    };
+    super::cudart_hijack::cudaGraphMemcpyNodeSetParams1D(node, dst, src, count, kind)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphMemcpyNodeSetParamsFromSymbol(
+    node: cudaGraphNode_t,
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    let kind = symbol_copy_from_kind(dst.cast_const(), kind);
+    if kind != cudaMemcpyKind::cudaMemcpyDeviceToDevice {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let src = match symbol_device_address(symbol, offset) {
+        Ok(ptr) => ptr.cast_const(),
+        Err(error) => return error,
+    };
+    super::cudart_hijack::cudaGraphMemcpyNodeSetParams1D(node, dst, src, count, kind)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExecMemcpyNodeSetParamsToSymbol(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    let kind = symbol_copy_to_kind(src, kind);
+    if kind != cudaMemcpyKind::cudaMemcpyDeviceToDevice {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let dst = match symbol_device_address(symbol, offset) {
+        Ok(ptr) => ptr,
+        Err(error) => return error,
+    };
+    super::cudart_hijack::cudaGraphExecMemcpyNodeSetParams1D(
+        hGraphExec, node, dst, src, count, kind,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExecMemcpyNodeSetParamsFromSymbol(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t {
+    let kind = symbol_copy_from_kind(dst.cast_const(), kind);
+    if kind != cudaMemcpyKind::cudaMemcpyDeviceToDevice {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+    let src = match symbol_device_address(symbol, offset) {
+        Ok(ptr) => ptr.cast_const(),
+        Err(error) => return error,
+    };
+    super::cudart_hijack::cudaGraphExecMemcpyNodeSetParams1D(
+        hGraphExec, node, dst, src, count, kind,
+    )
 }
 
 #[no_mangle]

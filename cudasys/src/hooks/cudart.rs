@@ -1663,6 +1663,32 @@ fn cudaGraphAddMemcpyNode1D(
     }
 }
 
+#[cuda_custom_hook] // local, resolves symbol then calls 1D graph memcpy APIs
+fn cudaGraphAddMemcpyNodeToSymbol(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local, resolves symbol then calls 1D graph memcpy APIs
+fn cudaGraphAddMemcpyNodeFromSymbol(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900545)]
 fn cudaGraphMemcpyNodeSetParams1D(
     node: cudaGraphNode_t,
@@ -1675,6 +1701,26 @@ fn cudaGraphMemcpyNodeSetParams1D(
         assert_eq!(kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
     }
 }
+
+#[cuda_custom_hook] // local, resolves symbol then calls 1D graph memcpy APIs
+fn cudaGraphMemcpyNodeSetParamsToSymbol(
+    node: cudaGraphNode_t,
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local, resolves symbol then calls 1D graph memcpy APIs
+fn cudaGraphMemcpyNodeSetParamsFromSymbol(
+    node: cudaGraphNode_t,
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 545, async_api = false)]
 fn cudaGraphExecDestroy(graphExec: cudaGraphExec_t) -> cudaError_t;
@@ -1913,6 +1959,28 @@ fn cudaGraphExecMemcpyNodeSetParams1D(
         assert_eq!(kind, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
     }
 }
+
+#[cuda_custom_hook] // local, resolves symbol then calls 1D graph memcpy APIs
+fn cudaGraphExecMemcpyNodeSetParamsToSymbol(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    symbol: *const c_void,
+    src: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local, resolves symbol then calls 1D graph memcpy APIs
+fn cudaGraphExecMemcpyNodeSetParamsFromSymbol(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    dst: *mut c_void,
+    symbol: *const c_void,
+    count: usize,
+    offset: usize,
+    kind: cudaMemcpyKind,
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900514, async_api)]
 fn cudaGraphUpload(graphExec: cudaGraphExec_t, stream: cudaStream_t) -> cudaError_t;

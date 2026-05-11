@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <vector>
 
+__device__ unsigned char graph_extra_symbol[256];
+
 #define CHECK_CUDA(call)                                                       \
     do {                                                                       \
         cudaError_t result = (call);                                           \
@@ -395,6 +397,85 @@ int main()
     }
     CHECK_CUDA(cudaGraphExecDestroy(exec));
     CHECK_CUDA(cudaGraphDestroy(kernel_graph));
+    CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
+
+    void *symbol_ptr = nullptr;
+    CHECK_CUDA(cudaGetSymbolAddress(&symbol_ptr, graph_extra_symbol));
+
+    CHECK_CUDA(cudaMemset(device, 0x21, kBytes));
+    cudaGraph_t symbol_to_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&symbol_to_graph, 0));
+    cudaGraphNode_t symbol_to_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemcpyNodeToSymbol(
+        &symbol_to_node, symbol_to_graph, nullptr, 0, graph_extra_symbol,
+        device, kBytes, 0, cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaMemset(device, 0x22, kBytes));
+    CHECK_CUDA(cudaGraphMemcpyNodeSetParamsToSymbol(
+        symbol_to_node, graph_extra_symbol, device, kBytes, 0,
+        cudaMemcpyDeviceToDevice));
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, symbol_to_graph, 0));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), symbol_ptr, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x22) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaMemset(device, 0x23, kBytes));
+    CHECK_CUDA(cudaGraphExecMemcpyNodeSetParamsToSymbol(
+        exec, symbol_to_node, graph_extra_symbol, device, kBytes, 0,
+        cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), symbol_ptr, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x23) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(symbol_to_graph));
+
+    CHECK_CUDA(cudaMemset(symbol_ptr, 0x31, kBytes));
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    cudaGraph_t symbol_from_graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&symbol_from_graph, 0));
+    cudaGraphNode_t symbol_from_node = nullptr;
+    CHECK_CUDA(cudaGraphAddMemcpyNodeFromSymbol(
+        &symbol_from_node, symbol_from_graph, nullptr, 0, device,
+        graph_extra_symbol, kBytes, 0, cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaMemset(symbol_ptr, 0x32, kBytes));
+    CHECK_CUDA(cudaGraphMemcpyNodeSetParamsFromSymbol(
+        symbol_from_node, device, graph_extra_symbol, kBytes, 0,
+        cudaMemcpyDeviceToDevice));
+    exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, symbol_from_graph, 0));
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x32) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaMemset(symbol_ptr, 0x33, kBytes));
+    CHECK_CUDA(cudaGraphExecMemcpyNodeSetParamsFromSymbol(
+        exec, symbol_from_node, device, graph_extra_symbol, kBytes, 0,
+        cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaMemset(device, 0, kBytes));
+    CHECK_CUDA(cudaGraphLaunch(exec, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(kBytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), device, kBytes,
+                          cudaMemcpyDeviceToHost));
+    if (verify_value(output, 0x33) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(symbol_from_graph));
     CHECK_CUDA(cudaMemset(device, 0x7f, kBytes));
 
     unsigned char *copy_src = nullptr;
