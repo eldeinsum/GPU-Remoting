@@ -2211,6 +2211,50 @@ fn cudaLogsDumpToMemory(
     }
 }
 
+#[cuda_hook(proc_id = 901183)]
+fn cudaGraphicsUnregisterResource(resource: cudaGraphicsResource_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901184)]
+fn cudaGraphicsResourceSetMapFlags(
+    resource: cudaGraphicsResource_t,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901185)]
+fn cudaGraphicsMapResources(
+    count: c_int,
+    #[host(input, len = count.max(0) as usize)] resources: *mut cudaGraphicsResource_t,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901186)]
+fn cudaGraphicsUnmapResources(
+    count: c_int,
+    #[host(input, len = count.max(0) as usize)] resources: *mut cudaGraphicsResource_t,
+    stream: cudaStream_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901187)]
+fn cudaGraphicsResourceGetMappedPointer(
+    devPtr: *mut *mut c_void,
+    size: *mut usize,
+    resource: cudaGraphicsResource_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901188)]
+fn cudaGraphicsSubResourceGetMappedArray(
+    array: *mut cudaArray_t,
+    resource: cudaGraphicsResource_t,
+    arrayIndex: c_uint,
+    mipLevel: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901189)]
+fn cudaGraphicsResourceGetMappedMipmappedArray(
+    mipmappedArray: *mut cudaMipmappedArray_t,
+    resource: cudaGraphicsResource_t,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900427, async_api = false)]
 fn cudaCtxResetPersistingL2Cache() -> cudaError_t;
 

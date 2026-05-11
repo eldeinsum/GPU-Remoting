@@ -193,6 +193,47 @@ fn cuMemGetHandleForAddressRange(
     flags: c_ulonglong,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901176)]
+fn cuGraphicsUnregisterResource(resource: CUgraphicsResource) -> CUresult;
+
+#[cuda_hook(proc_id = 901177)]
+fn cuGraphicsSubResourceGetMappedArray(
+    pArray: *mut CUarray,
+    resource: CUgraphicsResource,
+    arrayIndex: c_uint,
+    mipLevel: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901178)]
+fn cuGraphicsResourceGetMappedMipmappedArray(
+    pMipmappedArray: *mut CUmipmappedArray,
+    resource: CUgraphicsResource,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901179)]
+fn cuGraphicsResourceGetMappedPointer_v2(
+    pDevPtr: *mut CUdeviceptr,
+    pSize: *mut usize,
+    resource: CUgraphicsResource,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901180)]
+fn cuGraphicsResourceSetMapFlags_v2(resource: CUgraphicsResource, flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901181)]
+fn cuGraphicsMapResources(
+    count: c_uint,
+    #[host(input, len = count as usize)] resources: *mut CUgraphicsResource,
+    hStream: CUstream,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901182)]
+fn cuGraphicsUnmapResources(
+    count: c_uint,
+    #[host(input, len = count as usize)] resources: *mut CUgraphicsResource,
+    hStream: CUstream,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 901053)]
 fn cuTexRefCreate(pTexRef: *mut CUtexref) -> CUresult;
 
