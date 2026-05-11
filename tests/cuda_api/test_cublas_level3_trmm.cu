@@ -1,0 +1,299 @@
+#include <cublas_v2.h>
+#include <cuComplex.h>
+#include <cuda_runtime.h>
+
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+
+#define CHECK_CUDA(call)                                                        \
+  do {                                                                          \
+    cudaError_t err__ = (call);                                                 \
+    if (err__ != cudaSuccess) {                                                 \
+      std::printf("CUDA failure %s:%d: %s\n", __FILE__, __LINE__,              \
+                  cudaGetErrorString(err__));                                   \
+      std::exit(EXIT_FAILURE);                                                  \
+    }                                                                           \
+  } while (0)
+
+#define CHECK_CUBLAS(call)                                                      \
+  do {                                                                          \
+    cublasStatus_t st__ = (call);                                               \
+    if (st__ != CUBLAS_STATUS_SUCCESS) {                                        \
+      std::printf("cuBLAS failure %s:%d: %d\n", __FILE__, __LINE__,            \
+                  static_cast<int>(st__));                                      \
+      std::exit(EXIT_FAILURE);                                                  \
+    }                                                                           \
+  } while (0)
+
+template <typename T> struct Ops;
+
+template <> struct Ops<float> {
+  static float zero() { return 0.0f; }
+  static float one() { return 1.0f; }
+  static float value(float real, float) { return real; }
+  static float add(float a, float b) { return a + b; }
+  static float mul(float a, float b) { return a * b; }
+  static float conj(float a) { return a; }
+  static float alpha() { return -0.625f; }
+  static bool near(float a, float b) { return std::fabs(a - b) < 1.0e-3f; }
+};
+
+template <> struct Ops<double> {
+  static double zero() { return 0.0; }
+  static double one() { return 1.0; }
+  static double value(float real, float) { return static_cast<double>(real); }
+  static double add(double a, double b) { return a + b; }
+  static double mul(double a, double b) { return a * b; }
+  static double conj(double a) { return a; }
+  static double alpha() { return -0.625; }
+  static bool near(double a, double b) { return std::fabs(a - b) < 1.0e-10; }
+};
+
+template <> struct Ops<cuComplex> {
+  static cuComplex zero() { return make_cuComplex(0.0f, 0.0f); }
+  static cuComplex one() { return make_cuComplex(1.0f, 0.0f); }
+  static cuComplex value(float real, float imag) { return make_cuComplex(real, imag); }
+  static cuComplex add(cuComplex a, cuComplex b) { return cuCaddf(a, b); }
+  static cuComplex mul(cuComplex a, cuComplex b) { return cuCmulf(a, b); }
+  static cuComplex conj(cuComplex a) { return cuConjf(a); }
+  static cuComplex alpha() { return make_cuComplex(-0.625f, 0.25f); }
+  static bool near(cuComplex a, cuComplex b) {
+    return std::fabs(a.x - b.x) < 1.0e-3f && std::fabs(a.y - b.y) < 1.0e-3f;
+  }
+};
+
+template <> struct Ops<cuDoubleComplex> {
+  static cuDoubleComplex zero() { return make_cuDoubleComplex(0.0, 0.0); }
+  static cuDoubleComplex one() { return make_cuDoubleComplex(1.0, 0.0); }
+  static cuDoubleComplex value(float real, float imag) {
+    return make_cuDoubleComplex(static_cast<double>(real), static_cast<double>(imag));
+  }
+  static cuDoubleComplex add(cuDoubleComplex a, cuDoubleComplex b) { return cuCadd(a, b); }
+  static cuDoubleComplex mul(cuDoubleComplex a, cuDoubleComplex b) { return cuCmul(a, b); }
+  static cuDoubleComplex conj(cuDoubleComplex a) { return cuConj(a); }
+  static cuDoubleComplex alpha() { return make_cuDoubleComplex(-0.625, 0.25); }
+  static bool near(cuDoubleComplex a, cuDoubleComplex b) {
+    return std::fabs(a.x - b.x) < 1.0e-10 && std::fabs(a.y - b.y) < 1.0e-10;
+  }
+};
+
+template <typename T> struct Trmm;
+
+template <> struct Trmm<float> {
+  typedef float Scalar;
+  static cublasStatus_t call32(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int m, int n, const float *alpha, const float *a, int lda, const float *b, int ldb, float *c, int ldc) {
+    return cublasStrmm_v2(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int64_t m, int64_t n, const float *alpha, const float *a, int64_t lda, const float *b, int64_t ldb, float *c, int64_t ldc) {
+    return cublasStrmm_v2_64(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+};
+
+template <> struct Trmm<double> {
+  typedef double Scalar;
+  static cublasStatus_t call32(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int m, int n, const double *alpha, const double *a, int lda, const double *b, int ldb, double *c, int ldc) {
+    return cublasDtrmm_v2(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int64_t m, int64_t n, const double *alpha, const double *a, int64_t lda, const double *b, int64_t ldb, double *c, int64_t ldc) {
+    return cublasDtrmm_v2_64(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+};
+
+template <> struct Trmm<cuComplex> {
+  typedef cuComplex Scalar;
+  static cublasStatus_t call32(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int m, int n, const cuComplex *alpha, const cuComplex *a, int lda, const cuComplex *b, int ldb, cuComplex *c, int ldc) {
+    return cublasCtrmm_v2(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int64_t m, int64_t n, const cuComplex *alpha, const cuComplex *a, int64_t lda, const cuComplex *b, int64_t ldb, cuComplex *c, int64_t ldc) {
+    return cublasCtrmm_v2_64(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+};
+
+template <> struct Trmm<cuDoubleComplex> {
+  typedef cuDoubleComplex Scalar;
+  static cublasStatus_t call32(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int m, int n, const cuDoubleComplex *alpha, const cuDoubleComplex *a, int lda, const cuDoubleComplex *b, int ldb, cuDoubleComplex *c, int ldc) {
+    return cublasZtrmm_v2(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t h, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int64_t m, int64_t n, const cuDoubleComplex *alpha, const cuDoubleComplex *a, int64_t lda, const cuDoubleComplex *b, int64_t ldb, cuDoubleComplex *c, int64_t ldc) {
+    return cublasZtrmm_v2_64(h, side, uplo, trans, diag, m, n, alpha, a, lda, b, ldb, c, ldc);
+  }
+};
+
+static bool in_triangle(cublasFillMode_t uplo, int row, int col) {
+  return uplo == CUBLAS_FILL_MODE_UPPER ? row <= col : row >= col;
+}
+
+template <typename T>
+static T matrix_value(const std::vector<T> &a, cublasFillMode_t uplo, cublasDiagType_t diag, int lda, int row, int col) {
+  if (row == col && diag == CUBLAS_DIAG_UNIT) {
+    return Ops<T>::one();
+  }
+  if (!in_triangle(uplo, row, col)) {
+    return Ops<T>::zero();
+  }
+  return a[row + col * lda];
+}
+
+template <typename T>
+static T op_a(const std::vector<T> &a, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int lda, int row, int col) {
+  if (trans == CUBLAS_OP_N) {
+    return matrix_value(a, uplo, diag, lda, row, col);
+  }
+  T v = matrix_value(a, uplo, diag, lda, col, row);
+  return trans == CUBLAS_OP_C ? Ops<T>::conj(v) : v;
+}
+
+template <typename T>
+static void fill_a(std::vector<T> &a, cublasFillMode_t uplo, int dim, int lda) {
+  for (int col = 0; col < dim; ++col) {
+    for (int row = 0; row < lda; ++row) {
+      if (row < dim && in_triangle(uplo, row, col)) {
+        const float diag_bias = row == col ? 1.5f : 0.0f;
+        a[row + col * lda] = Ops<T>::value(diag_bias + 0.125f * static_cast<float>(row + col + 1), 0.0625f * static_cast<float>(row - col));
+      } else {
+        a[row + col * lda] = Ops<T>::value(-100.0f - static_cast<float>(row + col), 0.0f);
+      }
+    }
+  }
+}
+
+template <typename T>
+static void fill_b(std::vector<T> &b, int m, int n, int ldb) {
+  for (int col = 0; col < n; ++col) {
+    for (int row = 0; row < ldb; ++row) {
+      b[row + col * ldb] = row < m ? Ops<T>::value(0.25f * static_cast<float>(2 * col + row + 1), 0.125f * static_cast<float>(row - col)) : Ops<T>::value(-200.0f - static_cast<float>(row + col), 0.0f);
+    }
+  }
+}
+
+template <typename T>
+static void fill_c(std::vector<T> &c, int m, int n, int ldc) {
+  for (int col = 0; col < n; ++col) {
+    for (int row = 0; row < ldc; ++row) {
+      c[row + col * ldc] = Ops<T>::value(-300.0f - static_cast<float>(row + col), 0.0f);
+    }
+  }
+}
+
+template <typename T>
+static void expected_trmm(std::vector<T> &out, const std::vector<T> &a, const std::vector<T> &b, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, int m, int n, int lda, int ldb, int ldc, T alpha) {
+  for (int col = 0; col < n; ++col) {
+    for (int row = 0; row < m; ++row) {
+      T sum = Ops<T>::zero();
+      if (side == CUBLAS_SIDE_LEFT) {
+        for (int inner = 0; inner < m; ++inner) {
+          sum = Ops<T>::add(sum, Ops<T>::mul(op_a(a, uplo, trans, diag, lda, row, inner), b[inner + col * ldb]));
+        }
+      } else {
+        for (int inner = 0; inner < n; ++inner) {
+          sum = Ops<T>::add(sum, Ops<T>::mul(b[row + inner * ldb], op_a(a, uplo, trans, diag, lda, inner, col)));
+        }
+      }
+      out[row + col * ldc] = Ops<T>::mul(alpha, sum);
+    }
+  }
+}
+
+template <typename T>
+static void run_case(cublasHandle_t handle, const char *name, cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, bool use_64, bool device_scalar) {
+  const int m = 4;
+  const int n = 3;
+  const int adim = side == CUBLAS_SIDE_LEFT ? m : n;
+  const int lda = adim + 2;
+  const int ldb = m + 1;
+  const int ldc = m + 2;
+
+  std::vector<T> a(lda * adim);
+  std::vector<T> b(ldb * n);
+  std::vector<T> c(ldc * n);
+  fill_a(a, uplo, adim, lda);
+  fill_b(b, m, n, ldb);
+  fill_c(c, m, n, ldc);
+  std::vector<T> expected = c;
+  const typename Trmm<T>::Scalar alpha = Ops<T>::alpha();
+  expected_trmm(expected, a, b, side, uplo, trans, diag, m, n, lda, ldb, ldc, alpha);
+
+  T *d_a = nullptr;
+  T *d_b = nullptr;
+  T *d_c = nullptr;
+  typename Trmm<T>::Scalar *d_alpha = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_a, a.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_b, b.size() * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_c, c.size() * sizeof(T)));
+  CHECK_CUDA(cudaMemcpy(d_a, a.data(), a.size() * sizeof(T), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b, b.data(), b.size() * sizeof(T), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_c, c.data(), c.size() * sizeof(T), cudaMemcpyHostToDevice));
+
+  const typename Trmm<T>::Scalar *alpha_arg = &alpha;
+  if (device_scalar) {
+    CHECK_CUDA(cudaMalloc(&d_alpha, sizeof(typename Trmm<T>::Scalar)));
+    CHECK_CUDA(cudaMemcpy(d_alpha, &alpha, sizeof(typename Trmm<T>::Scalar), cudaMemcpyHostToDevice));
+    alpha_arg = d_alpha;
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+  } else {
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  }
+
+  if (use_64) {
+    CHECK_CUBLAS(Trmm<T>::call64(handle, side, uplo, trans, diag, m, n, alpha_arg, d_a, lda, d_b, ldb, d_c, ldc));
+  } else {
+    CHECK_CUBLAS(Trmm<T>::call32(handle, side, uplo, trans, diag, m, n, alpha_arg, d_a, lda, d_b, ldb, d_c, ldc));
+  }
+  CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  std::vector<T> out(c.size());
+  CHECK_CUDA(cudaMemcpy(out.data(), d_c, out.size() * sizeof(T), cudaMemcpyDeviceToHost));
+  for (int col = 0; col < n; ++col) {
+    for (int row = 0; row < m; ++row) {
+      if (!Ops<T>::near(out[row + col * ldc], expected[row + col * ldc])) {
+        std::printf("%s mismatch row=%d col=%d side=%d uplo=%d trans=%d diag=%d use64=%d device=%d\n", name, row, col, static_cast<int>(side), static_cast<int>(uplo), static_cast<int>(trans), static_cast<int>(diag), use_64 ? 1 : 0, device_scalar ? 1 : 0);
+        std::exit(EXIT_FAILURE);
+      }
+    }
+  }
+
+  if (d_alpha != nullptr) cudaFree(d_alpha);
+  cudaFree(d_c);
+  cudaFree(d_b);
+  cudaFree(d_a);
+}
+
+template <typename T>
+static void run_type(cublasHandle_t handle, const char *name, const cublasOperation_t *ops, int op_count) {
+  cublasSideMode_t sides[] = {CUBLAS_SIDE_LEFT, CUBLAS_SIDE_RIGHT};
+  cublasFillMode_t uplos[] = {CUBLAS_FILL_MODE_UPPER, CUBLAS_FILL_MODE_LOWER};
+  cublasDiagType_t diags[] = {CUBLAS_DIAG_NON_UNIT, CUBLAS_DIAG_UNIT};
+  for (int s = 0; s < 2; ++s) {
+    for (int u = 0; u < 2; ++u) {
+      for (int op = 0; op < op_count; ++op) {
+        for (int d = 0; d < 2; ++d) {
+          for (int use64 = 0; use64 < 2; ++use64) {
+            for (int device = 0; device < 2; ++device) {
+              run_case<T>(handle, name, sides[s], uplos[u], ops[op], diags[d], use64 != 0, device != 0);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+int main() {
+  cublasHandle_t handle = nullptr;
+  CHECK_CUBLAS(cublasCreate(&handle));
+
+  cublasOperation_t real_ops[] = {CUBLAS_OP_N, CUBLAS_OP_T};
+  cublasOperation_t complex_ops[] = {CUBLAS_OP_N, CUBLAS_OP_T, CUBLAS_OP_C};
+
+  run_type<float>(handle, "strmm", real_ops, 2);
+  run_type<double>(handle, "dtrmm", real_ops, 2);
+  run_type<cuComplex>(handle, "ctrmm", complex_ops, 3);
+  run_type<cuDoubleComplex>(handle, "ztrmm", complex_ops, 3);
+
+  CHECK_CUBLAS(cublasDestroy(handle));
+  return EXIT_SUCCESS;
+}
