@@ -20,6 +20,7 @@ mod host_memory;
 mod nccl_hijack;
 mod nccl_unimplement;
 mod nvml_hijack;
+mod nvml_hijack_custom;
 mod nvml_unimplement;
 mod nvrtc_hijack;
 mod nvrtc_hijack_custom;
@@ -28,12 +29,12 @@ mod user_object;
 
 #[expect(unused_imports)]
 use codegen::{cuda_hook_hijack, use_thread_local};
-use network::type_impl::{MemPtr, recv_slice, recv_slice_to, send_slice};
+use network::type_impl::{recv_slice, recv_slice_to, send_slice, MemPtr};
 use network::{CommChannel, Transportable};
 
 use crate::elf::{FatBinaryHeader, FatBinaryWrapper};
 use crate::{
-    CLIENT_THREAD, CUBLAS_CACHE, ClientThread, CublasLtMatmulDescState, CublasLtTransformDescState,
-    DRIVER_CACHE, FatBinaryHandle, HostPtr, RUNTIME_CACHE, RuntimeCache,
     cublaslt_pointer_mode_from_u32, cublaslt_scale_type_from_u32, cublaslt_scale_type_size,
+    ClientThread, CublasLtMatmulDescState, CublasLtTransformDescState, FatBinaryHandle, HostPtr,
+    RuntimeCache, CLIENT_THREAD, CUBLAS_CACHE, DRIVER_CACHE, RUNTIME_CACHE,
 };
