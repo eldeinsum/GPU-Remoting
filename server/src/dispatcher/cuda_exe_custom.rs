@@ -54,6 +54,48 @@ fn make_edge_data_buffer(capacity: usize) -> Vec<CUgraphEdgeData> {
         .collect()
 }
 
+pub fn cuPointerGetAttributesExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuPointerGetAttributes", "[#{}]", server.id);
+
+    let mut attributes = recv_slice::<CUpointer_attribute, _>(channel_receiver).unwrap();
+    let mut ptr = 0;
+    ptr.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut data = attributes
+        .iter()
+        .map(|attr| vec![0u8; attr.data_size()])
+        .collect::<Vec<_>>();
+    let mut data_ptrs = data
+        .iter_mut()
+        .map(|buffer| buffer.as_mut_ptr().cast::<c_void>())
+        .collect::<Vec<_>>();
+
+    let result = unsafe {
+        cuPointerGetAttributes(
+            attributes.len() as _,
+            attributes.as_mut_ptr(),
+            data_ptrs.as_mut_ptr(),
+            ptr,
+        )
+    };
+
+    for buffer in data {
+        let len = if result == CUresult::CUDA_SUCCESS {
+            buffer.len()
+        } else {
+            0
+        };
+        send_slice(&buffer[..len], channel_sender).unwrap();
+    }
+    send_result("cuPointerGetAttributes", server.id, result, channel_sender);
+}
+
 pub fn cuMemPrefetchAsync_v2Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,

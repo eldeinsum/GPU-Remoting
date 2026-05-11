@@ -1084,6 +1084,21 @@ fn cuPointerGetAttribute(
     ptr: CUdeviceptr,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901015)]
+fn cuPointerSetAttribute(
+    #[host(len = attribute.data_size())] value: *const c_void,
+    attribute: CUpointer_attribute,
+    ptr: CUdeviceptr,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901016)]
+fn cuPointerGetAttributes(
+    numAttributes: c_uint,
+    attributes: *mut CUpointer_attribute,
+    data: *mut *mut c_void,
+    ptr: CUdeviceptr,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900201)]
 fn cuMemAlloc_v2(dptr: *mut CUdeviceptr, bytesize: usize) -> CUresult;
 

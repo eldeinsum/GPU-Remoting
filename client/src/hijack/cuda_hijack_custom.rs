@@ -126,6 +126,64 @@ extern "C" fn cuMemHostGetFlags(pFlags: *mut c_uint, p: *mut c_void) -> CUresult
         .unwrap_or_else(host_memory_error)
 }
 
+#[no_mangle]
+extern "C" fn cuPointerGetAttributes(
+    numAttributes: c_uint,
+    attributes: *mut CUpointer_attribute,
+    data: *mut *mut c_void,
+    ptr: CUdeviceptr,
+) -> CUresult {
+    if numAttributes == 0 || attributes.is_null() || data.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let num_attributes = numAttributes as usize;
+    let attrs = unsafe { std::slice::from_raw_parts(attributes, num_attributes) };
+    let data_sizes = attrs
+        .iter()
+        .map(CUpointer_attribute::data_size)
+        .collect::<Vec<_>>();
+    for (idx, size) in data_sizes.iter().enumerate() {
+        if *size == 0 || unsafe { *data.add(idx) }.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuPointerGetAttributes", "[#{}]", client.id);
+
+        901016.send(&client.channel_sender).unwrap();
+        send_slice(attrs, &client.channel_sender).unwrap();
+        ptr.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut local_error = None;
+        for (idx, capacity) in data_sizes.iter().copied().enumerate() {
+            let bytes = recv_slice::<u8, _>(&client.channel_receiver).unwrap();
+            if bytes.len() > capacity {
+                log::error!(
+                    target: "cuPointerGetAttributes",
+                    "server returned {} bytes for client capacity {}",
+                    bytes.len(),
+                    capacity,
+                );
+                local_error = Some(CUresult::CUDA_ERROR_INVALID_VALUE);
+                continue;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr().cast(), *data.add(idx), bytes.len());
+            }
+        }
+        let result = recv_cu_result(
+            "cuPointerGetAttributes",
+            client.id,
+            &client.channel_receiver,
+        );
+        local_error.unwrap_or(result)
+    })
+}
+
 fn cu_graph_get_node_list<T: Transportable>(
     proc_id: i32,
     target: &'static str,
