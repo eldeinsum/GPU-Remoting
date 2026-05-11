@@ -372,6 +372,18 @@ impl RuntimeCache {
 
     fn reset_after_fork(&mut self) {
         self.cuda_device = None;
+        self.clear_context_bound_state();
+    }
+
+    fn set_cuda_device(&mut self, device: std::ffi::c_int) {
+        if self.cuda_device == Some(device) {
+            return;
+        }
+        self.cuda_device = Some(device);
+        self.clear_context_bound_state();
+    }
+
+    fn clear_context_bound_state(&mut self) {
         self.loaded_modules.clear();
         self.loaded_functions.clear();
         self.graph_kernel_nodes.clear();

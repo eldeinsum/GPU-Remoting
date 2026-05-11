@@ -755,14 +755,12 @@ fn resolve_from_array_kind(dst: *mut c_void, kind: cudaMemcpyKind) -> cudaMemcpy
 }
 
 fn ensure_runtime_device(runtime: &mut RuntimeCache) -> cudaError_t {
-    if let Some(device) = runtime.cuda_device {
-        let current_device = CLIENT_THREAD.with_borrow_mut(|client| {
-            client.ensure_current_process();
-            client.cuda_device
-        });
-        if current_device != Some(device) {
-            return cudaError_t::cudaErrorInvalidDevice;
-        }
+    let current_device = CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        client.cuda_device
+    });
+    if let Some(device) = current_device {
+        runtime.set_cuda_device(device);
         return cudaError_t::cudaSuccess;
     }
 
@@ -775,7 +773,7 @@ fn ensure_runtime_device(runtime: &mut RuntimeCache) -> cudaError_t {
     if result != cudaError_t::cudaSuccess {
         return result;
     }
-    runtime.cuda_device = Some(device);
+    runtime.set_cuda_device(device);
     cudaError_t::cudaSuccess
 }
 

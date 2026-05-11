@@ -99,3 +99,82 @@ fn ncclAllGather(
     comm: ncclComm_t,
     stream: cudaStream_t,
 ) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3217)]
+fn ncclCommInitAll(
+    #[host(output, len = ndev)] comm: *mut ncclComm_t,
+    ndev: c_int,
+    #[host(len = ndev)] devlist: *const c_int,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3218)]
+fn ncclCommCuDevice(comm: ncclComm_t, device: *mut c_int) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3219)]
+fn ncclCommGetUniqueId(comm: ncclComm_t, uniqueId: *mut ncclUniqueId) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3220, async_api)]
+fn ncclBroadcast(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    count: usize,
+    datatype: ncclDataType_t,
+    root: c_int,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3221, async_api)]
+fn ncclReduce(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    count: usize,
+    datatype: ncclDataType_t,
+    op: ncclRedOp_t,
+    root: c_int,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3222, async_api)]
+fn ncclReduceScatter(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    recvcount: usize,
+    datatype: ncclDataType_t,
+    op: ncclRedOp_t,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3223, async_api)]
+fn ncclAlltoAll(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    count: usize,
+    datatype: ncclDataType_t,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3224, async_api)]
+fn ncclGather(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    count: usize,
+    datatype: ncclDataType_t,
+    root: c_int,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3225, async_api)]
+fn ncclScatter(
+    #[device] sendbuff: *const c_void,
+    #[device] recvbuff: *mut c_void,
+    count: usize,
+    datatype: ncclDataType_t,
+    root: c_int,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
