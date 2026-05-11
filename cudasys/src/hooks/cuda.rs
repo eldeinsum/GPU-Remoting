@@ -184,6 +184,15 @@ fn cuTensorMapReplaceAddress(
     globalAddress: *mut c_void,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901175)]
+fn cuMemGetHandleForAddressRange(
+    handle: *mut c_void,
+    dptr: CUdeviceptr,
+    size: usize,
+    handleType: CUmemRangeHandleType,
+    flags: c_ulonglong,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 901053)]
 fn cuTexRefCreate(pTexRef: *mut CUtexref) -> CUresult;
 

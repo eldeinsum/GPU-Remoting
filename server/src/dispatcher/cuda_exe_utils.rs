@@ -231,3 +231,44 @@ where
     let _ = fs::remove_file(&path);
     result
 }
+
+pub fn send_fd(socket_path: &[u8], fd: c_int) -> io::Result<()> {
+    let path = std::str::from_utf8(socket_path)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let stream = UnixStream::connect(path)?;
+    let mut byte = [0u8; 1];
+    let mut iov = libc::iovec {
+        iov_base: byte.as_mut_ptr().cast(),
+        iov_len: byte.len(),
+    };
+    let mut control = vec![0u8; unsafe {
+        libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize
+    }];
+    let mut msg = unsafe { std::mem::zeroed::<libc::msghdr>() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len();
+
+    unsafe {
+        let cmsg = libc::CMSG_FIRSTHDR(&msg);
+        if cmsg.is_null() {
+            return Err(io::Error::other("missing control message header"));
+        }
+        (*cmsg).cmsg_level = libc::SOL_SOCKET;
+        (*cmsg).cmsg_type = libc::SCM_RIGHTS;
+        (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<c_int>() as _) as _;
+        *libc::CMSG_DATA(cmsg).cast::<c_int>() = fd;
+        let sent = libc::sendmsg(stream.as_raw_fd(), &msg, 0);
+        if sent == byte.len() as isize {
+            Ok(())
+        } else if sent < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "short sendmsg while sending file descriptor",
+            ))
+        }
+    }
+}

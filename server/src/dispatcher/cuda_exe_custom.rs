@@ -367,6 +367,42 @@ pub fn cuTensorMapReplaceAddressExe<C: CommChannel>(server: &mut ServerWorker<C>
     send_result("cuTensorMapReplaceAddress", server.id, result, channel_sender);
 }
 
+pub fn cuMemGetHandleForAddressRangeExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuMemGetHandleForAddressRange", "[#{}]", server.id);
+
+    let mut dptr = 0;
+    dptr.recv(&server.channel_receiver).unwrap();
+    let mut size = 0usize;
+    size.recv(&server.channel_receiver).unwrap();
+    let mut handle_type = CUmemRangeHandleType::CU_MEM_RANGE_HANDLE_TYPE_DMA_BUF_FD;
+    handle_type.recv(&server.channel_receiver).unwrap();
+    let mut flags = 0u64;
+    flags.recv(&server.channel_receiver).unwrap();
+    let socket_path = recv_slice::<u8, _>(&server.channel_receiver).unwrap();
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut fd = -1 as c_int;
+    let mut result = unsafe {
+        cuMemGetHandleForAddressRange((&raw mut fd).cast(), dptr, size, handle_type, flags)
+    };
+    if result == CUresult::CUDA_SUCCESS {
+        if let Err(error) = cuda_exe_utils::send_fd(&socket_path, fd) {
+            log::error!(target: "cuMemGetHandleForAddressRange", "failed to send fd: {error}");
+            unsafe {
+                libc::close(fd);
+            }
+            result = CUresult::CUDA_ERROR_UNKNOWN;
+        }
+    }
+
+    send_result(
+        "cuMemGetHandleForAddressRange",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
 fn send_graph_launch_result<C: CommChannel>(
     target: &'static str,
     server_id: i32,

@@ -1,7 +1,9 @@
+use std::fs;
 use std::io;
 use std::os::raw::c_int;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub fn pack_kernel_args(
     arg_ptrs: *mut *mut std::ffi::c_void,
@@ -90,5 +92,80 @@ pub fn send_fd(socket_path: &[u8], fd: c_int) -> io::Result<()> {
                 "short sendmsg while sending file descriptor",
             ))
         }
+    }
+}
+
+fn recv_fd(socket: &UnixStream) -> io::Result<c_int> {
+    let mut byte = [0u8; 1];
+    let mut iov = libc::iovec {
+        iov_base: byte.as_mut_ptr().cast(),
+        iov_len: byte.len(),
+    };
+    let mut control = vec![0u8; unsafe {
+        libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize
+    }];
+    let mut msg = unsafe { std::mem::zeroed::<libc::msghdr>() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len();
+
+    unsafe {
+        let received = libc::recvmsg(socket.as_raw_fd(), &mut msg, 0);
+        if received <= 0 {
+            return if received == 0 {
+                Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "socket closed before file descriptor was received",
+                ))
+            } else {
+                Err(io::Error::last_os_error())
+            };
+        }
+        let cmsg = libc::CMSG_FIRSTHDR(&msg);
+        if cmsg.is_null()
+            || (*cmsg).cmsg_level != libc::SOL_SOCKET
+            || (*cmsg).cmsg_type != libc::SCM_RIGHTS
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "missing SCM_RIGHTS file descriptor",
+            ));
+        }
+        Ok(*libc::CMSG_DATA(cmsg).cast::<c_int>())
+    }
+}
+
+pub struct ServerFdReceiver {
+    path: String,
+    listener: UnixListener,
+}
+
+impl ServerFdReceiver {
+    pub fn bind() -> io::Result<Self> {
+        static FD_SOCKET_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let counter = FD_SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = format!(
+            "/tmp/gpu-remoting-fd-client-{}-{counter}.sock",
+            std::process::id()
+        );
+        let _ = fs::remove_file(&path);
+        let listener = UnixListener::bind(&path)?;
+        Ok(Self { path, listener })
+    }
+
+    pub fn path_bytes(&self) -> &[u8] {
+        self.path.as_bytes()
+    }
+
+    pub fn recv(self) -> io::Result<c_int> {
+        let (socket, _) = self.listener.accept()?;
+        recv_fd(&socket)
+    }
+}
+
+impl Drop for ServerFdReceiver {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
     }
 }

@@ -1,4 +1,4 @@
-use super::cuda_hijack_utils::send_fd;
+use super::cuda_hijack_utils::{ServerFdReceiver, send_fd};
 use super::*;
 use cudasys::types::cuda::*;
 use network::type_impl::{recv_slice, send_slice};
@@ -190,6 +190,61 @@ extern "C" fn cuTensorMapReplaceAddress(
             client.id,
             &client.channel_receiver,
         )
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemGetHandleForAddressRange(
+    handle: *mut c_void,
+    dptr: CUdeviceptr,
+    size: usize,
+    handleType: CUmemRangeHandleType,
+    flags: c_ulonglong,
+) -> CUresult {
+    if handle.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    let fd_receiver = match ServerFdReceiver::bind() {
+        Ok(receiver) => receiver,
+        Err(error) => {
+            log::error!(target: "cuMemGetHandleForAddressRange", "failed to bind fd socket: {error}");
+            return CUresult::CUDA_ERROR_UNKNOWN;
+        }
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemGetHandleForAddressRange", "[#{}]", client.id);
+
+        901175.send(&client.channel_sender).unwrap();
+        dptr.send(&client.channel_sender).unwrap();
+        size.send(&client.channel_sender).unwrap();
+        handleType.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        send_slice(fd_receiver.path_bytes(), &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cu_result(
+            "cuMemGetHandleForAddressRange",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result != CUresult::CUDA_SUCCESS {
+            return result;
+        }
+
+        match fd_receiver.recv() {
+            Ok(fd) => {
+                unsafe {
+                    *handle.cast::<c_int>() = fd;
+                }
+                CUresult::CUDA_SUCCESS
+            }
+            Err(error) => {
+                log::error!(target: "cuMemGetHandleForAddressRange", "failed to receive fd: {error}");
+                CUresult::CUDA_ERROR_UNKNOWN
+            }
+        }
     })
 }
 
