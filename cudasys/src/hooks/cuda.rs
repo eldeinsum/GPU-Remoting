@@ -1164,6 +1164,43 @@ fn cuMemPoolSetAttribute(
     #[host(input, len = attr.data_size())] value: *mut c_void,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901002)]
+fn cuMemPoolCreate(pool: *mut CUmemoryPool, poolProps: *const CUmemPoolProps) -> CUresult;
+
+#[cuda_hook(proc_id = 901003, async_api = false)]
+fn cuMemPoolDestroy(pool: CUmemoryPool) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901004)]
+fn cuMemGetDefaultMemPool(
+    pool_out: *mut CUmemoryPool,
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901005)]
+fn cuMemGetMemPool(
+    pool: *mut CUmemoryPool,
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901006)]
+fn cuMemSetMemPool(
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+    pool: CUmemoryPool,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901007)]
+fn cuMemPoolSetAccess(pool: CUmemoryPool, map: *const CUmemAccessDesc, count: usize) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901008)]
+fn cuMemPoolGetAccess(
+    flags: *mut CUmemAccess_flags,
+    memPool: CUmemoryPool,
+    location: *mut CUmemLocation,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900439)]
 fn cuMemAllocFromPoolAsync(
     dptr: *mut CUdeviceptr,

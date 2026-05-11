@@ -1585,6 +1585,50 @@ fn cudaMemPoolSetAttribute(
     #[host(input, len = attr.data_size())] value: *mut c_void,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900995)]
+fn cudaMemPoolCreate(
+    memPool: *mut cudaMemPool_t,
+    #[host(len = 1)] poolProps: *const cudaMemPoolProps,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900996, async_api = false)]
+fn cudaMemPoolDestroy(memPool: cudaMemPool_t) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900997)]
+fn cudaMemGetDefaultMemPool(
+    memPool: *mut cudaMemPool_t,
+    #[host(input, len = 1)] location: *mut cudaMemLocation,
+    type_: cudaMemAllocationType,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900998)]
+fn cudaMemGetMemPool(
+    memPool: *mut cudaMemPool_t,
+    #[host(input, len = 1)] location: *mut cudaMemLocation,
+    type_: cudaMemAllocationType,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900999)]
+fn cudaMemSetMemPool(
+    #[host(input, len = 1)] location: *mut cudaMemLocation,
+    type_: cudaMemAllocationType,
+    memPool: cudaMemPool_t,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901000)]
+fn cudaMemPoolSetAccess(
+    memPool: cudaMemPool_t,
+    #[host(len = count)] descList: *const cudaMemAccessDesc,
+    count: usize,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901001)]
+fn cudaMemPoolGetAccess(
+    #[host(output, len = 1)] flags: *mut cudaMemAccessFlags,
+    memPool: cudaMemPool_t,
+    #[host(input, len = 1)] location: *mut cudaMemLocation,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900446)]
 fn cudaMallocFromPoolAsync(
     ptr: *mut *mut c_void,

@@ -282,6 +282,149 @@ extern "C" fn cuMemRangeGetAttributes(
 }
 
 #[no_mangle]
+extern "C" fn cuMemPoolCreate(
+    pool: *mut CUmemoryPool,
+    poolProps: *const CUmemPoolProps,
+) -> CUresult {
+    if pool.is_null() || poolProps.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolCreate", "[#{}]", client.id);
+
+        901002.send(&client.channel_sender).unwrap();
+        unsafe { &*poolProps }.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pool }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuMemPoolCreate", client.id, &client.channel_receiver)
+    })
+}
+
+fn cu_mem_get_pool(
+    proc_id: i32,
+    target: &'static str,
+    pool: *mut CUmemoryPool,
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+) -> CUresult {
+    if pool.is_null() || location.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: target, "[#{}]", client.id);
+
+        proc_id.send(&client.channel_sender).unwrap();
+        unsafe { &*location }.send(&client.channel_sender).unwrap();
+        type_.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pool }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result(target, client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemGetDefaultMemPool(
+    pool_out: *mut CUmemoryPool,
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+) -> CUresult {
+    cu_mem_get_pool(901004, "cuMemGetDefaultMemPool", pool_out, location, type_)
+}
+
+#[no_mangle]
+extern "C" fn cuMemGetMemPool(
+    pool: *mut CUmemoryPool,
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+) -> CUresult {
+    cu_mem_get_pool(901005, "cuMemGetMemPool", pool, location, type_)
+}
+
+#[no_mangle]
+extern "C" fn cuMemSetMemPool(
+    location: *mut CUmemLocation,
+    type_: CUmemAllocationType,
+    pool: CUmemoryPool,
+) -> CUresult {
+    if location.is_null() || pool.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemSetMemPool", "[#{}]", client.id);
+
+        901006.send(&client.channel_sender).unwrap();
+        unsafe { &*location }.send(&client.channel_sender).unwrap();
+        type_.send(&client.channel_sender).unwrap();
+        pool.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result("cuMemSetMemPool", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemPoolSetAccess(
+    pool: CUmemoryPool,
+    map: *const CUmemAccessDesc,
+    count: usize,
+) -> CUresult {
+    if pool.is_null() || map.is_null() || count == 0 {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolSetAccess", "[#{}]", client.id);
+
+        901007.send(&client.channel_sender).unwrap();
+        pool.send(&client.channel_sender).unwrap();
+        let access = unsafe { std::slice::from_raw_parts(map, count) };
+        send_slice(access, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result("cuMemPoolSetAccess", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuMemPoolGetAccess(
+    flags: *mut CUmemAccess_flags,
+    memPool: CUmemoryPool,
+    location: *mut CUmemLocation,
+) -> CUresult {
+    if flags.is_null() || memPool.is_null() || location.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuMemPoolGetAccess", "[#{}]", client.id);
+
+        901008.send(&client.channel_sender).unwrap();
+        memPool.send(&client.channel_sender).unwrap();
+        unsafe { &*location }.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *flags }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuMemPoolGetAccess", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuTexObjectCreate(
     pTexObject: *mut CUtexObject,
     pResDesc: *const CUDA_RESOURCE_DESC,

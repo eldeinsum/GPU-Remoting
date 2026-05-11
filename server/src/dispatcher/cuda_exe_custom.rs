@@ -149,6 +149,124 @@ pub fn cuMemRangeGetAttributesExe<C: CommChannel>(server: &mut ServerWorker<C>) 
     send_result("cuMemRangeGetAttributes", server.id, result, channel_sender);
 }
 
+pub fn cuMemPoolCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemPoolCreate", "[#{}]", server.id);
+
+    let mut pool_props = std::mem::MaybeUninit::<CUmemPoolProps>::uninit();
+    pool_props.recv(channel_receiver).unwrap();
+    let pool_props = unsafe { pool_props.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut pool: CUmemoryPool = std::ptr::null_mut();
+    let result = unsafe { cuMemPoolCreate(&raw mut pool, &raw const pool_props) };
+    pool.send(channel_sender).unwrap();
+    send_result("cuMemPoolCreate", server.id, result, channel_sender);
+}
+
+fn cu_mem_get_pool<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+    target: &'static str,
+    func: unsafe extern "C" fn(
+        *mut CUmemoryPool,
+        *mut CUmemLocation,
+        CUmemAllocationType,
+    ) -> CUresult,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: target, "[#{}]", server.id);
+
+    let mut location = std::mem::MaybeUninit::<CUmemLocation>::uninit();
+    location.recv(channel_receiver).unwrap();
+    let mut location = unsafe { location.assume_init() };
+    let mut type_ = CUmemAllocationType::CU_MEM_ALLOCATION_TYPE_PINNED;
+    type_.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut pool: CUmemoryPool = std::ptr::null_mut();
+    let result = unsafe { func(&raw mut pool, &raw mut location, type_) };
+    pool.send(channel_sender).unwrap();
+    send_result(target, server.id, result, channel_sender);
+}
+
+pub fn cuMemGetDefaultMemPoolExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    cu_mem_get_pool(server, "cuMemGetDefaultMemPool", cuMemGetDefaultMemPool);
+}
+
+pub fn cuMemGetMemPoolExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    cu_mem_get_pool(server, "cuMemGetMemPool", cuMemGetMemPool);
+}
+
+pub fn cuMemSetMemPoolExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemSetMemPool", "[#{}]", server.id);
+
+    let mut location = std::mem::MaybeUninit::<CUmemLocation>::uninit();
+    location.recv(channel_receiver).unwrap();
+    let mut location = unsafe { location.assume_init() };
+    let mut type_ = CUmemAllocationType::CU_MEM_ALLOCATION_TYPE_PINNED;
+    type_.recv(channel_receiver).unwrap();
+    let mut pool = std::mem::MaybeUninit::<CUmemoryPool>::uninit();
+    pool.recv(channel_receiver).unwrap();
+    let pool = unsafe { pool.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let result = unsafe { cuMemSetMemPool(&raw mut location, type_, pool) };
+    send_result("cuMemSetMemPool", server.id, result, channel_sender);
+}
+
+pub fn cuMemPoolSetAccessExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemPoolSetAccess", "[#{}]", server.id);
+
+    let mut pool = std::mem::MaybeUninit::<CUmemoryPool>::uninit();
+    pool.recv(channel_receiver).unwrap();
+    let pool = unsafe { pool.assume_init() };
+    let mut access = recv_slice::<CUmemAccessDesc, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = unsafe { cuMemPoolSetAccess(pool, access.as_mut_ptr(), access.len()) };
+    send_result("cuMemPoolSetAccess", server.id, result, channel_sender);
+}
+
+pub fn cuMemPoolGetAccessExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuMemPoolGetAccess", "[#{}]", server.id);
+
+    let mut pool = std::mem::MaybeUninit::<CUmemoryPool>::uninit();
+    pool.recv(channel_receiver).unwrap();
+    let pool = unsafe { pool.assume_init() };
+    let mut location = std::mem::MaybeUninit::<CUmemLocation>::uninit();
+    location.recv(channel_receiver).unwrap();
+    let mut location = unsafe { location.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut flags = CUmemAccess_flags::CU_MEM_ACCESS_FLAGS_PROT_NONE;
+    let result = unsafe { cuMemPoolGetAccess(&raw mut flags, pool, &raw mut location) };
+    flags.send(channel_sender).unwrap();
+    send_result("cuMemPoolGetAccess", server.id, result, channel_sender);
+}
+
 pub fn cuTexObjectCreateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,
