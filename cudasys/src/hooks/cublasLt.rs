@@ -198,6 +198,18 @@ fn cublasLtMatmulAlgoInit(
     algo: *mut cublasLtMatmulAlgo_t,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1552)]
+fn cublasLtMatmulAlgoCheck(
+    lightHandle: cublasLtHandle_t,
+    operationDesc: cublasLtMatmulDesc_t,
+    Adesc: cublasLtMatrixLayout_t,
+    Bdesc: cublasLtMatrixLayout_t,
+    Cdesc: cublasLtMatrixLayout_t,
+    Ddesc: cublasLtMatrixLayout_t,
+    #[host] algo: *const cublasLtMatmulAlgo_t,
+    heuristicResult: *mut cublasLtMatmulHeuristicResult_t,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1536)]
 fn cublasLtMatmulAlgoCapGetAttribute(
     #[host] algo: *const cublasLtMatmulAlgo_t,
@@ -206,6 +218,48 @@ fn cublasLtMatmulAlgoCapGetAttribute(
     sizeInBytes: usize,
     sizeWritten: *mut usize,
 ) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1553)]
+fn cublasLtMatmulAlgoConfigSetAttribute(
+    #[skip] algo: *mut cublasLtMatmulAlgo_t,
+    attr: cublasLtMatmulAlgoConfigAttributes_t,
+    #[host(len = sizeInBytes)] buf: *const c_void,
+    sizeInBytes: usize,
+) -> cublasStatus_t {
+    'client_before_send: {
+        assert!(!algo.is_null());
+        let algo_input = unsafe { std::ptr::read_unaligned(algo) };
+    }
+    'client_extra_send: {
+        algo_input.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut algo_value = std::mem::MaybeUninit::<cublasLtMatmulAlgo_t>::uninit();
+        algo_value.recv(channel_receiver).unwrap();
+        let mut algo_value = unsafe { algo_value.assume_init() };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasLtMatmulAlgoConfigSetAttribute(
+                (&raw mut algo_value).cast(),
+                attr,
+                buf__ptr.cast(),
+                sizeInBytes,
+            )
+        };
+    }
+    'server_after_send: {
+        algo_value.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+    }
+    'client_after_recv: {
+        let mut algo_output = std::mem::MaybeUninit::<cublasLtMatmulAlgo_t>::uninit();
+        algo_output.recv(channel_receiver).unwrap();
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            unsafe { std::ptr::write_unaligned(algo, algo_output.assume_init()) };
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1537)]
 fn cublasLtMatmulAlgoConfigGetAttribute(

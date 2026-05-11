@@ -169,6 +169,37 @@ static void test_heuristic_algo_attributes(cublasLtHandle_t handle) {
     CHECK_TRUE(config_id >= 0);
     CHECK_TRUE(written == sizeof(config_id));
 
+    cublasLtMatmulHeuristicResult_t checked;
+    CHECK_CUBLAS(cublasLtMatmulAlgoCheck(
+        handle,
+        operation_desc,
+        adesc,
+        bdesc,
+        cdesc,
+        cdesc,
+        &heuristic.algo,
+        &checked));
+    CHECK_TRUE(checked.state == CUBLAS_STATUS_SUCCESS);
+    CHECK_TRUE(checked.workspaceSize == heuristic.workspaceSize);
+
+    int32_t split_k = 1;
+    CHECK_CUBLAS(cublasLtMatmulAlgoConfigSetAttribute(
+        &heuristic.algo,
+        CUBLASLT_ALGO_CONFIG_SPLITK_NUM,
+        &split_k,
+        sizeof(split_k)));
+
+    split_k = 0;
+    written = 0;
+    CHECK_CUBLAS(cublasLtMatmulAlgoConfigGetAttribute(
+        &heuristic.algo,
+        CUBLASLT_ALGO_CONFIG_SPLITK_NUM,
+        &split_k,
+        sizeof(split_k),
+        &written));
+    CHECK_TRUE(split_k == 1);
+    CHECK_TRUE(written == sizeof(split_k));
+
     destroy_matmul_descriptors(operation_desc, preference, adesc, bdesc, cdesc);
 }
 

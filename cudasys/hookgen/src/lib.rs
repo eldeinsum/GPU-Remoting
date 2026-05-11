@@ -3,14 +3,14 @@ use std::fs;
 use std::io::Write as _;
 use std::path::Path;
 
-use hookdef::{is_hacked_type, CustomHookAttrs, HookAttrs};
+use hookdef::{CustomHookAttrs, HookAttrs, is_hacked_type};
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, ToTokens};
+use quote::{ToTokens, format_ident};
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned as _;
 use syn::{
-    parse_quote, Attribute, Block, FnArg, ForeignItem, Ident, Item, ItemFn, Meta, Signature, Token,
-    Type, UseTree, Visibility,
+    Attribute, Block, FnArg, ForeignItem, Ident, Item, ItemFn, Meta, Signature, Token, Type,
+    UseTree, Visibility, parse_quote,
 };
 
 struct Hook {
@@ -404,9 +404,6 @@ fn is_sig_equal_ignore_attr(hook: &Signature, binding: &Signature) -> bool {
         let (FnArg::Typed(hook), FnArg::Typed(binding)) = pair else {
             return false;
         };
-        if hook.pat != binding.pat {
-            return false;
-        }
         if !is_type_equal_ignore_path(&hook.ty, &binding.ty) && !is_hacked_type(&hook.ty) {
             return false;
         }
