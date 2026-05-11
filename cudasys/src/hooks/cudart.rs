@@ -821,6 +821,55 @@ fn cudaMemcpy3DPeerAsync(
     }
 }
 
+#[cuda_hook(proc_id = 900965, async_api)]
+fn cudaMemcpyBatchAsync(
+    #[host(len = count)] dsts: *const *mut c_void,
+    #[host(len = count)] srcs: *const *const c_void,
+    #[host(len = count)] sizes: *const usize,
+    count: usize,
+    #[host(input, len = numAttrs)] attrs: *mut cudaMemcpyAttributes,
+    #[host(input, len = numAttrs)] attrsIdxs: *mut usize,
+    numAttrs: usize,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(count > 0);
+        assert!(!dsts.is_null());
+        assert!(!srcs.is_null());
+        assert!(!sizes.is_null());
+        assert!(numAttrs > 0);
+        assert!(numAttrs <= count);
+        assert!(!attrs.is_null());
+        assert!(!attrsIdxs.is_null());
+        let dsts_slice = unsafe { std::slice::from_raw_parts(dsts, count) };
+        let srcs_slice = unsafe { std::slice::from_raw_parts(srcs, count) };
+        let sizes_slice = unsafe { std::slice::from_raw_parts(sizes, count) };
+        assert!(dsts_slice.iter().all(|dst| !dst.is_null()));
+        assert!(srcs_slice.iter().all(|src| !src.is_null()));
+        assert!(sizes_slice.iter().all(|size| *size > 0));
+        let attrs_idx_slice = unsafe { std::slice::from_raw_parts(attrsIdxs, numAttrs) };
+        assert_eq!(attrs_idx_slice[0], 0);
+        assert!(attrs_idx_slice.iter().all(|idx| *idx < count));
+        assert!(attrs_idx_slice.windows(2).all(|idxs| idxs[0] < idxs[1]));
+    }
+}
+
+#[cuda_hook(proc_id = 900966, async_api)]
+fn cudaMemcpyWithAttributesAsync(
+    #[device] dst: *mut c_void,
+    #[device] src: *const c_void,
+    size: usize,
+    #[host(input, len = 1)] attr: *mut cudaMemcpyAttributes,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(!dst.is_null());
+        assert!(!src.is_null());
+        assert!(size > 0);
+        assert!(!attr.is_null());
+    }
+}
+
 #[cuda_hook(proc_id = 900576, async_api)]
 fn cudaMemcpy3DBatchAsync(
     numOps: usize,

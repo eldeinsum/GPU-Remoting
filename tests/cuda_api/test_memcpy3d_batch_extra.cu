@@ -97,12 +97,52 @@ int main()
 
     unsigned char *src = nullptr;
     unsigned char *dst = nullptr;
+    unsigned char *dst2 = nullptr;
     CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&src), bytes));
     CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&dst), bytes));
+    CHECK_CUDA(cudaMalloc(reinterpret_cast<void **>(&dst2), bytes));
     CHECK_CUDA(cudaMemcpy(src, input.data(), bytes, cudaMemcpyHostToDevice));
 
     cudaStream_t stream = nullptr;
     CHECK_CUDA(cudaStreamCreate(&stream));
+
+    cudaMemcpyAttributes runtime_attr = {};
+    runtime_attr.srcAccessOrder = cudaMemcpySrcAccessOrderStream;
+    runtime_attr.flags = cudaMemcpyFlagDefault;
+    cudaMemcpyAttributes runtime_attrs[] = {runtime_attr, runtime_attr};
+    runtime_attrs[1].flags = cudaMemcpyFlagPreferOverlapWithCompute;
+    size_t runtime_attr_indices[] = {0, 1};
+    void *runtime_dsts[] = {dst, dst2};
+    const void *runtime_srcs[] = {src, src};
+    size_t runtime_sizes[] = {bytes, bytes};
+
+    CHECK_CUDA(cudaMemset(dst, 0, bytes));
+    CHECK_CUDA(cudaMemset(dst2, 0, bytes));
+    CHECK_CUDA(cudaMemcpyBatchAsync(
+        runtime_dsts, runtime_srcs, runtime_sizes, 2, runtime_attrs,
+        runtime_attr_indices, 2, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+
+    std::vector<unsigned char> output(bytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), dst, bytes, cudaMemcpyDeviceToHost));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+    output.assign(bytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), dst2, bytes, cudaMemcpyDeviceToHost));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
+
+    CHECK_CUDA(cudaMemset(dst, 0, bytes));
+    CHECK_CUDA(
+        cudaMemcpyWithAttributesAsync(dst, src, bytes, &runtime_attr, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    output.assign(bytes, 0);
+    CHECK_CUDA(cudaMemcpy(output.data(), dst, bytes, cudaMemcpyDeviceToHost));
+    if (verify_equal(output, input) != 0) {
+        return 1;
+    }
 
     cudaMemcpy3DBatchOp op =
         make_pointer_op(dst, src, width, height, depth);
@@ -110,7 +150,7 @@ int main()
     CHECK_CUDA(cudaMemcpy3DBatchAsync(1, &op, 0, stream));
     CHECK_CUDA(cudaStreamSynchronize(stream));
 
-    std::vector<unsigned char> output(bytes, 0);
+    output.assign(bytes, 0);
     CHECK_CUDA(cudaMemcpy(output.data(), dst, bytes, cudaMemcpyDeviceToHost));
     if (verify_equal(output, input) != 0) {
         return 1;
@@ -127,6 +167,7 @@ int main()
     }
 
     CHECK_CUDA(cudaStreamDestroy(stream));
+    CHECK_CUDA(cudaFree(dst2));
     CHECK_CUDA(cudaFree(dst));
     CHECK_CUDA(cudaFree(src));
 
