@@ -199,6 +199,39 @@ pub extern "C" fn cudaMemPoolImportFromShareableHandle(
 }
 
 #[no_mangle]
+pub extern "C" fn cudaImportExternalMemory(
+    extMem_out: *mut cudaExternalMemory_t,
+    memHandleDesc: *const cudaExternalMemoryHandleDesc,
+) -> cudaError_t {
+    if extMem_out.is_null() || memHandleDesc.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let desc = unsafe { *memHandleDesc };
+    if desc.type_ != cudaExternalMemoryHandleType::cudaExternalMemoryHandleTypeOpaqueFd {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaImportExternalMemory", "[#{}]", client.id);
+
+        901121.send(&client.channel_sender).unwrap();
+        desc.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *extMem_out }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaImportExternalMemory",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn cudaMemPoolExportPointer(
     exportData: *mut cudaMemPoolPtrExportData,
     ptr: *mut c_void,

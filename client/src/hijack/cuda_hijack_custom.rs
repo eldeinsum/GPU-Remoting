@@ -222,6 +222,35 @@ extern "C" fn cuMemImportFromShareableHandle(
 }
 
 #[no_mangle]
+extern "C" fn cuImportExternalMemory(
+    extMem_out: *mut CUexternalMemory,
+    memHandleDesc: *const CUDA_EXTERNAL_MEMORY_HANDLE_DESC,
+) -> CUresult {
+    if extMem_out.is_null() || memHandleDesc.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let desc = unsafe { *memHandleDesc };
+    if desc.type_ != CUexternalMemoryHandleType::CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuImportExternalMemory", "[#{}]", client.id);
+
+        901117.send(&client.channel_sender).unwrap();
+        desc.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *extMem_out }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result("cuImportExternalMemory", client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
 extern "C" fn cuPointerGetAttributes(
     numAttributes: c_uint,
     attributes: *mut CUpointer_attribute,

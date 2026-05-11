@@ -172,6 +172,175 @@ int main()
         CHECK_DRV(cuMemAddressFree(shared_va, allocation_size));
         CHECK_DRV(cuMemRelease(imported_handle));
         CHECK_DRV(cuMemRelease(share_handle));
+
+        CUmemGenericAllocationHandle external_handle = 0;
+        CHECK_DRV(cuMemCreate(&external_handle, allocation_size, &share_prop, 0));
+        int external_fd = -1;
+        CHECK_DRV(cuMemExportToShareableHandle(
+            &external_fd, external_handle,
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+
+        CUDA_EXTERNAL_MEMORY_HANDLE_DESC external_desc = {};
+        external_desc.type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD;
+        external_desc.handle.fd = external_fd;
+        external_desc.size = allocation_size;
+        CUexternalMemory external_memory = nullptr;
+        CHECK_DRV(cuImportExternalMemory(&external_memory, &external_desc));
+        external_fd = -1;
+
+        CUDA_EXTERNAL_MEMORY_BUFFER_DESC buffer_desc = {};
+        buffer_desc.size = allocation_size;
+        CUdeviceptr external_ptr = 0;
+        CHECK_DRV(cuExternalMemoryGetMappedBuffer(
+            &external_ptr, external_memory, &buffer_desc));
+
+        std::fill(output.begin(), output.end(), 0);
+        CHECK_DRV(cuMemsetD32(external_ptr, 0x3cc33cc3u, value_count));
+        CHECK_DRV(cuMemcpyDtoH(
+            output.data(), external_ptr, value_count * sizeof(unsigned int)));
+        if (!std::all_of(output.begin(), output.end(), [](unsigned int value) {
+                return value == 0x3cc33cc3u;
+            })) {
+            return 1;
+        }
+
+        CHECK_DRV(cuMemFree(external_ptr));
+        CHECK_DRV(cuDestroyExternalMemory(external_memory));
+        CHECK_DRV(cuMemRelease(external_handle));
+
+        CUmemGenericAllocationHandle external_mipmap_handle = 0;
+        CHECK_DRV(cuMemCreate(&external_mipmap_handle, allocation_size,
+                              &share_prop, 0));
+        int external_mipmap_fd = -1;
+        CHECK_DRV(cuMemExportToShareableHandle(
+            &external_mipmap_fd, external_mipmap_handle,
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+
+        CUDA_EXTERNAL_MEMORY_HANDLE_DESC external_mipmap_desc = {};
+        external_mipmap_desc.type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD;
+        external_mipmap_desc.handle.fd = external_mipmap_fd;
+        external_mipmap_desc.size = allocation_size;
+        CUexternalMemory external_mipmap_memory = nullptr;
+        CHECK_DRV(cuImportExternalMemory(&external_mipmap_memory,
+                                         &external_mipmap_desc));
+        external_mipmap_fd = -1;
+
+        CUDA_EXTERNAL_MEMORY_MIPMAPPED_ARRAY_DESC mipmap_desc = {};
+        mipmap_desc.arrayDesc.Width = 64;
+        mipmap_desc.arrayDesc.Height = 64;
+        mipmap_desc.arrayDesc.Depth = 0;
+        mipmap_desc.arrayDesc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+        mipmap_desc.arrayDesc.NumChannels = 1;
+        mipmap_desc.numLevels = 1;
+        CUmipmappedArray external_mipmap = nullptr;
+        CHECK_DRV(cuExternalMemoryGetMappedMipmappedArray(
+            &external_mipmap, external_mipmap_memory, &mipmap_desc));
+
+        CUarray external_mipmap_level = nullptr;
+        CHECK_DRV(cuMipmappedArrayGetLevel(&external_mipmap_level,
+                                           external_mipmap, 0));
+        std::vector<unsigned char> mipmap_input(64 * 64, 0x5d);
+        std::vector<unsigned char> mipmap_output(64 * 64, 0);
+        CHECK_CUDA(cudaMemcpy2DToArray(
+            reinterpret_cast<cudaArray_t>(external_mipmap_level), 0, 0,
+            mipmap_input.data(), 64, 64, 64, cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy2DFromArray(
+            mipmap_output.data(), 64,
+            reinterpret_cast<cudaArray_t>(external_mipmap_level), 0, 0, 64, 64,
+            cudaMemcpyDeviceToHost));
+        if (!std::all_of(mipmap_output.begin(), mipmap_output.end(),
+                         [](unsigned char value) { return value == 0x5d; })) {
+            return 1;
+        }
+
+        CHECK_DRV(cuMipmappedArrayDestroy(external_mipmap));
+        CHECK_DRV(cuDestroyExternalMemory(external_mipmap_memory));
+        CHECK_DRV(cuMemRelease(external_mipmap_handle));
+
+        CUmemGenericAllocationHandle runtime_external_handle = 0;
+        CHECK_DRV(cuMemCreate(&runtime_external_handle, allocation_size,
+                              &share_prop, 0));
+        int runtime_external_fd = -1;
+        CHECK_DRV(cuMemExportToShareableHandle(
+            &runtime_external_fd, runtime_external_handle,
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+
+        cudaExternalMemoryHandleDesc runtime_external_desc = {};
+        runtime_external_desc.type = cudaExternalMemoryHandleTypeOpaqueFd;
+        runtime_external_desc.handle.fd = runtime_external_fd;
+        runtime_external_desc.size = allocation_size;
+        cudaExternalMemory_t runtime_external_memory = nullptr;
+        CHECK_CUDA(cudaImportExternalMemory(&runtime_external_memory,
+                                            &runtime_external_desc));
+        runtime_external_fd = -1;
+
+        cudaExternalMemoryBufferDesc runtime_buffer_desc = {};
+        runtime_buffer_desc.size = allocation_size;
+        void *runtime_external_ptr = nullptr;
+        CHECK_CUDA(cudaExternalMemoryGetMappedBuffer(
+            &runtime_external_ptr, runtime_external_memory,
+            &runtime_buffer_desc));
+
+        std::vector<unsigned char> runtime_output(256, 0);
+        CHECK_CUDA(cudaMemset(runtime_external_ptr, 0x3c,
+                              runtime_output.size()));
+        CHECK_CUDA(cudaMemcpy(runtime_output.data(), runtime_external_ptr,
+                              runtime_output.size(),
+                              cudaMemcpyDeviceToHost));
+        if (!std::all_of(runtime_output.begin(), runtime_output.end(),
+                         [](unsigned char value) { return value == 0x3c; })) {
+            return 1;
+        }
+
+        CHECK_CUDA(cudaFree(runtime_external_ptr));
+        CHECK_CUDA(cudaDestroyExternalMemory(runtime_external_memory));
+        CHECK_DRV(cuMemRelease(runtime_external_handle));
+
+        CUmemGenericAllocationHandle runtime_mipmap_handle = 0;
+        CHECK_DRV(cuMemCreate(&runtime_mipmap_handle, allocation_size,
+                              &share_prop, 0));
+        int runtime_mipmap_fd = -1;
+        CHECK_DRV(cuMemExportToShareableHandle(
+            &runtime_mipmap_fd, runtime_mipmap_handle,
+            CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+
+        cudaExternalMemoryHandleDesc runtime_mipmap_desc = {};
+        runtime_mipmap_desc.type = cudaExternalMemoryHandleTypeOpaqueFd;
+        runtime_mipmap_desc.handle.fd = runtime_mipmap_fd;
+        runtime_mipmap_desc.size = allocation_size;
+        cudaExternalMemory_t runtime_mipmap_memory = nullptr;
+        CHECK_CUDA(cudaImportExternalMemory(&runtime_mipmap_memory,
+                                            &runtime_mipmap_desc));
+        runtime_mipmap_fd = -1;
+
+        cudaExternalMemoryMipmappedArrayDesc runtime_mipmap_array_desc = {};
+        runtime_mipmap_array_desc.formatDesc =
+            cudaCreateChannelDesc<unsigned char>();
+        runtime_mipmap_array_desc.extent = make_cudaExtent(64, 64, 0);
+        runtime_mipmap_array_desc.numLevels = 1;
+        cudaMipmappedArray_t runtime_mipmap = nullptr;
+        CHECK_CUDA(cudaExternalMemoryGetMappedMipmappedArray(
+            &runtime_mipmap, runtime_mipmap_memory,
+            &runtime_mipmap_array_desc));
+
+        cudaArray_t runtime_mipmap_level = nullptr;
+        CHECK_CUDA(cudaGetMipmappedArrayLevel(&runtime_mipmap_level,
+                                              runtime_mipmap, 0));
+        std::fill(mipmap_output.begin(), mipmap_output.end(), 0);
+        CHECK_CUDA(cudaMemcpy2DToArray(runtime_mipmap_level, 0, 0,
+                                       mipmap_input.data(), 64, 64, 64,
+                                       cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy2DFromArray(mipmap_output.data(), 64,
+                                         runtime_mipmap_level, 0, 0, 64, 64,
+                                         cudaMemcpyDeviceToHost));
+        if (!std::all_of(mipmap_output.begin(), mipmap_output.end(),
+                         [](unsigned char value) { return value == 0x5d; })) {
+            return 1;
+        }
+
+        CHECK_CUDA(cudaFreeMipmappedArray(runtime_mipmap));
+        CHECK_CUDA(cudaDestroyExternalMemory(runtime_mipmap_memory));
+        CHECK_DRV(cuMemRelease(runtime_mipmap_handle));
     } else {
         std::puts("POSIX shareable VMM handles unsupported on this device");
     }

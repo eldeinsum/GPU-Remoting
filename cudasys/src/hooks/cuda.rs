@@ -2173,6 +2173,29 @@ fn cuMemRetainAllocationHandle(
     #[device] addr: *mut c_void,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901117)]
+fn cuImportExternalMemory(
+    extMem_out: *mut CUexternalMemory,
+    memHandleDesc: *const CUDA_EXTERNAL_MEMORY_HANDLE_DESC,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901118)]
+fn cuExternalMemoryGetMappedBuffer(
+    devPtr: *mut CUdeviceptr,
+    extMem: CUexternalMemory,
+    #[host(len = 1)] bufferDesc: *const CUDA_EXTERNAL_MEMORY_BUFFER_DESC,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901119)]
+fn cuExternalMemoryGetMappedMipmappedArray(
+    mipmap: *mut CUmipmappedArray,
+    extMem: CUexternalMemory,
+    #[host(len = 1)] mipmapDesc: *const CUDA_EXTERNAL_MEMORY_MIPMAPPED_ARRAY_DESC,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901120, async_api = false)]
+fn cuDestroyExternalMemory(extMem: CUexternalMemory) -> CUresult;
+
 #[cuda_hook(proc_id = 901049)]
 fn cuMemGetAddressRange_v2(
     pbase: *mut CUdeviceptr,

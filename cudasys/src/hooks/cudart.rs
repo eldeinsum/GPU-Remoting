@@ -54,6 +54,29 @@ fn cudaGetMipmappedArrayLevel(
 #[cuda_hook(proc_id = 900571, async_api = false)]
 fn cudaFreeMipmappedArray(mipmappedArray: cudaMipmappedArray_t) -> cudaError_t;
 
+#[cuda_custom_hook(proc_id = 901121)]
+fn cudaImportExternalMemory(
+    extMem_out: *mut cudaExternalMemory_t,
+    memHandleDesc: *const cudaExternalMemoryHandleDesc,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901122)]
+fn cudaExternalMemoryGetMappedBuffer(
+    devPtr: *mut *mut c_void,
+    extMem: cudaExternalMemory_t,
+    #[host(len = 1)] bufferDesc: *const cudaExternalMemoryBufferDesc,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901123)]
+fn cudaExternalMemoryGetMappedMipmappedArray(
+    mipmap: *mut cudaMipmappedArray_t,
+    extMem: cudaExternalMemory_t,
+    #[host(len = 1)] mipmapDesc: *const cudaExternalMemoryMipmappedArrayDesc,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 901124, async_api = false)]
+fn cudaDestroyExternalMemory(extMem: cudaExternalMemory_t) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900572)]
 fn cudaArrayGetMemoryRequirements(
     memoryRequirements: *mut cudaArrayMemoryRequirements,

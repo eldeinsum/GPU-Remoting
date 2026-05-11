@@ -187,6 +187,41 @@ pub fn cudaMemPoolImportFromShareableHandleExe<C: CommChannel>(server: &mut Serv
     );
 }
 
+pub fn cudaImportExternalMemoryExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cudaImportExternalMemory", "[#{}]", server.id);
+
+    let mut desc = std::mem::MaybeUninit::<cudaExternalMemoryHandleDesc>::uninit();
+    desc.recv(&server.channel_receiver).unwrap();
+    let mut desc = unsafe { desc.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut external_memory = std::ptr::null_mut();
+    let result =
+        if desc.type_ == cudaExternalMemoryHandleType::cudaExternalMemoryHandleTypeOpaqueFd {
+            let synthetic_fd = unsafe { desc.handle.fd };
+            if let Some(server_fd) = server.take_shareable_handle(synthetic_fd) {
+                desc.handle.fd = server_fd;
+                let result = unsafe { cudaImportExternalMemory(&mut external_memory, &desc) };
+                if result != cudaError_t::cudaSuccess {
+                    server.restore_shareable_handle(synthetic_fd, server_fd);
+                }
+                result
+            } else {
+                cudaError_t::cudaErrorInvalidValue
+            }
+        } else {
+            cudaError_t::cudaErrorNotSupported
+        };
+
+    external_memory.send(&server.channel_sender).unwrap();
+    send_result(
+        "cudaImportExternalMemory",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
 pub fn cudaMemPoolExportPointerExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     log::debug!(target: "cudaMemPoolExportPointer", "[#{}]", server.id);
 
