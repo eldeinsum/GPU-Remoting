@@ -3524,6 +3524,118 @@ fn cublasZgeam_64(
     }
 }
 
+#[cuda_hook(proc_id = 1332, async_api)]
+fn cublasSdgmm(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: c_int,
+    n: c_int,
+    #[device] A: *const f32,
+    lda: c_int,
+    #[device] x: *const f32,
+    incx: c_int,
+    #[device] C: *mut f32,
+    ldc: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1333, async_api)]
+fn cublasSdgmm_64(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: i64,
+    n: i64,
+    #[device] A: *const f32,
+    lda: i64,
+    #[device] x: *const f32,
+    incx: i64,
+    #[device] C: *mut f32,
+    ldc: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1334, async_api)]
+fn cublasDdgmm(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: c_int,
+    n: c_int,
+    #[device] A: *const f64,
+    lda: c_int,
+    #[device] x: *const f64,
+    incx: c_int,
+    #[device] C: *mut f64,
+    ldc: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1335, async_api)]
+fn cublasDdgmm_64(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: i64,
+    n: i64,
+    #[device] A: *const f64,
+    lda: i64,
+    #[device] x: *const f64,
+    incx: i64,
+    #[device] C: *mut f64,
+    ldc: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1336, async_api)]
+fn cublasCdgmm(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: c_int,
+    n: c_int,
+    #[device] A: *const cuComplex,
+    lda: c_int,
+    #[device] x: *const cuComplex,
+    incx: c_int,
+    #[device] C: *mut cuComplex,
+    ldc: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1337, async_api)]
+fn cublasCdgmm_64(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: i64,
+    n: i64,
+    #[device] A: *const cuComplex,
+    lda: i64,
+    #[device] x: *const cuComplex,
+    incx: i64,
+    #[device] C: *mut cuComplex,
+    ldc: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1338, async_api)]
+fn cublasZdgmm(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: c_int,
+    n: c_int,
+    #[device] A: *const cuDoubleComplex,
+    lda: c_int,
+    #[device] x: *const cuDoubleComplex,
+    incx: c_int,
+    #[device] C: *mut cuDoubleComplex,
+    ldc: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1339, async_api)]
+fn cublasZdgmm_64(
+    handle: cublasHandle_t,
+    mode: cublasSideMode_t,
+    m: i64,
+    n: i64,
+    #[device] A: *const cuDoubleComplex,
+    lda: i64,
+    #[device] x: *const cuDoubleComplex,
+    incx: i64,
+    #[device] C: *mut cuDoubleComplex,
+    ldc: i64,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1300, async_api)]
 fn cublasSgemm_v2(
     handle: cublasHandle_t,
