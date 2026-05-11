@@ -115,6 +115,35 @@ int main()
 
     CUdevice device = 0;
     CHECK_DRV(cuDeviceGet(&device, 0));
+    if (driver_count > 1) {
+        CUdevice secondary_device = 0;
+        CHECK_DRV(cuDeviceGet(&secondary_device, 1));
+        unsigned int secondary_flags = 0;
+        int secondary_active = 0;
+        CHECK_DRV(cuDevicePrimaryCtxGetState(
+            secondary_device, &secondary_flags, &secondary_active));
+        if (secondary_active == 0) {
+            CHECK_DRV(cuDevicePrimaryCtxSetFlags(secondary_device,
+                                                 secondary_flags));
+            CUcontext secondary_context = nullptr;
+            CHECK_DRV(cuDevicePrimaryCtxRetain(&secondary_context,
+                                               secondary_device));
+            if (secondary_context == nullptr) {
+                std::fprintf(stderr,
+                             "cuDevicePrimaryCtxRetain returned null\n");
+                return 1;
+            }
+            CHECK_DRV(cuDevicePrimaryCtxRelease(secondary_device));
+            CHECK_DRV(cuDevicePrimaryCtxReset(secondary_device));
+            CHECK_DRV(cuDevicePrimaryCtxGetState(
+                secondary_device, &secondary_flags, &secondary_active));
+            if (secondary_active != 0) {
+                std::fprintf(stderr,
+                             "secondary primary context remained active\n");
+                return 1;
+            }
+        }
+    }
 
     char name[256] = {};
     CHECK_DRV(cuDeviceGetName(name, sizeof(name), device));

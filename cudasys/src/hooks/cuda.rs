@@ -635,6 +635,12 @@ fn cuDevicePrimaryCtxRetain(pctx: *mut CUcontext, dev: CUdevice) -> CUresult;
 #[cuda_hook(proc_id = 900321, async_api = false)]
 fn cuDevicePrimaryCtxRelease_v2(dev: CUdevice) -> CUresult;
 
+#[cuda_hook(proc_id = 900931, async_api = false)]
+fn cuDevicePrimaryCtxSetFlags_v2(dev: CUdevice, flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 900932, async_api = false)]
+fn cuDevicePrimaryCtxReset_v2(dev: CUdevice) -> CUresult;
+
 #[cuda_custom_hook(proc_id = 900923)]
 fn cuCtxCreate_v4(
     pctx: *mut CUcontext,
