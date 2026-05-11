@@ -14956,6 +14956,322 @@ fn cublasZtrsmBatched_64(
     }
 }
 
+#[cuda_hook(proc_id = 1626, async_api)]
+fn cublasSmatinvBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const f32,
+    lda: c_int,
+    #[device] Ainv: *const *mut f32,
+    lda_inv: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1627, async_api)]
+fn cublasDmatinvBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const f64,
+    lda: c_int,
+    #[device] Ainv: *const *mut f64,
+    lda_inv: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1628, async_api)]
+fn cublasCmatinvBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const cuComplex,
+    lda: c_int,
+    #[device] Ainv: *const *mut cuComplex,
+    lda_inv: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1629, async_api)]
+fn cublasZmatinvBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const cuDoubleComplex,
+    lda: c_int,
+    #[device] Ainv: *const *mut cuDoubleComplex,
+    lda_inv: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1630)]
+fn cublasSgeqrfBatched(
+    handle: cublasHandle_t,
+    m: c_int,
+    n: c_int,
+    #[device] Aarray: *const *mut f32,
+    lda: c_int,
+    #[device] TauArray: *const *mut f32,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1631)]
+fn cublasDgeqrfBatched(
+    handle: cublasHandle_t,
+    m: c_int,
+    n: c_int,
+    #[device] Aarray: *const *mut f64,
+    lda: c_int,
+    #[device] TauArray: *const *mut f64,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1632)]
+fn cublasCgeqrfBatched(
+    handle: cublasHandle_t,
+    m: c_int,
+    n: c_int,
+    #[device] Aarray: *const *mut cuComplex,
+    lda: c_int,
+    #[device] TauArray: *const *mut cuComplex,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1633)]
+fn cublasZgeqrfBatched(
+    handle: cublasHandle_t,
+    m: c_int,
+    n: c_int,
+    #[device] Aarray: *const *mut cuDoubleComplex,
+    lda: c_int,
+    #[device] TauArray: *const *mut cuDoubleComplex,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1634)]
+fn cublasSgelsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *mut f32,
+    lda: c_int,
+    #[device] Carray: *const *mut f32,
+    ldc: c_int,
+    info: *mut c_int,
+    #[device] devInfoArray: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1635)]
+fn cublasDgelsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *mut f64,
+    lda: c_int,
+    #[device] Carray: *const *mut f64,
+    ldc: c_int,
+    info: *mut c_int,
+    #[device] devInfoArray: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1636)]
+fn cublasCgelsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *mut cuComplex,
+    lda: c_int,
+    #[device] Carray: *const *mut cuComplex,
+    ldc: c_int,
+    info: *mut c_int,
+    #[device] devInfoArray: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1637)]
+fn cublasZgelsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    m: c_int,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *mut cuDoubleComplex,
+    lda: c_int,
+    #[device] Carray: *const *mut cuDoubleComplex,
+    ldc: c_int,
+    info: *mut c_int,
+    #[device] devInfoArray: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1638, async_api)]
+fn cublasSgetrfBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *mut f32,
+    lda: c_int,
+    #[device] P: *mut c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1639, async_api)]
+fn cublasDgetrfBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *mut f64,
+    lda: c_int,
+    #[device] P: *mut c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1640, async_api)]
+fn cublasCgetrfBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *mut cuComplex,
+    lda: c_int,
+    #[device] P: *mut c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1641, async_api)]
+fn cublasZgetrfBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *mut cuDoubleComplex,
+    lda: c_int,
+    #[device] P: *mut c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1642, async_api)]
+fn cublasSgetriBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const f32,
+    lda: c_int,
+    #[device] P: *const c_int,
+    #[device] C: *const *mut f32,
+    ldc: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1643, async_api)]
+fn cublasDgetriBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const f64,
+    lda: c_int,
+    #[device] P: *const c_int,
+    #[device] C: *const *mut f64,
+    ldc: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1644, async_api)]
+fn cublasCgetriBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const cuComplex,
+    lda: c_int,
+    #[device] P: *const c_int,
+    #[device] C: *const *mut cuComplex,
+    ldc: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1645, async_api)]
+fn cublasZgetriBatched(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] A: *const *const cuDoubleComplex,
+    lda: c_int,
+    #[device] P: *const c_int,
+    #[device] C: *const *mut cuDoubleComplex,
+    ldc: c_int,
+    #[device] info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1646)]
+fn cublasSgetrsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *const f32,
+    lda: c_int,
+    #[device] devIpiv: *const c_int,
+    #[device] Barray: *const *mut f32,
+    ldb: c_int,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1647)]
+fn cublasDgetrsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *const f64,
+    lda: c_int,
+    #[device] devIpiv: *const c_int,
+    #[device] Barray: *const *mut f64,
+    ldb: c_int,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1648)]
+fn cublasCgetrsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *const cuComplex,
+    lda: c_int,
+    #[device] devIpiv: *const c_int,
+    #[device] Barray: *const *mut cuComplex,
+    ldb: c_int,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1649)]
+fn cublasZgetrsBatched(
+    handle: cublasHandle_t,
+    trans: cublasOperation_t,
+    n: c_int,
+    nrhs: c_int,
+    #[device] Aarray: *const *const cuDoubleComplex,
+    lda: c_int,
+    #[device] devIpiv: *const c_int,
+    #[device] Barray: *const *mut cuDoubleComplex,
+    ldb: c_int,
+    info: *mut c_int,
+    batchSize: c_int,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1276, async_api)]
 fn cublasCgemm3m(
     handle: cublasHandle_t,
