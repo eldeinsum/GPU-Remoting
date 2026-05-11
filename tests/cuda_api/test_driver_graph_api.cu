@@ -245,6 +245,98 @@ static int check_child_and_event_graph(CUstream stream)
     return 0;
 }
 
+static int check_memory_graph(CUstream stream, CUcontext context)
+{
+    const size_t bytes = 64;
+    CUdeviceptr device_a = 0;
+    CUdeviceptr device_b = 0;
+    CHECK_DRV(cuMemAlloc(&device_a, bytes));
+    CHECK_DRV(cuMemAlloc(&device_b, bytes));
+    CHECK_DRV(cuMemsetD8(device_a, 0, bytes));
+    CHECK_DRV(cuMemsetD8(device_b, 0, bytes));
+
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    CUDA_MEMSET_NODE_PARAMS memset_params = {};
+    memset_params.dst = device_a;
+    memset_params.value = 0x5a;
+    memset_params.elementSize = 1;
+    memset_params.width = bytes;
+    memset_params.height = 1;
+
+    CUgraphNode memset_node = nullptr;
+    CHECK_DRV(cuGraphAddMemsetNode(&memset_node, graph, nullptr, 0,
+                                   &memset_params, context));
+    CUDA_MEMSET_NODE_PARAMS queried_memset = {};
+    CHECK_DRV(cuGraphMemsetNodeGetParams(memset_node, &queried_memset));
+    if (queried_memset.dst != device_a || queried_memset.value != 0x5a ||
+        queried_memset.width != bytes || queried_memset.height != 1) {
+        std::fprintf(stderr, "unexpected graph memset params\n");
+        return 1;
+    }
+
+    memset_params.value = 0x6b;
+    CHECK_DRV(cuGraphMemsetNodeSetParams(memset_node, &memset_params));
+    CHECK_DRV(cuGraphMemsetNodeGetParams(memset_node, &queried_memset));
+    if (queried_memset.value != 0x6b) {
+        std::fprintf(stderr, "graph memset params update did not stick\n");
+        return 1;
+    }
+
+    CUDA_MEMCPY3D copy_params = {};
+    copy_params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+    copy_params.srcDevice = device_a;
+    copy_params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+    copy_params.dstDevice = device_b;
+    copy_params.WidthInBytes = bytes;
+    copy_params.Height = 1;
+    copy_params.Depth = 1;
+
+    CUgraphNode copy_node = nullptr;
+    CHECK_DRV(cuGraphAddMemcpyNode(&copy_node, graph, nullptr, 0,
+                                   &copy_params, context));
+    CUDA_MEMCPY3D queried_copy = {};
+    CHECK_DRV(cuGraphMemcpyNodeGetParams(copy_node, &queried_copy));
+    if (queried_copy.srcDevice != device_a || queried_copy.dstDevice != device_b ||
+        queried_copy.WidthInBytes != bytes || queried_copy.Height != 1 ||
+        queried_copy.Depth != 1) {
+        std::fprintf(stderr, "unexpected graph memcpy params\n");
+        return 1;
+    }
+    CHECK_DRV(cuGraphMemcpyNodeSetParams(copy_node, &copy_params));
+
+    CUgraphNode from[1] = {memset_node};
+    CUgraphNode to[1] = {copy_node};
+    CHECK_DRV(cuGraphAddDependencies(graph, from, to, nullptr, 1));
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+    memset_params.value = 0x7c;
+    CHECK_DRV(cuGraphExecMemsetNodeSetParams(exec, memset_node, &memset_params,
+                                             context));
+    CHECK_DRV(cuGraphExecMemcpyNodeSetParams(exec, copy_node, &copy_params,
+                                             context));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    unsigned char output[bytes];
+    CHECK_DRV(cuMemcpyDtoH(output, device_b, bytes));
+    for (size_t i = 0; i < bytes; ++i) {
+        if (output[i] != 0x7c) {
+            std::fprintf(stderr, "graph memory output mismatch at %zu\n", i);
+            return 1;
+        }
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(graph));
+    CHECK_DRV(cuMemFree(device_b));
+    CHECK_DRV(cuMemFree(device_a));
+
+    return 0;
+}
+
 int main()
 {
     CHECK_CUDA(cudaSetDevice(0));
@@ -261,6 +353,8 @@ int main()
 
     CUstream stream = nullptr;
     CHECK_DRV(cuStreamCreate(&stream, CU_STREAM_DEFAULT));
+    CUcontext context = nullptr;
+    CHECK_DRV(cuCtxGetCurrent(&context));
 
     CUgraph graph = nullptr;
     CHECK_DRV(cuGraphCreate(&graph, 0));
@@ -276,6 +370,9 @@ int main()
         return 1;
     }
     if (check_child_and_event_graph(stream) != 0) {
+        return 1;
+    }
+    if (check_memory_graph(stream, context) != 0) {
         return 1;
     }
 

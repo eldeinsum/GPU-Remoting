@@ -1192,6 +1192,103 @@ fn cuGraphExecEventWaitNodeSetEvent(
     event: CUevent,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900841)]
+fn cuGraphAddMemsetNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    #[host(len = 1)] memsetParams: *const CUDA_MEMSET_NODE_PARAMS,
+    ctx: CUcontext,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+    }
+}
+
+#[cuda_hook(proc_id = 900842)]
+fn cuGraphMemsetNodeGetParams(
+    hNode: CUgraphNode,
+    #[host(output, len = 1)] nodeParams: *mut CUDA_MEMSET_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900843)]
+fn cuGraphMemsetNodeSetParams(
+    hNode: CUgraphNode,
+    #[host(len = 1)] nodeParams: *const CUDA_MEMSET_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900844)]
+fn cuGraphExecMemsetNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    #[host(len = 1)] memsetParams: *const CUDA_MEMSET_NODE_PARAMS,
+    ctx: CUcontext,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900845)]
+fn cuGraphAddMemcpyNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    #[host(len = 1)] copyParams: *const CUDA_MEMCPY3D,
+    ctx: CUcontext,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        let params = unsafe { &*copyParams };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(params.reserved0.is_null());
+        assert!(params.reserved1.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900846)]
+fn cuGraphMemcpyNodeGetParams(
+    hNode: CUgraphNode,
+    #[host(output, len = 1)] nodeParams: *mut CUDA_MEMCPY3D,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900847)]
+fn cuGraphMemcpyNodeSetParams(
+    hNode: CUgraphNode,
+    #[host(len = 1)] nodeParams: *const CUDA_MEMCPY3D,
+) -> CUresult {
+    'client_before_send: {
+        let params = unsafe { &*nodeParams };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(params.reserved0.is_null());
+        assert!(params.reserved1.is_null());
+    }
+}
+
+#[cuda_hook(proc_id = 900848)]
+fn cuGraphExecMemcpyNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    #[host(len = 1)] copyParams: *const CUDA_MEMCPY3D,
+    ctx: CUcontext,
+) -> CUresult {
+    'client_before_send: {
+        let params = unsafe { &*copyParams };
+        assert_eq!(params.srcMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert_eq!(params.dstMemoryType, CUmemorytype::CU_MEMORYTYPE_DEVICE);
+        assert!(params.srcArray.is_null());
+        assert!(params.dstArray.is_null());
+        assert!(params.reserved0.is_null());
+        assert!(params.reserved1.is_null());
+    }
+}
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,
