@@ -18,11 +18,10 @@ use elf::{FatBinaryHeader, KernelParamInfo};
 mod dl;
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ffi::{CString, c_char, c_void};
 use std::io::{Read as _, Write as _};
-use std::sync::RwLock;
+use std::sync::{Mutex, OnceLock, RwLock};
 
 use cudasys::types::cublas::{cublasHandle_t, cublasPointerMode_t};
 use cudasys::types::cublasLt::{
@@ -157,9 +156,47 @@ impl Drop for ClientThread {
     }
 }
 
-thread_local! {
-    static CLIENT_THREAD: RefCell<ClientThread> = RefCell::new(ClientThread::new());
+struct ClientThreadState {
+    inner: OnceLock<Mutex<Option<ClientThread>>>,
 }
+
+impl ClientThreadState {
+    const fn new() -> Self {
+        Self {
+            inner: OnceLock::new(),
+        }
+    }
+
+    fn with_borrow_mut<R>(&self, f: impl FnOnce(&mut ClientThread) -> R) -> R {
+        let mutex = self.inner.get_or_init(|| {
+            unsafe {
+                libc::atexit(shutdown_client_thread_state);
+            }
+            Mutex::new(Some(ClientThread::new()))
+        });
+        let mut guard = mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let client = guard.get_or_insert_with(ClientThread::new);
+        client.ensure_current_process();
+        f(client)
+    }
+
+    fn shutdown(&self) {
+        let Some(mutex) = self.inner.get() else {
+            return;
+        };
+        if let Ok(mut guard) = mutex.lock() {
+            drop(guard.take());
+        }
+    }
+}
+
+extern "C" fn shutdown_client_thread_state() {
+    CLIENT_THREAD.shutdown();
+}
+
+static CLIENT_THREAD: ClientThreadState = ClientThreadState::new();
 
 static DRIVER_CACHE: RwLock<DriverCache> = RwLock::new(DriverCache::new());
 static RUNTIME_CACHE: RwLock<RuntimeCache> = RwLock::new(RuntimeCache::new());
