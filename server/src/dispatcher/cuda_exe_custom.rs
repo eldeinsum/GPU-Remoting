@@ -174,6 +174,178 @@ fn send_result<C: CommChannel>(
     channel_sender.flush_out().unwrap();
 }
 
+fn recv_checkpoint_pid<C: CommChannel>(channel_receiver: &C) -> c_int {
+    let mut pid = 0;
+    pid.recv(channel_receiver).unwrap();
+    let mut is_client_process = false;
+    is_client_process.recv(channel_receiver).unwrap();
+    if is_client_process {
+        std::process::id() as c_int
+    } else {
+        pid
+    }
+}
+
+fn recv_optional_checkpoint_args<T: Transportable, C: CommChannel>(
+    channel_receiver: &C,
+) -> Option<T> {
+    let mut args_present = false;
+    args_present.recv(channel_receiver).unwrap();
+    if !args_present {
+        return None;
+    }
+
+    let mut args = unsafe { std::mem::zeroed::<T>() };
+    args.recv(channel_receiver).unwrap();
+    Some(args)
+}
+
+pub fn cuCheckpointProcessGetRestoreThreadIdExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCheckpointProcessGetRestoreThreadId", "[#{}]", server.id);
+
+    let pid = recv_checkpoint_pid(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let mut tid = 0;
+    let result = unsafe { cuCheckpointProcessGetRestoreThreadId(pid, &raw mut tid) };
+    tid.send(channel_sender).unwrap();
+    send_result(
+        "cuCheckpointProcessGetRestoreThreadId",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuCheckpointProcessGetStateExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCheckpointProcessGetState", "[#{}]", server.id);
+
+    let pid = recv_checkpoint_pid(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let mut state = CUprocessState::CU_PROCESS_STATE_RUNNING;
+    let result = unsafe { cuCheckpointProcessGetState(pid, &raw mut state) };
+    state.send(channel_sender).unwrap();
+    send_result(
+        "cuCheckpointProcessGetState",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuCheckpointProcessLockExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCheckpointProcessLock", "[#{}]", server.id);
+
+    let pid = recv_checkpoint_pid(channel_receiver);
+    let mut args = recv_optional_checkpoint_args::<CUcheckpointLockArgs, _>(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let args_ptr = args
+        .as_mut()
+        .map_or(std::ptr::null_mut(), |args| args as *mut _);
+    let result = unsafe { cuCheckpointProcessLock(pid, args_ptr) };
+    send_result("cuCheckpointProcessLock", server.id, result, channel_sender);
+}
+
+pub fn cuCheckpointProcessCheckpointExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCheckpointProcessCheckpoint", "[#{}]", server.id);
+
+    let pid = recv_checkpoint_pid(channel_receiver);
+    let mut args = recv_optional_checkpoint_args::<CUcheckpointCheckpointArgs, _>(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let args_ptr = args
+        .as_mut()
+        .map_or(std::ptr::null_mut(), |args| args as *mut _);
+    let result = unsafe { cuCheckpointProcessCheckpoint(pid, args_ptr) };
+    send_result(
+        "cuCheckpointProcessCheckpoint",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuCheckpointProcessRestoreExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCheckpointProcessRestore", "[#{}]", server.id);
+
+    let pid = recv_checkpoint_pid(channel_receiver);
+    let mut args = recv_optional_checkpoint_args::<CUcheckpointRestoreArgs, _>(channel_receiver);
+    let mut gpu_pairs = if args.is_some() {
+        recv_slice::<CUcheckpointGpuPair, _>(channel_receiver).unwrap()
+    } else {
+        Box::default()
+    };
+    channel_receiver.recv_ts().unwrap();
+
+    if let Some(args) = args.as_mut() {
+        if !gpu_pairs.is_empty() {
+            args.gpuPairs = gpu_pairs.as_mut_ptr();
+            args.gpuPairsCount = gpu_pairs.len() as c_uint;
+        }
+    }
+    let args_ptr = args
+        .as_mut()
+        .map_or(std::ptr::null_mut(), |args| args as *mut _);
+    let result = unsafe { cuCheckpointProcessRestore(pid, args_ptr) };
+    send_result(
+        "cuCheckpointProcessRestore",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuCheckpointProcessUnlockExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuCheckpointProcessUnlock", "[#{}]", server.id);
+
+    let pid = recv_checkpoint_pid(channel_receiver);
+    let mut args = recv_optional_checkpoint_args::<CUcheckpointUnlockArgs, _>(channel_receiver);
+    channel_receiver.recv_ts().unwrap();
+
+    let args_ptr = args
+        .as_mut()
+        .map_or(std::ptr::null_mut(), |args| args as *mut _);
+    let result = unsafe { cuCheckpointProcessUnlock(pid, args_ptr) };
+    send_result(
+        "cuCheckpointProcessUnlock",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
 fn send_graph_launch_result<C: CommChannel>(
     target: &'static str,
     server_id: i32,

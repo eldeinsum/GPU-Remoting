@@ -4430,6 +4430,24 @@ fn cuGraphConditionalHandleCreate(
     flags: c_uint,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901157)]
+fn cuCheckpointProcessGetRestoreThreadId(pid: c_int, tid: *mut c_int) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901158)]
+fn cuCheckpointProcessGetState(pid: c_int, state: *mut CUprocessState) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901159)]
+fn cuCheckpointProcessLock(pid: c_int, args: *mut CUcheckpointLockArgs) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901160)]
+fn cuCheckpointProcessCheckpoint(pid: c_int, args: *mut CUcheckpointCheckpointArgs) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901161)]
+fn cuCheckpointProcessRestore(pid: c_int, args: *mut CUcheckpointRestoreArgs) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901162)]
+fn cuCheckpointProcessUnlock(pid: c_int, args: *mut CUcheckpointUnlockArgs) -> CUresult;
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

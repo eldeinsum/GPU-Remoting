@@ -22,6 +22,148 @@ fn recv_cu_result<C: CommChannel>(
     result
 }
 
+fn send_checkpoint_pid<C: CommChannel>(pid: c_int, channel_sender: &C) {
+    // For self-checkpoint calls, the CUDA-owning process is the remoting server.
+    let is_current_process = pid == std::process::id() as c_int;
+    pid.send(channel_sender).unwrap();
+    is_current_process.send(channel_sender).unwrap();
+}
+
+fn send_optional_checkpoint_args<T: Transportable, C: CommChannel>(
+    args: *mut T,
+    channel_sender: &C,
+) {
+    let args_present = !args.is_null();
+    args_present.send(channel_sender).unwrap();
+    if args_present {
+        unsafe { &*args }.send(channel_sender).unwrap();
+    }
+}
+
+fn checkpoint_call_with_args<T: Transportable>(
+    proc_id: i32,
+    target: &'static str,
+    pid: c_int,
+    args: *mut T,
+) -> CUresult {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: target, "[#{}]", client.id);
+
+        proc_id.send(&client.channel_sender).unwrap();
+        send_checkpoint_pid(pid, &client.channel_sender);
+        send_optional_checkpoint_args(args, &client.channel_sender);
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result(target, client.id, &client.channel_receiver)
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuCheckpointProcessGetRestoreThreadId(pid: c_int, tid: *mut c_int) -> CUresult {
+    if tid.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuCheckpointProcessGetRestoreThreadId", "[#{}]", client.id);
+
+        901157.send(&client.channel_sender).unwrap();
+        send_checkpoint_pid(pid, &client.channel_sender);
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *tid }.recv(&client.channel_receiver).unwrap();
+        recv_cu_result(
+            "cuCheckpointProcessGetRestoreThreadId",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuCheckpointProcessGetState(pid: c_int, state: *mut CUprocessState) -> CUresult {
+    if state.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuCheckpointProcessGetState", "[#{}]", client.id);
+
+        901158.send(&client.channel_sender).unwrap();
+        send_checkpoint_pid(pid, &client.channel_sender);
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *state }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result(
+            "cuCheckpointProcessGetState",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuCheckpointProcessLock(pid: c_int, args: *mut CUcheckpointLockArgs) -> CUresult {
+    checkpoint_call_with_args(901159, "cuCheckpointProcessLock", pid, args)
+}
+
+#[no_mangle]
+extern "C" fn cuCheckpointProcessCheckpoint(
+    pid: c_int,
+    args: *mut CUcheckpointCheckpointArgs,
+) -> CUresult {
+    checkpoint_call_with_args(901160, "cuCheckpointProcessCheckpoint", pid, args)
+}
+
+#[no_mangle]
+extern "C" fn cuCheckpointProcessRestore(
+    pid: c_int,
+    args: *mut CUcheckpointRestoreArgs,
+) -> CUresult {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuCheckpointProcessRestore", "[#{}]", client.id);
+
+        901161.send(&client.channel_sender).unwrap();
+        send_checkpoint_pid(pid, &client.channel_sender);
+        let args_present = !args.is_null();
+        args_present.send(&client.channel_sender).unwrap();
+        if args_present {
+            let mut packed_args = unsafe { *args };
+            let pair_count = if packed_args.gpuPairs.is_null() {
+                0usize
+            } else {
+                packed_args.gpuPairsCount as usize
+            };
+            let pairs = if pair_count == 0 {
+                &[][..]
+            } else {
+                unsafe { std::slice::from_raw_parts(packed_args.gpuPairs, pair_count) }
+            };
+            packed_args.gpuPairs = std::ptr::null_mut();
+            packed_args.send(&client.channel_sender).unwrap();
+            send_slice(pairs, &client.channel_sender).unwrap();
+        }
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cu_result(
+            "cuCheckpointProcessRestore",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+extern "C" fn cuCheckpointProcessUnlock(pid: c_int, args: *mut CUcheckpointUnlockArgs) -> CUresult {
+    checkpoint_call_with_args(901162, "cuCheckpointProcessUnlock", pid, args)
+}
+
 fn recv_cu_graph_node_slice<C: CommChannel>(
     target: &'static str,
     dst: *mut CUgraphNode,
