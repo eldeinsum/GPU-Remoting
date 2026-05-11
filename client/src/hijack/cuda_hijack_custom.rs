@@ -922,6 +922,24 @@ extern "C" fn cuModuleLoadData(module: *mut CUmodule, image: *const c_void) -> C
     super::cuda_hijack::cuModuleLoadDataInternal(module, image.cast(), false)
 }
 
+#[no_mangle]
+extern "C" fn cuModuleLoadDataEx(
+    module: *mut CUmodule,
+    image: *const c_void,
+    numOptions: c_uint,
+    _options: *mut CUjit_option,
+    _optionValues: *mut *mut c_void,
+) -> CUresult {
+    if module.is_null() || image.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+    if numOptions != 0 {
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
+    }
+
+    super::cuda_hijack::cuModuleLoadDataInternal(module, image.cast(), false)
+}
+
 fn has_unsupported_library_options(numJitOptions: c_uint, numLibraryOptions: c_uint) -> bool {
     numJitOptions != 0 || numLibraryOptions != 0
 }

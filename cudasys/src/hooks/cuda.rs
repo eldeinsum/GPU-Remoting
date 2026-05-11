@@ -230,6 +230,15 @@ fn cuModuleLoad(module: *mut CUmodule, fname: *const c_char) -> CUresult;
 #[cuda_custom_hook] // calls the internal API below
 fn cuModuleLoadData(module: *mut CUmodule, image: *const c_void) -> CUresult;
 
+#[cuda_custom_hook] // calls the internal API below
+fn cuModuleLoadDataEx(
+    module: *mut CUmodule,
+    image: *const c_void,
+    numOptions: c_uint,
+    options: *mut CUjit_option,
+    optionValues: *mut *mut c_void,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 701, parent = cuModuleLoadData)]
 fn cuModuleLoadDataInternal(
     module: *mut CUmodule,
