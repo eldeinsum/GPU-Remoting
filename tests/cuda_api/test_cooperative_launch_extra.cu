@@ -120,6 +120,40 @@ int main()
         return 1;
     }
 
+    int multi_device_cooperative = 0;
+    CHECK_DRV(cuDeviceGetAttribute(&multi_device_cooperative,
+                                   CU_DEVICE_ATTRIBUTE_COOPERATIVE_MULTI_DEVICE_LAUNCH,
+                                   device));
+    if (multi_device_cooperative) {
+        CUstream stream;
+        CHECK_DRV(cuStreamCreate(&stream, CU_STREAM_DEFAULT));
+        CHECK_DRV(cuMemsetD32Async(d_output, 0, 1, stream));
+
+        value = 53;
+        void *multi_args[] = {&d_output, &value};
+        CUDA_LAUNCH_PARAMS launch_params = {};
+        launch_params.function = function;
+        launch_params.gridDimX = 1;
+        launch_params.gridDimY = 1;
+        launch_params.gridDimZ = 1;
+        launch_params.blockDimX = 1;
+        launch_params.blockDimY = 1;
+        launch_params.blockDimZ = 1;
+        launch_params.sharedMemBytes = 0;
+        launch_params.hStream = stream;
+        launch_params.kernelParams = multi_args;
+        CHECK_DRV(cuLaunchCooperativeKernelMultiDevice(&launch_params, 1, 0));
+        CHECK_DRV(cuStreamSynchronize(stream));
+        CHECK_DRV(cuMemcpyDtoH(&output, d_output, sizeof(output)));
+        if (output != value) {
+            std::cerr << "cooperative multi-device launch output mismatch" << std::endl;
+            return 1;
+        }
+        CHECK_DRV(cuStreamDestroy(stream));
+    } else {
+        std::cout << "cooperative multi-device launch unsupported; skipped" << std::endl;
+    }
+
     CHECK_DRV(cuMemFree(d_output));
     CHECK_DRV(cuModuleUnload(module));
     CHECK_DRV(cuDevicePrimaryCtxRelease(device));

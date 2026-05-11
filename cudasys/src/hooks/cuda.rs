@@ -222,6 +222,70 @@ fn cuLaunchCooperativeKernel(
     }
 }
 
+#[cuda_hook(proc_id = 901037, async_api)]
+fn cuLaunchCooperativeKernelMultiDevice(
+    #[skip] launchParamsList: *mut CUDA_LAUNCH_PARAMS,
+    numDevices: c_uint,
+    flags: c_uint,
+) -> CUresult {
+    'client_before_send: {
+        assert!(numDevices == 0 || !launchParamsList.is_null());
+        let launch_params =
+            unsafe { std::slice::from_raw_parts(launchParamsList, numDevices as usize) };
+        let mut packed_launch_params = launch_params.to_vec();
+        for params in &mut packed_launch_params {
+            params.kernelParams = std::ptr::null_mut();
+        }
+        let packed_args = {
+            let driver = DRIVER_CACHE.read().unwrap();
+            launch_params
+                .iter()
+                .map(|params| {
+                    super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+                        params.kernelParams,
+                        driver.function_params.get(&params.function).unwrap(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+    }
+    'client_extra_send: {
+        send_slice(&packed_launch_params, channel_sender).unwrap();
+        for (args, arg_offsets) in &packed_args {
+            send_slice(arg_offsets, channel_sender).unwrap();
+            send_slice(args, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut launch_params = recv_slice::<CUDA_LAUNCH_PARAMS, _>(channel_receiver).unwrap();
+        let mut arg_offsets_list = Vec::with_capacity(launch_params.len());
+        let mut arg_buffers = Vec::with_capacity(launch_params.len());
+        for _ in 0..launch_params.len() {
+            arg_offsets_list.push(recv_slice::<u32, _>(channel_receiver).unwrap());
+            arg_buffers.push(recv_slice::<u8, _>(channel_receiver).unwrap());
+        }
+        let mut kernel_params_list = arg_buffers
+            .iter()
+            .zip(arg_offsets_list.iter())
+            .map(|(args, arg_offsets)| {
+                super::cuda_exe_utils::kernel_params_from_packed_args(args, arg_offsets)
+            })
+            .collect::<Vec<_>>();
+        for (params, kernel_params) in launch_params.iter_mut().zip(kernel_params_list.iter_mut()) {
+            params.kernelParams = if kernel_params.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                kernel_params.as_mut_ptr()
+            };
+        }
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuLaunchCooperativeKernelMultiDevice(launch_params.as_mut_ptr(), numDevices, flags)
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 919, async_api)]
 fn cuLaunchKernelEx(
     #[host] config: *const CUlaunchConfig,
