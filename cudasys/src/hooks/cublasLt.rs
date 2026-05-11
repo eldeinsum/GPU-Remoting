@@ -547,3 +547,15 @@ fn cublasLtMatrixTransformDescGetAttribute(
     sizeInBytes: usize,
     sizeWritten: *mut usize,
 ) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1543)]
+fn cublasLtLoggerOpenFile(logFile: *const c_char) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1544)]
+fn cublasLtLoggerSetLevel(level: c_int) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1545)]
+fn cublasLtLoggerSetMask(mask: c_int) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1546)]
+fn cublasLtLoggerForceDisable() -> cublasStatus_t;
