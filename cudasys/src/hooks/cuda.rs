@@ -1368,6 +1368,210 @@ fn cuGraphAddMemFreeNode(
 #[cuda_hook(proc_id = 900854)]
 fn cuGraphMemFreeNodeGetParams(hNode: CUgraphNode, dptr_out: *mut CUdeviceptr) -> CUresult;
 
+#[cuda_hook(proc_id = 900855)]
+fn cuGraphAddKernelNode_v2(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    #[device] dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    #[skip] nodeParams: *const CUDA_KERNEL_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(dependencies.is_null());
+        assert_eq!(numDependencies, 0);
+        assert!(!nodeParams.is_null());
+        let node_params = unsafe { &*nodeParams };
+        assert!(!node_params.func.is_null());
+        assert!(node_params.kern.is_null());
+        assert!(node_params.extra.is_null());
+        let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+            node_params.kernelParams,
+            DRIVER_CACHE
+                .read()
+                .unwrap()
+                .function_params
+                .get(&node_params.func)
+                .unwrap(),
+        );
+        let mut packed_params = *node_params;
+        packed_params.kernelParams = std::ptr::null_mut();
+        packed_params.extra = std::ptr::null_mut();
+    }
+    'client_extra_send: {
+        packed_params.send(channel_sender).unwrap();
+        send_slice(&arg_offsets, channel_sender).unwrap();
+        send_slice(&args, channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            DRIVER_CACHE.write().unwrap().graph_kernel_nodes.insert(
+                *phGraphNode,
+                crate::GraphKernelNodeCache::new(packed_params, args, arg_offsets),
+            );
+        }
+    }
+    'server_extra_recv: {
+        let mut packed_params = std::mem::MaybeUninit::<CUDA_KERNEL_NODE_PARAMS>::uninit();
+        packed_params.recv(channel_receiver).unwrap();
+        let mut packed_params = unsafe { packed_params.assume_init() };
+        let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
+        let args = recv_slice::<u8, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut kernel_params =
+            super::cuda_exe_utils::kernel_params_from_packed_args(&args, &arg_offsets);
+        packed_params.kernelParams = if kernel_params.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            kernel_params.as_mut_ptr()
+        };
+        let result = unsafe {
+            cuGraphAddKernelNode_v2(
+                phGraphNode__ptr,
+                hGraph,
+                std::ptr::null(),
+                0,
+                &raw const packed_params,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 900856)]
+fn cuGraphKernelNodeGetParams_v2(
+    hNode: CUgraphNode,
+    #[host(output, len = 1)] nodeParams: *mut CUDA_KERNEL_NODE_PARAMS,
+) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS && !nodeParams.is_empty() {
+            if let Some(cache) = DRIVER_CACHE
+                .write()
+                .unwrap()
+                .graph_kernel_nodes
+                .get_mut(&hNode)
+            {
+                nodeParams[0] = cache.params_for_client();
+            }
+        }
+    }
+    'server_execution: {
+        let result = unsafe { cuGraphKernelNodeGetParams_v2(hNode, nodeParams__ptr) };
+        if result == CUresult::CUDA_SUCCESS {
+            unsafe {
+                (*nodeParams__ptr).kernelParams = std::ptr::null_mut();
+                (*nodeParams__ptr).extra = std::ptr::null_mut();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 900857)]
+fn cuGraphKernelNodeSetParams_v2(
+    hNode: CUgraphNode,
+    #[skip] nodeParams: *const CUDA_KERNEL_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let node_params = unsafe { &*nodeParams };
+        assert!(!node_params.func.is_null());
+        assert!(node_params.kern.is_null());
+        assert!(node_params.extra.is_null());
+        let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+            node_params.kernelParams,
+            DRIVER_CACHE
+                .read()
+                .unwrap()
+                .function_params
+                .get(&node_params.func)
+                .unwrap(),
+        );
+        let mut packed_params = *node_params;
+        packed_params.kernelParams = std::ptr::null_mut();
+        packed_params.extra = std::ptr::null_mut();
+    }
+    'client_extra_send: {
+        packed_params.send(channel_sender).unwrap();
+        send_slice(&arg_offsets, channel_sender).unwrap();
+        send_slice(&args, channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            DRIVER_CACHE.write().unwrap().graph_kernel_nodes.insert(
+                hNode,
+                crate::GraphKernelNodeCache::new(packed_params, args, arg_offsets),
+            );
+        }
+    }
+    'server_extra_recv: {
+        let mut packed_params = std::mem::MaybeUninit::<CUDA_KERNEL_NODE_PARAMS>::uninit();
+        packed_params.recv(channel_receiver).unwrap();
+        let mut packed_params = unsafe { packed_params.assume_init() };
+        let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
+        let args = recv_slice::<u8, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut kernel_params =
+            super::cuda_exe_utils::kernel_params_from_packed_args(&args, &arg_offsets);
+        packed_params.kernelParams = if kernel_params.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            kernel_params.as_mut_ptr()
+        };
+        let result = unsafe { cuGraphKernelNodeSetParams_v2(hNode, &raw const packed_params) };
+    }
+}
+
+#[cuda_hook(proc_id = 900858)]
+fn cuGraphExecKernelNodeSetParams_v2(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    #[skip] nodeParams: *const CUDA_KERNEL_NODE_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nodeParams.is_null());
+        let node_params = unsafe { &*nodeParams };
+        assert!(!node_params.func.is_null());
+        assert!(node_params.kern.is_null());
+        assert!(node_params.extra.is_null());
+        let (args, arg_offsets) = super::cuda_hijack_utils::pack_kernel_args_with_offsets(
+            node_params.kernelParams,
+            DRIVER_CACHE
+                .read()
+                .unwrap()
+                .function_params
+                .get(&node_params.func)
+                .unwrap(),
+        );
+        let mut packed_params = *node_params;
+        packed_params.kernelParams = std::ptr::null_mut();
+        packed_params.extra = std::ptr::null_mut();
+    }
+    'client_extra_send: {
+        packed_params.send(channel_sender).unwrap();
+        send_slice(&arg_offsets, channel_sender).unwrap();
+        send_slice(&args, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut packed_params = std::mem::MaybeUninit::<CUDA_KERNEL_NODE_PARAMS>::uninit();
+        packed_params.recv(channel_receiver).unwrap();
+        let mut packed_params = unsafe { packed_params.assume_init() };
+        let arg_offsets = recv_slice::<u32, _>(channel_receiver).unwrap();
+        let args = recv_slice::<u8, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut kernel_params =
+            super::cuda_exe_utils::kernel_params_from_packed_args(&args, &arg_offsets);
+        packed_params.kernelParams = if kernel_params.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            kernel_params.as_mut_ptr()
+        };
+        let result = unsafe {
+            cuGraphExecKernelNodeSetParams_v2(hGraphExec, hNode, &raw const packed_params)
+        };
+    }
+}
+
 #[cuda_custom_hook]
 fn cuGetProcAddress_v2(
     symbol: *const c_char,

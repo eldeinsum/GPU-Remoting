@@ -20,7 +20,7 @@ mod dl;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::ffi::{CString, c_char};
+use std::ffi::{CString, c_char, c_void};
 use std::io::{Read as _, Write as _};
 use std::sync::RwLock;
 
@@ -29,7 +29,9 @@ use cudasys::types::cublasLt::{
     cublasLtMatmulDesc_t, cublasLtMatrixTransformDesc_t, cublasLtPointerMode_t,
     cudaDataType_t as CublasLtCudaDataType,
 };
-use cudasys::types::cuda::{CUfunction, CUkernel, CUlibrary, CUmodule};
+use cudasys::types::cuda::{
+    CUDA_KERNEL_NODE_PARAMS, CUfunction, CUgraphNode, CUkernel, CUlibrary, CUmodule,
+};
 type FatBinaryHandle = usize;
 type HostPtr = usize;
 
@@ -168,6 +170,8 @@ struct DriverCache {
     library_images: BTreeMap<CUlibrary, Cow<'static, [u8]>>,
     /// Used in `cuLaunchKernel`, populated by `cuModuleGetFunction`.
     function_params: BTreeMap<CUfunction, Box<[KernelParamInfo]>>,
+    /// Client-side copies of kernel node parameters whose raw pointers are process-local.
+    graph_kernel_nodes: BTreeMap<CUgraphNode, GraphKernelNodeCache>,
     /// Used in `cuKernelGetName`, populated by `cuLibraryGetKernel`.
     kernel_names: BTreeMap<CUkernel, CString>,
     /// Used to remove library-owned kernel metadata on unload.
@@ -185,6 +189,7 @@ impl DriverCache {
             images: BTreeMap::new(),
             library_images: BTreeMap::new(),
             function_params: BTreeMap::new(),
+            graph_kernel_nodes: BTreeMap::new(),
             kernel_names: BTreeMap::new(),
             kernel_libraries: BTreeMap::new(),
             device_arch: None,
@@ -195,9 +200,57 @@ impl DriverCache {
         self.images.clear();
         self.library_images.clear();
         self.function_params.clear();
+        self.graph_kernel_nodes.clear();
         self.kernel_names.clear();
         self.kernel_libraries.clear();
         self.device_arch = None;
+    }
+}
+
+struct GraphKernelNodeCache {
+    params: CUDA_KERNEL_NODE_PARAMS,
+    args: Box<[u8]>,
+    arg_offsets: Box<[u32]>,
+    kernel_param_ptrs: Box<[*mut c_void]>,
+}
+
+impl GraphKernelNodeCache {
+    fn new(mut params: CUDA_KERNEL_NODE_PARAMS, args: Box<[u8]>, arg_offsets: Box<[u32]>) -> Self {
+        params.kernelParams = std::ptr::null_mut();
+        params.extra = std::ptr::null_mut();
+        let mut cache = Self {
+            params,
+            args,
+            arg_offsets,
+            kernel_param_ptrs: Box::default(),
+        };
+        cache.refresh_kernel_param_ptrs();
+        cache
+    }
+
+    fn refresh_kernel_param_ptrs(&mut self) {
+        self.kernel_param_ptrs = self
+            .arg_offsets
+            .iter()
+            .map(|offset| unsafe {
+                self.args
+                    .as_mut_ptr()
+                    .add(*offset as usize)
+                    .cast::<c_void>()
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+    }
+
+    fn params_for_client(&mut self) -> CUDA_KERNEL_NODE_PARAMS {
+        let mut params = self.params;
+        params.kernelParams = if self.kernel_param_ptrs.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            self.kernel_param_ptrs.as_mut_ptr()
+        };
+        params.extra = std::ptr::null_mut();
+        params
     }
 }
 

@@ -59,7 +59,7 @@ pub fn cu_launch_kernel_ex(
     }
 }
 
-unsafe fn kernel_params_from_packed_args(args: &[u8], arg_offsets: &[u32]) -> Vec<*mut c_void> {
+pub fn kernel_params_from_packed_args(args: &[u8], arg_offsets: &[u32]) -> Vec<*mut c_void> {
     arg_offsets
         .iter()
         .map(|offset| unsafe {

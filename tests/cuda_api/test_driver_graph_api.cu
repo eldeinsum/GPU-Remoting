@@ -1,8 +1,11 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <nvrtc.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 #define CHECK_CUDA(call)                                                       \
     do {                                                                       \
@@ -26,6 +29,58 @@
             return 1;                                                          \
         }                                                                      \
     } while (0)
+
+#define CHECK_NVRTC(call)                                                      \
+    do {                                                                       \
+        nvrtcResult result = (call);                                           \
+        if (result != NVRTC_SUCCESS) {                                         \
+            std::fprintf(stderr, "%s failed: %s (%d)\n", #call,               \
+                         nvrtcGetErrorString(result), static_cast<int>(result)); \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
+
+static int compile_kernel_cubin(std::vector<char> *cubin, int major, int minor)
+{
+    static const char source[] = R"(
+extern "C" __global__ void graph_kernel(int *out, int value, int count)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < count) {
+        out[i] = value + i;
+    }
+}
+)";
+
+    nvrtcProgram program = nullptr;
+    CHECK_NVRTC(nvrtcCreateProgram(&program, source,
+                                   "test_driver_graph_api.cu", 0, nullptr,
+                                   nullptr));
+    std::string arch = "--gpu-architecture=sm_" + std::to_string(major) +
+                       std::to_string(minor);
+    const char *options[] = {arch.c_str(), "--std=c++11"};
+    nvrtcResult compile_result = nvrtcCompileProgram(program, 2, options);
+    size_t log_size = 0;
+    nvrtcGetProgramLogSize(program, &log_size);
+    if (log_size > 1) {
+        std::vector<char> log(log_size);
+        nvrtcGetProgramLog(program, log.data());
+        std::fprintf(stderr, "%s\n", log.data());
+    }
+    if (compile_result != NVRTC_SUCCESS) {
+        std::fprintf(stderr, "nvrtcCompileProgram failed: %s\n",
+                     nvrtcGetErrorString(compile_result));
+        nvrtcDestroyProgram(&program);
+        return 1;
+    }
+
+    size_t cubin_size = 0;
+    CHECK_NVRTC(nvrtcGetCUBINSize(program, &cubin_size));
+    cubin->resize(cubin_size);
+    CHECK_NVRTC(nvrtcGetCUBIN(program, cubin->data()));
+    CHECK_NVRTC(nvrtcDestroyProgram(&program));
+    return 0;
+}
 
 static bool contains_node(const CUgraphNode *nodes, size_t count, CUgraphNode node)
 {
@@ -458,6 +513,108 @@ static int check_mem_alloc_graph(CUstream stream, CUcontext context)
     return 0;
 }
 
+static int check_kernel_graph(CUstream stream, CUdevice device)
+{
+    int major = 0;
+    int minor = 0;
+    CHECK_DRV(cuDeviceGetAttribute(&major,
+                                   CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR,
+                                   device));
+    CHECK_DRV(cuDeviceGetAttribute(&minor,
+                                   CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR,
+                                   device));
+
+    std::vector<char> cubin;
+    if (compile_kernel_cubin(&cubin, major, minor) != 0) {
+        return 1;
+    }
+
+    CUmodule module = nullptr;
+    CHECK_DRV(cuModuleLoadData(&module, cubin.data()));
+    CUfunction function = nullptr;
+    CHECK_DRV(cuModuleGetFunction(&function, module, "graph_kernel"));
+
+    const int count = 64;
+    int kernel_count = count;
+    int value = 3;
+    CUdeviceptr output_device = 0;
+    CHECK_DRV(cuMemAlloc(&output_device, count * sizeof(int)));
+    CHECK_DRV(cuMemsetD8(output_device, 0, count * sizeof(int)));
+
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    void *args[] = {&output_device, &value, &kernel_count};
+    CUDA_KERNEL_NODE_PARAMS kernel_params = {};
+    kernel_params.func = function;
+    kernel_params.gridDimX = 1;
+    kernel_params.gridDimY = 1;
+    kernel_params.gridDimZ = 1;
+    kernel_params.blockDimX = count;
+    kernel_params.blockDimY = 1;
+    kernel_params.blockDimZ = 1;
+    kernel_params.sharedMemBytes = 0;
+    kernel_params.kernelParams = args;
+
+    CUgraphNode kernel_node = nullptr;
+    CHECK_DRV(cuGraphAddKernelNode(&kernel_node, graph, nullptr, 0,
+                                   &kernel_params));
+
+    CUDA_KERNEL_NODE_PARAMS queried_params = {};
+    CHECK_DRV(cuGraphKernelNodeGetParams(kernel_node, &queried_params));
+    if (queried_params.func != function || queried_params.gridDimX != 1 ||
+        queried_params.blockDimX != static_cast<unsigned int>(count) ||
+        queried_params.kernelParams == nullptr) {
+        std::fprintf(stderr, "unexpected graph kernel node params\n");
+        return 1;
+    }
+    int queried_value =
+        *reinterpret_cast<int *>(queried_params.kernelParams[1]);
+    if (queried_value != value) {
+        std::fprintf(stderr, "unexpected graph kernel argument value\n");
+        return 1;
+    }
+
+    value = 5;
+    CHECK_DRV(cuGraphKernelNodeSetParams(kernel_node, &kernel_params));
+    queried_params = {};
+    CHECK_DRV(cuGraphKernelNodeGetParams(kernel_node, &queried_params));
+    queried_value = *reinterpret_cast<int *>(queried_params.kernelParams[1]);
+    if (queried_value != value) {
+        std::fprintf(stderr, "graph kernel param update did not persist\n");
+        return 1;
+    }
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+
+    value = 7;
+    CHECK_DRV(cuGraphExecKernelNodeSetParams(exec, kernel_node,
+                                             &kernel_params));
+    CHECK_DRV(cuGraphLaunch(exec, stream));
+    CHECK_DRV(cuStreamSynchronize(stream));
+
+    std::vector<int> output(count, 0);
+    CHECK_DRV(cuMemcpyDtoH(output.data(), output_device,
+                           output.size() * sizeof(output[0])));
+    for (int i = 0; i < count; ++i) {
+        int expected = value + i;
+        if (output[i] != expected) {
+            std::fprintf(stderr,
+                         "graph kernel output mismatch at %d: got %d expected %d\n",
+                         i, output[i], expected);
+            return 1;
+        }
+    }
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(graph));
+    CHECK_DRV(cuMemFree(output_device));
+    CHECK_DRV(cuModuleUnload(module));
+
+    return 0;
+}
+
 int main()
 {
     CHECK_CUDA(cudaSetDevice(0));
@@ -497,6 +654,9 @@ int main()
         return 1;
     }
     if (check_mem_alloc_graph(stream, context) != 0) {
+        return 1;
+    }
+    if (check_kernel_graph(stream, device) != 0) {
         return 1;
     }
 
