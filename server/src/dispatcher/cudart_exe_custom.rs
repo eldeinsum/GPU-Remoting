@@ -5,7 +5,7 @@ use super::cuda_exe_utils;
 use cudasys::cudart::*;
 use cudasys::types::cuda::{CUDA_KERNEL_NODE_PARAMS, CUgraph, CUgraphExec, CUgraphNode, CUresult};
 use std::collections::BTreeMap;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Default)]
@@ -576,6 +576,388 @@ fn make_edge_data_buffer(capacity: usize) -> Vec<cudaGraphEdgeData> {
     (0..capacity)
         .map(|_| unsafe { std::mem::zeroed() })
         .collect()
+}
+
+fn runtime_graph_dependencies_ptr(dependencies: &[cudaGraphNode_t]) -> *const cudaGraphNode_t {
+    if dependencies.is_empty() {
+        std::ptr::null()
+    } else {
+        dependencies.as_ptr()
+    }
+}
+
+fn runtime_signal_node_params(
+    semaphores: &mut [cudaExternalSemaphore_t],
+    params: &[cudaExternalSemaphoreSignalParams],
+) -> cudaExternalSemaphoreSignalNodeParams {
+    cudaExternalSemaphoreSignalNodeParams {
+        extSemArray: if semaphores.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            semaphores.as_mut_ptr()
+        },
+        paramsArray: if params.is_empty() {
+            std::ptr::null()
+        } else {
+            params.as_ptr()
+        },
+        numExtSems: semaphores.len() as c_uint,
+    }
+}
+
+fn runtime_wait_node_params(
+    semaphores: &mut [cudaExternalSemaphore_t],
+    params: &[cudaExternalSemaphoreWaitParams],
+) -> cudaExternalSemaphoreWaitNodeParams {
+    cudaExternalSemaphoreWaitNodeParams {
+        extSemArray: if semaphores.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            semaphores.as_mut_ptr()
+        },
+        paramsArray: if params.is_empty() {
+            std::ptr::null()
+        } else {
+            params.as_ptr()
+        },
+        numExtSems: semaphores.len() as c_uint,
+    }
+}
+
+fn runtime_signal_params_from_node(
+    node_params: &cudaExternalSemaphoreSignalNodeParams,
+    result: cudaError_t,
+) -> (
+    Vec<cudaExternalSemaphore_t>,
+    Vec<cudaExternalSemaphoreSignalParams>,
+) {
+    if result != cudaError_t::cudaSuccess || node_params.numExtSems == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let count = node_params.numExtSems as usize;
+    let semaphores = if node_params.extSemArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.extSemArray, count) }.to_vec()
+    };
+    let params = if node_params.paramsArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.paramsArray, count) }.to_vec()
+    };
+    (semaphores, params)
+}
+
+fn runtime_wait_params_from_node(
+    node_params: &cudaExternalSemaphoreWaitNodeParams,
+    result: cudaError_t,
+) -> (
+    Vec<cudaExternalSemaphore_t>,
+    Vec<cudaExternalSemaphoreWaitParams>,
+) {
+    if result != cudaError_t::cudaSuccess || node_params.numExtSems == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let count = node_params.numExtSems as usize;
+    let semaphores = if node_params.extSemArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.extSemArray, count) }.to_vec()
+    };
+    let params = if node_params.paramsArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.paramsArray, count) }.to_vec()
+    };
+    (semaphores, params)
+}
+
+pub fn cudaGraphAddExternalSemaphoresSignalNodeExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphAddExternalSemaphoresSignalNode", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<cudaGraph_t>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let dependencies = recv_slice::<cudaGraphNode_t, _>(channel_receiver).unwrap();
+    let mut semaphores = recv_slice::<cudaExternalSemaphore_t, _>(channel_receiver).unwrap();
+    let params = recv_slice::<cudaExternalSemaphoreSignalParams, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node: cudaGraphNode_t = std::ptr::null_mut();
+    let result = if semaphores.len() == params.len() {
+        let node_params = runtime_signal_node_params(&mut semaphores, &params);
+        unsafe {
+            cudaGraphAddExternalSemaphoresSignalNode(
+                &raw mut node,
+                graph,
+                runtime_graph_dependencies_ptr(&dependencies),
+                dependencies.len(),
+                &raw const node_params,
+            )
+        }
+    } else {
+        cudaError_t::cudaErrorInvalidValue
+    };
+
+    node.send(channel_sender).unwrap();
+    send_result(
+        "cudaGraphAddExternalSemaphoresSignalNode",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExternalSemaphoresSignalNodeGetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExternalSemaphoresSignalNodeGetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node_params =
+        unsafe { std::mem::zeroed::<cudaExternalSemaphoreSignalNodeParams>() };
+    let result = unsafe {
+        cudaGraphExternalSemaphoresSignalNodeGetParams(node, &raw mut node_params)
+    };
+    let (semaphores, params) = runtime_signal_params_from_node(&node_params, result);
+    send_slice(&semaphores, channel_sender).unwrap();
+    send_slice(&params, channel_sender).unwrap();
+    send_result(
+        "cudaGraphExternalSemaphoresSignalNodeGetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExternalSemaphoresSignalNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExternalSemaphoresSignalNodeSetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<cudaExternalSemaphore_t, _>(channel_receiver).unwrap();
+    let params = recv_slice::<cudaExternalSemaphoreSignalParams, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = runtime_signal_node_params(&mut semaphores, &params);
+        unsafe { cudaGraphExternalSemaphoresSignalNodeSetParams(node, &raw const node_params) }
+    } else {
+        cudaError_t::cudaErrorInvalidValue
+    };
+    send_result(
+        "cudaGraphExternalSemaphoresSignalNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExecExternalSemaphoresSignalNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExecExternalSemaphoresSignalNodeSetParams", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<cudaGraphExec_t>::uninit();
+    graph_exec.recv(channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<cudaExternalSemaphore_t, _>(channel_receiver).unwrap();
+    let params = recv_slice::<cudaExternalSemaphoreSignalParams, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = runtime_signal_node_params(&mut semaphores, &params);
+        unsafe {
+            cudaGraphExecExternalSemaphoresSignalNodeSetParams(
+                graph_exec,
+                node,
+                &raw const node_params,
+            )
+        }
+    } else {
+        cudaError_t::cudaErrorInvalidValue
+    };
+    send_result(
+        "cudaGraphExecExternalSemaphoresSignalNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphAddExternalSemaphoresWaitNodeExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphAddExternalSemaphoresWaitNode", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<cudaGraph_t>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let dependencies = recv_slice::<cudaGraphNode_t, _>(channel_receiver).unwrap();
+    let mut semaphores = recv_slice::<cudaExternalSemaphore_t, _>(channel_receiver).unwrap();
+    let params = recv_slice::<cudaExternalSemaphoreWaitParams, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node: cudaGraphNode_t = std::ptr::null_mut();
+    let result = if semaphores.len() == params.len() {
+        let node_params = runtime_wait_node_params(&mut semaphores, &params);
+        unsafe {
+            cudaGraphAddExternalSemaphoresWaitNode(
+                &raw mut node,
+                graph,
+                runtime_graph_dependencies_ptr(&dependencies),
+                dependencies.len(),
+                &raw const node_params,
+            )
+        }
+    } else {
+        cudaError_t::cudaErrorInvalidValue
+    };
+
+    node.send(channel_sender).unwrap();
+    send_result(
+        "cudaGraphAddExternalSemaphoresWaitNode",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExternalSemaphoresWaitNodeGetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExternalSemaphoresWaitNodeGetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node_params = unsafe { std::mem::zeroed::<cudaExternalSemaphoreWaitNodeParams>() };
+    let result =
+        unsafe { cudaGraphExternalSemaphoresWaitNodeGetParams(node, &raw mut node_params) };
+    let (semaphores, params) = runtime_wait_params_from_node(&node_params, result);
+    send_slice(&semaphores, channel_sender).unwrap();
+    send_slice(&params, channel_sender).unwrap();
+    send_result(
+        "cudaGraphExternalSemaphoresWaitNodeGetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExternalSemaphoresWaitNodeSetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<cudaExternalSemaphore_t, _>(channel_receiver).unwrap();
+    let params = recv_slice::<cudaExternalSemaphoreWaitParams, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = runtime_wait_node_params(&mut semaphores, &params);
+        unsafe { cudaGraphExternalSemaphoresWaitNodeSetParams(node, &raw const node_params) }
+    } else {
+        cudaError_t::cudaErrorInvalidValue
+    };
+    send_result(
+        "cudaGraphExternalSemaphoresWaitNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cudaGraphExecExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cudaGraphExecExternalSemaphoresWaitNodeSetParams", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<cudaGraphExec_t>::uninit();
+    graph_exec.recv(channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut node = std::mem::MaybeUninit::<cudaGraphNode_t>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<cudaExternalSemaphore_t, _>(channel_receiver).unwrap();
+    let params = recv_slice::<cudaExternalSemaphoreWaitParams, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = runtime_wait_node_params(&mut semaphores, &params);
+        unsafe {
+            cudaGraphExecExternalSemaphoresWaitNodeSetParams(
+                graph_exec,
+                node,
+                &raw const node_params,
+            )
+        }
+    } else {
+        cudaError_t::cudaErrorInvalidValue
+    };
+    send_result(
+        "cudaGraphExecExternalSemaphoresWaitNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
 }
 
 pub fn cudaGraphGetNodesExe<C: CommChannel>(server: &mut ServerWorker<C>) {

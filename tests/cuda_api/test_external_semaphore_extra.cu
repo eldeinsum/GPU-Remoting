@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -243,6 +244,304 @@ static int validate_runtime_external_semaphore(
     return 0;
 }
 
+static int import_driver_timeline_semaphore(VulkanContext *vulkan,
+                                            CUexternalSemaphore *semaphore)
+{
+    int fd = export_vulkan_semaphore_fd(vulkan, true);
+    if (fd < 0) {
+        return 1;
+    }
+    CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC desc = {};
+    desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_FD;
+    desc.handle.fd = fd;
+    CHECK_DRV(cuImportExternalSemaphore(semaphore, &desc));
+    return 0;
+}
+
+static int import_runtime_timeline_semaphore(VulkanContext *vulkan,
+                                             cudaExternalSemaphore_t *semaphore)
+{
+    int fd = export_vulkan_semaphore_fd(vulkan, true);
+    if (fd < 0) {
+        return 1;
+    }
+    cudaExternalSemaphoreHandleDesc desc = {};
+    desc.type = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd;
+    desc.handle.fd = fd;
+    CHECK_CUDA(cudaImportExternalSemaphore(semaphore, &desc));
+    return 0;
+}
+
+static void set_driver_signal_values(
+    CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS *params, uint64_t first,
+    uint64_t second)
+{
+    std::memset(params, 0, 2 * sizeof(params[0]));
+    params[0].params.fence.value = first;
+    params[1].params.fence.value = second;
+}
+
+static void set_driver_wait_values(CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS *params,
+                                   uint64_t first, uint64_t second)
+{
+    std::memset(params, 0, 2 * sizeof(params[0]));
+    params[0].params.fence.value = first;
+    params[1].params.fence.value = second;
+}
+
+static int verify_driver_signal_node_params(
+    const CUDA_EXT_SEM_SIGNAL_NODE_PARAMS &params,
+    CUexternalSemaphore *expected_semaphores, uint64_t first, uint64_t second)
+{
+    if (params.numExtSems != 2 || params.extSemArray == nullptr ||
+        params.paramsArray == nullptr) {
+        std::fprintf(stderr, "bad driver signal node count/pointers\n");
+        return 1;
+    }
+    if (params.extSemArray[0] != expected_semaphores[0] ||
+        params.extSemArray[1] != expected_semaphores[1] ||
+        params.paramsArray[0].params.fence.value != first ||
+        params.paramsArray[1].params.fence.value != second) {
+        std::fprintf(stderr, "bad driver signal node params\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int verify_driver_wait_node_params(
+    const CUDA_EXT_SEM_WAIT_NODE_PARAMS &params,
+    CUexternalSemaphore *expected_semaphores, uint64_t first, uint64_t second)
+{
+    if (params.numExtSems != 2 || params.extSemArray == nullptr ||
+        params.paramsArray == nullptr) {
+        std::fprintf(stderr, "bad driver wait node count/pointers\n");
+        return 1;
+    }
+    if (params.extSemArray[0] != expected_semaphores[0] ||
+        params.extSemArray[1] != expected_semaphores[1] ||
+        params.paramsArray[0].params.fence.value != first ||
+        params.paramsArray[1].params.fence.value != second) {
+        std::fprintf(stderr, "bad driver wait node params\n");
+        return 1;
+    }
+    return 0;
+}
+
+static void set_runtime_signal_values(cudaExternalSemaphoreSignalParams *params,
+                                      uint64_t first, uint64_t second)
+{
+    std::memset(params, 0, 2 * sizeof(params[0]));
+    params[0].params.fence.value = first;
+    params[1].params.fence.value = second;
+}
+
+static void set_runtime_wait_values(cudaExternalSemaphoreWaitParams *params,
+                                    uint64_t first, uint64_t second)
+{
+    std::memset(params, 0, 2 * sizeof(params[0]));
+    params[0].params.fence.value = first;
+    params[1].params.fence.value = second;
+}
+
+static int verify_runtime_signal_node_params(
+    const cudaExternalSemaphoreSignalNodeParams &params,
+    cudaExternalSemaphore_t *expected_semaphores, uint64_t first,
+    uint64_t second)
+{
+    if (params.numExtSems != 2 || params.extSemArray == nullptr ||
+        params.paramsArray == nullptr) {
+        std::fprintf(stderr, "bad runtime signal node count/pointers\n");
+        return 1;
+    }
+    if (params.extSemArray[0] != expected_semaphores[0] ||
+        params.extSemArray[1] != expected_semaphores[1] ||
+        params.paramsArray[0].params.fence.value != first ||
+        params.paramsArray[1].params.fence.value != second) {
+        std::fprintf(stderr, "bad runtime signal node params\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int verify_runtime_wait_node_params(
+    const cudaExternalSemaphoreWaitNodeParams &params,
+    cudaExternalSemaphore_t *expected_semaphores, uint64_t first,
+    uint64_t second)
+{
+    if (params.numExtSems != 2 || params.extSemArray == nullptr ||
+        params.paramsArray == nullptr) {
+        std::fprintf(stderr, "bad runtime wait node count/pointers\n");
+        return 1;
+    }
+    if (params.extSemArray[0] != expected_semaphores[0] ||
+        params.extSemArray[1] != expected_semaphores[1] ||
+        params.paramsArray[0].params.fence.value != first ||
+        params.paramsArray[1].params.fence.value != second) {
+        std::fprintf(stderr, "bad runtime wait node params\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int validate_driver_external_semaphore_graph(VulkanContext *vulkan)
+{
+    CUexternalSemaphore semaphores[2] = {};
+    if (import_driver_timeline_semaphore(vulkan, &semaphores[0]) != 0 ||
+        import_driver_timeline_semaphore(vulkan, &semaphores[1]) != 0) {
+        return 1;
+    }
+
+    CUgraph graph = nullptr;
+    CHECK_DRV(cuGraphCreate(&graph, 0));
+
+    CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signal_params[2] = {};
+    set_driver_signal_values(signal_params, 1, 5);
+    CUDA_EXT_SEM_SIGNAL_NODE_PARAMS signal_node_params = {};
+    signal_node_params.extSemArray = semaphores;
+    signal_node_params.paramsArray = signal_params;
+    signal_node_params.numExtSems = 2;
+
+    CUgraphNode signal_node = nullptr;
+    CHECK_DRV(cuGraphAddExternalSemaphoresSignalNode(
+        &signal_node, graph, nullptr, 0, &signal_node_params));
+
+    CUDA_EXT_SEM_SIGNAL_NODE_PARAMS got_signal_params = {};
+    CHECK_DRV(cuGraphExternalSemaphoresSignalNodeGetParams(
+        signal_node, &got_signal_params));
+    if (verify_driver_signal_node_params(got_signal_params, semaphores, 1, 5) !=
+        0) {
+        return 1;
+    }
+
+    set_driver_signal_values(signal_params, 2, 6);
+    CHECK_DRV(cuGraphExternalSemaphoresSignalNodeSetParams(signal_node,
+                                                           &signal_node_params));
+    CHECK_DRV(cuGraphExternalSemaphoresSignalNodeGetParams(
+        signal_node, &got_signal_params));
+    if (verify_driver_signal_node_params(got_signal_params, semaphores, 2, 6) !=
+        0) {
+        return 1;
+    }
+
+    CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS wait_params[2] = {};
+    set_driver_wait_values(wait_params, 2, 6);
+    CUDA_EXT_SEM_WAIT_NODE_PARAMS wait_node_params = {};
+    wait_node_params.extSemArray = semaphores;
+    wait_node_params.paramsArray = wait_params;
+    wait_node_params.numExtSems = 2;
+
+    CUgraphNode wait_node = nullptr;
+    CUgraphNode dependency = signal_node;
+    CHECK_DRV(cuGraphAddExternalSemaphoresWaitNode(
+        &wait_node, graph, &dependency, 1, &wait_node_params));
+
+    CUDA_EXT_SEM_WAIT_NODE_PARAMS got_wait_params = {};
+    CHECK_DRV(
+        cuGraphExternalSemaphoresWaitNodeGetParams(wait_node, &got_wait_params));
+    if (verify_driver_wait_node_params(got_wait_params, semaphores, 2, 6) != 0) {
+        return 1;
+    }
+    CHECK_DRV(
+        cuGraphExternalSemaphoresWaitNodeSetParams(wait_node, &wait_node_params));
+
+    CUgraphExec exec = nullptr;
+    CHECK_DRV(cuGraphInstantiateWithFlags(&exec, graph, 0));
+    set_driver_signal_values(signal_params, 3, 7);
+    set_driver_wait_values(wait_params, 3, 7);
+    CHECK_DRV(cuGraphExecExternalSemaphoresSignalNodeSetParams(
+        exec, signal_node, &signal_node_params));
+    CHECK_DRV(cuGraphExecExternalSemaphoresWaitNodeSetParams(
+        exec, wait_node, &wait_node_params));
+    CHECK_DRV(cuGraphLaunch(exec, nullptr));
+    CHECK_DRV(cuStreamSynchronize(nullptr));
+
+    CHECK_DRV(cuGraphExecDestroy(exec));
+    CHECK_DRV(cuGraphDestroy(graph));
+    CHECK_DRV(cuDestroyExternalSemaphore(semaphores[0]));
+    CHECK_DRV(cuDestroyExternalSemaphore(semaphores[1]));
+    return 0;
+}
+
+static int validate_runtime_external_semaphore_graph(VulkanContext *vulkan)
+{
+    cudaExternalSemaphore_t semaphores[2] = {};
+    if (import_runtime_timeline_semaphore(vulkan, &semaphores[0]) != 0 ||
+        import_runtime_timeline_semaphore(vulkan, &semaphores[1]) != 0) {
+        return 1;
+    }
+
+    cudaGraph_t graph = nullptr;
+    CHECK_CUDA(cudaGraphCreate(&graph, 0));
+
+    cudaExternalSemaphoreSignalParams signal_params[2] = {};
+    set_runtime_signal_values(signal_params, 1, 5);
+    cudaExternalSemaphoreSignalNodeParams signal_node_params = {};
+    signal_node_params.extSemArray = semaphores;
+    signal_node_params.paramsArray = signal_params;
+    signal_node_params.numExtSems = 2;
+
+    cudaGraphNode_t signal_node = nullptr;
+    CHECK_CUDA(cudaGraphAddExternalSemaphoresSignalNode(
+        &signal_node, graph, nullptr, 0, &signal_node_params));
+
+    cudaExternalSemaphoreSignalNodeParams got_signal_params = {};
+    CHECK_CUDA(cudaGraphExternalSemaphoresSignalNodeGetParams(
+        signal_node, &got_signal_params));
+    if (verify_runtime_signal_node_params(got_signal_params, semaphores, 1,
+                                          5) != 0) {
+        return 1;
+    }
+
+    set_runtime_signal_values(signal_params, 2, 6);
+    CHECK_CUDA(cudaGraphExternalSemaphoresSignalNodeSetParams(
+        signal_node, &signal_node_params));
+    CHECK_CUDA(cudaGraphExternalSemaphoresSignalNodeGetParams(
+        signal_node, &got_signal_params));
+    if (verify_runtime_signal_node_params(got_signal_params, semaphores, 2,
+                                          6) != 0) {
+        return 1;
+    }
+
+    cudaExternalSemaphoreWaitParams wait_params[2] = {};
+    set_runtime_wait_values(wait_params, 2, 6);
+    cudaExternalSemaphoreWaitNodeParams wait_node_params = {};
+    wait_node_params.extSemArray = semaphores;
+    wait_node_params.paramsArray = wait_params;
+    wait_node_params.numExtSems = 2;
+
+    cudaGraphNode_t wait_node = nullptr;
+    cudaGraphNode_t dependency = signal_node;
+    CHECK_CUDA(cudaGraphAddExternalSemaphoresWaitNode(
+        &wait_node, graph, &dependency, 1, &wait_node_params));
+
+    cudaExternalSemaphoreWaitNodeParams got_wait_params = {};
+    CHECK_CUDA(cudaGraphExternalSemaphoresWaitNodeGetParams(
+        wait_node, &got_wait_params));
+    if (verify_runtime_wait_node_params(got_wait_params, semaphores, 2, 6) !=
+        0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaGraphExternalSemaphoresWaitNodeSetParams(wait_node,
+                                                            &wait_node_params));
+
+    cudaGraphExec_t exec = nullptr;
+    CHECK_CUDA(cudaGraphInstantiate(&exec, graph, 0));
+    set_runtime_signal_values(signal_params, 3, 7);
+    set_runtime_wait_values(wait_params, 3, 7);
+    CHECK_CUDA(cudaGraphExecExternalSemaphoresSignalNodeSetParams(
+        exec, signal_node, &signal_node_params));
+    CHECK_CUDA(cudaGraphExecExternalSemaphoresWaitNodeSetParams(
+        exec, wait_node, &wait_node_params));
+    CHECK_CUDA(cudaGraphLaunch(exec, nullptr));
+    CHECK_CUDA(cudaStreamSynchronize(nullptr));
+
+    CHECK_CUDA(cudaGraphExecDestroy(exec));
+    CHECK_CUDA(cudaGraphDestroy(graph));
+    CHECK_CUDA(cudaDestroyExternalSemaphore(semaphores[0]));
+    CHECK_CUDA(cudaDestroyExternalSemaphore(semaphores[1]));
+    return 0;
+}
+
 int main()
 {
     CHECK_DRV(cuInit(0));
@@ -283,6 +582,11 @@ int main()
     if (fd < 0 || validate_runtime_external_semaphore(
                       fd, cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd) !=
                       0) {
+        return 1;
+    }
+
+    if (validate_driver_external_semaphore_graph(&vulkan) != 0 ||
+        validate_runtime_external_semaphore_graph(&vulkan) != 0) {
         return 1;
     }
 

@@ -2845,6 +2845,62 @@ fn cudaGraphExecEventWaitNodeSetEvent(
     event: cudaEvent_t,
 ) -> cudaError_t;
 
+#[cuda_custom_hook(proc_id = 901141)]
+fn cudaGraphAddExternalSemaphoresSignalNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    nodeParams: *const cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901142)]
+fn cudaGraphExternalSemaphoresSignalNodeGetParams(
+    hNode: cudaGraphNode_t,
+    params_out: *mut cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901143)]
+fn cudaGraphExternalSemaphoresSignalNodeSetParams(
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901144)]
+fn cudaGraphExecExternalSemaphoresSignalNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901145)]
+fn cudaGraphAddExternalSemaphoresWaitNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    nodeParams: *const cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901146)]
+fn cudaGraphExternalSemaphoresWaitNodeGetParams(
+    hNode: cudaGraphNode_t,
+    params_out: *mut cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901147)]
+fn cudaGraphExternalSemaphoresWaitNodeSetParams(
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901148)]
+fn cudaGraphExecExternalSemaphoresWaitNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t;
+
 #[cuda_hook(proc_id = 900543)]
 fn cudaGraphExecMemsetNodeSetParams(
     hGraphExec: cudaGraphExec_t,

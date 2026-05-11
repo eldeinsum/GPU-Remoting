@@ -3620,6 +3620,62 @@ fn cuGraphExecEventWaitNodeSetEvent(
     event: CUevent,
 ) -> CUresult;
 
+#[cuda_custom_hook(proc_id = 901133)]
+fn cuGraphAddExternalSemaphoresSignalNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    nodeParams: *const CUDA_EXT_SEM_SIGNAL_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901134)]
+fn cuGraphExternalSemaphoresSignalNodeGetParams(
+    hNode: CUgraphNode,
+    params_out: *mut CUDA_EXT_SEM_SIGNAL_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901135)]
+fn cuGraphExternalSemaphoresSignalNodeSetParams(
+    hNode: CUgraphNode,
+    nodeParams: *const CUDA_EXT_SEM_SIGNAL_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901136)]
+fn cuGraphExecExternalSemaphoresSignalNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    nodeParams: *const CUDA_EXT_SEM_SIGNAL_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901137)]
+fn cuGraphAddExternalSemaphoresWaitNode(
+    phGraphNode: *mut CUgraphNode,
+    hGraph: CUgraph,
+    dependencies: *const CUgraphNode,
+    numDependencies: usize,
+    nodeParams: *const CUDA_EXT_SEM_WAIT_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901138)]
+fn cuGraphExternalSemaphoresWaitNodeGetParams(
+    hNode: CUgraphNode,
+    params_out: *mut CUDA_EXT_SEM_WAIT_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901139)]
+fn cuGraphExternalSemaphoresWaitNodeSetParams(
+    hNode: CUgraphNode,
+    nodeParams: *const CUDA_EXT_SEM_WAIT_NODE_PARAMS,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901140)]
+fn cuGraphExecExternalSemaphoresWaitNodeSetParams(
+    hGraphExec: CUgraphExec,
+    hNode: CUgraphNode,
+    nodeParams: *const CUDA_EXT_SEM_WAIT_NODE_PARAMS,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900841)]
 fn cuGraphAddMemsetNode(
     phGraphNode: *mut CUgraphNode,

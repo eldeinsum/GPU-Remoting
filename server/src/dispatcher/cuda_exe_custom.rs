@@ -7,7 +7,7 @@ use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Default)]
@@ -1036,6 +1036,385 @@ pub fn cuCtxCreate_v4Exe<C: CommChannel>(server: &mut ServerWorker<C>) {
 
     context.send(channel_sender).unwrap();
     send_result("cuCtxCreate_v4", server.id, result, channel_sender);
+}
+
+fn driver_graph_dependencies_ptr(dependencies: &[CUgraphNode]) -> *const CUgraphNode {
+    if dependencies.is_empty() {
+        std::ptr::null()
+    } else {
+        dependencies.as_ptr()
+    }
+}
+
+fn driver_signal_node_params(
+    semaphores: &mut [CUexternalSemaphore],
+    params: &[CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS],
+) -> CUDA_EXT_SEM_SIGNAL_NODE_PARAMS {
+    CUDA_EXT_SEM_SIGNAL_NODE_PARAMS {
+        extSemArray: if semaphores.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            semaphores.as_mut_ptr()
+        },
+        paramsArray: if params.is_empty() {
+            std::ptr::null()
+        } else {
+            params.as_ptr()
+        },
+        numExtSems: semaphores.len() as c_uint,
+    }
+}
+
+fn driver_wait_node_params(
+    semaphores: &mut [CUexternalSemaphore],
+    params: &[CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS],
+) -> CUDA_EXT_SEM_WAIT_NODE_PARAMS {
+    CUDA_EXT_SEM_WAIT_NODE_PARAMS {
+        extSemArray: if semaphores.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            semaphores.as_mut_ptr()
+        },
+        paramsArray: if params.is_empty() {
+            std::ptr::null()
+        } else {
+            params.as_ptr()
+        },
+        numExtSems: semaphores.len() as c_uint,
+    }
+}
+
+fn driver_signal_params_from_node(
+    node_params: &CUDA_EXT_SEM_SIGNAL_NODE_PARAMS,
+    result: CUresult,
+) -> (
+    Vec<CUexternalSemaphore>,
+    Vec<CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS>,
+) {
+    if result != CUresult::CUDA_SUCCESS || node_params.numExtSems == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let count = node_params.numExtSems as usize;
+    let semaphores = if node_params.extSemArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.extSemArray, count) }.to_vec()
+    };
+    let params = if node_params.paramsArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.paramsArray, count) }.to_vec()
+    };
+    (semaphores, params)
+}
+
+fn driver_wait_params_from_node(
+    node_params: &CUDA_EXT_SEM_WAIT_NODE_PARAMS,
+    result: CUresult,
+) -> (
+    Vec<CUexternalSemaphore>,
+    Vec<CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS>,
+) {
+    if result != CUresult::CUDA_SUCCESS || node_params.numExtSems == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let count = node_params.numExtSems as usize;
+    let semaphores = if node_params.extSemArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.extSemArray, count) }.to_vec()
+    };
+    let params = if node_params.paramsArray.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.paramsArray, count) }.to_vec()
+    };
+    (semaphores, params)
+}
+
+pub fn cuGraphAddExternalSemaphoresSignalNodeExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphAddExternalSemaphoresSignalNode", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<CUgraph>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let dependencies = recv_slice::<CUgraphNode, _>(channel_receiver).unwrap();
+    let mut semaphores = recv_slice::<CUexternalSemaphore, _>(channel_receiver).unwrap();
+    let params = recv_slice::<CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node: CUgraphNode = std::ptr::null_mut();
+    let result = if semaphores.len() == params.len() {
+        let node_params = driver_signal_node_params(&mut semaphores, &params);
+        unsafe {
+            cuGraphAddExternalSemaphoresSignalNode(
+                &raw mut node,
+                graph,
+                driver_graph_dependencies_ptr(&dependencies),
+                dependencies.len(),
+                &raw const node_params,
+            )
+        }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+
+    node.send(channel_sender).unwrap();
+    send_result(
+        "cuGraphAddExternalSemaphoresSignalNode",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphExternalSemaphoresSignalNodeGetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphExternalSemaphoresSignalNodeGetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node_params = unsafe { std::mem::zeroed::<CUDA_EXT_SEM_SIGNAL_NODE_PARAMS>() };
+    let result = unsafe {
+        cuGraphExternalSemaphoresSignalNodeGetParams(node, &raw mut node_params)
+    };
+    let (semaphores, params) = driver_signal_params_from_node(&node_params, result);
+    send_slice(&semaphores, channel_sender).unwrap();
+    send_slice(&params, channel_sender).unwrap();
+    send_result(
+        "cuGraphExternalSemaphoresSignalNodeGetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphExternalSemaphoresSignalNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphExternalSemaphoresSignalNodeSetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<CUexternalSemaphore, _>(channel_receiver).unwrap();
+    let params = recv_slice::<CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = driver_signal_node_params(&mut semaphores, &params);
+        unsafe { cuGraphExternalSemaphoresSignalNodeSetParams(node, &raw const node_params) }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+    send_result(
+        "cuGraphExternalSemaphoresSignalNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphExecExternalSemaphoresSignalNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphExecExternalSemaphoresSignalNodeSetParams", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<CUgraphExec>::uninit();
+    graph_exec.recv(channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<CUexternalSemaphore, _>(channel_receiver).unwrap();
+    let params = recv_slice::<CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = driver_signal_node_params(&mut semaphores, &params);
+        unsafe {
+            cuGraphExecExternalSemaphoresSignalNodeSetParams(
+                graph_exec,
+                node,
+                &raw const node_params,
+            )
+        }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+    send_result(
+        "cuGraphExecExternalSemaphoresSignalNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphAddExternalSemaphoresWaitNodeExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphAddExternalSemaphoresWaitNode", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<CUgraph>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let dependencies = recv_slice::<CUgraphNode, _>(channel_receiver).unwrap();
+    let mut semaphores = recv_slice::<CUexternalSemaphore, _>(channel_receiver).unwrap();
+    let params = recv_slice::<CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node: CUgraphNode = std::ptr::null_mut();
+    let result = if semaphores.len() == params.len() {
+        let node_params = driver_wait_node_params(&mut semaphores, &params);
+        unsafe {
+            cuGraphAddExternalSemaphoresWaitNode(
+                &raw mut node,
+                graph,
+                driver_graph_dependencies_ptr(&dependencies),
+                dependencies.len(),
+                &raw const node_params,
+            )
+        }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+
+    node.send(channel_sender).unwrap();
+    send_result(
+        "cuGraphAddExternalSemaphoresWaitNode",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphExternalSemaphoresWaitNodeGetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphExternalSemaphoresWaitNodeGetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut node_params = unsafe { std::mem::zeroed::<CUDA_EXT_SEM_WAIT_NODE_PARAMS>() };
+    let result =
+        unsafe { cuGraphExternalSemaphoresWaitNodeGetParams(node, &raw mut node_params) };
+    let (semaphores, params) = driver_wait_params_from_node(&node_params, result);
+    send_slice(&semaphores, channel_sender).unwrap();
+    send_slice(&params, channel_sender).unwrap();
+    send_result(
+        "cuGraphExternalSemaphoresWaitNodeGetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphExternalSemaphoresWaitNodeSetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<CUexternalSemaphore, _>(channel_receiver).unwrap();
+    let params = recv_slice::<CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = driver_wait_node_params(&mut semaphores, &params);
+        unsafe { cuGraphExternalSemaphoresWaitNodeSetParams(node, &raw const node_params) }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+    send_result(
+        "cuGraphExternalSemaphoresWaitNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphExecExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(
+    server: &mut ServerWorker<C>,
+) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphExecExternalSemaphoresWaitNodeSetParams", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<CUgraphExec>::uninit();
+    graph_exec.recv(channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut semaphores = recv_slice::<CUexternalSemaphore, _>(channel_receiver).unwrap();
+    let params = recv_slice::<CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS, _>(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let result = if semaphores.len() == params.len() {
+        let node_params = driver_wait_node_params(&mut semaphores, &params);
+        unsafe {
+            cuGraphExecExternalSemaphoresWaitNodeSetParams(
+                graph_exec,
+                node,
+                &raw const node_params,
+            )
+        }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+    send_result(
+        "cuGraphExecExternalSemaphoresWaitNodeSetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
 }
 
 pub fn cuGraphGetNodesExe<C: CommChannel>(server: &mut ServerWorker<C>) {

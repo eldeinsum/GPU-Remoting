@@ -2604,6 +2604,455 @@ pub extern "C" fn cudaIpcOpenEventHandle(
     })
 }
 
+struct RuntimeGraphSignalNodeState {
+    semaphores: Vec<cudaExternalSemaphore_t>,
+    params: Vec<cudaExternalSemaphoreSignalParams>,
+}
+
+unsafe impl Send for RuntimeGraphSignalNodeState {}
+
+struct RuntimeGraphWaitNodeState {
+    semaphores: Vec<cudaExternalSemaphore_t>,
+    params: Vec<cudaExternalSemaphoreWaitParams>,
+}
+
+unsafe impl Send for RuntimeGraphWaitNodeState {}
+
+fn runtime_graph_signal_nodes() -> &'static Mutex<BTreeMap<usize, RuntimeGraphSignalNodeState>> {
+    static STATE: OnceLock<Mutex<BTreeMap<usize, RuntimeGraphSignalNodeState>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn runtime_graph_wait_nodes() -> &'static Mutex<BTreeMap<usize, RuntimeGraphWaitNodeState>> {
+    static STATE: OnceLock<Mutex<BTreeMap<usize, RuntimeGraphWaitNodeState>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn runtime_graph_dependencies(
+    dependencies: *const cudaGraphNode_t,
+    num_dependencies: usize,
+) -> Result<Vec<cudaGraphNode_t>, cudaError_t> {
+    if num_dependencies == 0 {
+        return Ok(Vec::new());
+    }
+    if dependencies.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    Ok(unsafe { std::slice::from_raw_parts(dependencies, num_dependencies) }.to_vec())
+}
+
+fn runtime_signal_node_params(
+    node_params: *const cudaExternalSemaphoreSignalNodeParams,
+) -> Result<
+    (
+        Vec<cudaExternalSemaphore_t>,
+        Vec<cudaExternalSemaphoreSignalParams>,
+    ),
+    cudaError_t,
+> {
+    if node_params.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    let node_params = unsafe { &*node_params };
+    let count = node_params.numExtSems as usize;
+    if count > 0 && (node_params.extSemArray.is_null() || node_params.paramsArray.is_null()) {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    let semaphores = if count == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.extSemArray, count) }.to_vec()
+    };
+    let params = if count == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.paramsArray, count) }.to_vec()
+    };
+    Ok((semaphores, params))
+}
+
+fn runtime_wait_node_params(
+    node_params: *const cudaExternalSemaphoreWaitNodeParams,
+) -> Result<
+    (
+        Vec<cudaExternalSemaphore_t>,
+        Vec<cudaExternalSemaphoreWaitParams>,
+    ),
+    cudaError_t,
+> {
+    if node_params.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    let node_params = unsafe { &*node_params };
+    let count = node_params.numExtSems as usize;
+    if count > 0 && (node_params.extSemArray.is_null() || node_params.paramsArray.is_null()) {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    let semaphores = if count == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.extSemArray, count) }.to_vec()
+    };
+    let params = if count == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(node_params.paramsArray, count) }.to_vec()
+    };
+    Ok((semaphores, params))
+}
+
+fn store_runtime_signal_node_params(
+    node: cudaGraphNode_t,
+    semaphores: Vec<cudaExternalSemaphore_t>,
+    params: Vec<cudaExternalSemaphoreSignalParams>,
+    params_out: *mut cudaExternalSemaphoreSignalNodeParams,
+) {
+    let mut nodes = runtime_graph_signal_nodes().lock().unwrap();
+    nodes.insert(node as usize, RuntimeGraphSignalNodeState { semaphores, params });
+    if !params_out.is_null() {
+        let entry = nodes.get_mut(&(node as usize)).unwrap();
+        unsafe {
+            *params_out = cudaExternalSemaphoreSignalNodeParams {
+                extSemArray: if entry.semaphores.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    entry.semaphores.as_mut_ptr()
+                },
+                paramsArray: if entry.params.is_empty() {
+                    std::ptr::null()
+                } else {
+                    entry.params.as_ptr()
+                },
+                numExtSems: entry.semaphores.len() as c_uint,
+            };
+        }
+    }
+}
+
+fn store_runtime_wait_node_params(
+    node: cudaGraphNode_t,
+    semaphores: Vec<cudaExternalSemaphore_t>,
+    params: Vec<cudaExternalSemaphoreWaitParams>,
+    params_out: *mut cudaExternalSemaphoreWaitNodeParams,
+) {
+    let mut nodes = runtime_graph_wait_nodes().lock().unwrap();
+    nodes.insert(node as usize, RuntimeGraphWaitNodeState { semaphores, params });
+    if !params_out.is_null() {
+        let entry = nodes.get_mut(&(node as usize)).unwrap();
+        unsafe {
+            *params_out = cudaExternalSemaphoreWaitNodeParams {
+                extSemArray: if entry.semaphores.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    entry.semaphores.as_mut_ptr()
+                },
+                paramsArray: if entry.params.is_empty() {
+                    std::ptr::null()
+                } else {
+                    entry.params.as_ptr()
+                },
+                numExtSems: entry.semaphores.len() as c_uint,
+            };
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphAddExternalSemaphoresSignalNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    nodeParams: *const cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t {
+    if pGraphNode.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    let dependencies = match runtime_graph_dependencies(pDependencies, numDependencies) {
+        Ok(dependencies) => dependencies,
+        Err(result) => return result,
+    };
+    let (semaphores, params) = match runtime_signal_node_params(nodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphAddExternalSemaphoresSignalNode", "[#{}]", client.id);
+
+        901141.send(&client.channel_sender).unwrap();
+        graph.send(&client.channel_sender).unwrap();
+        send_slice(&dependencies, &client.channel_sender).unwrap();
+        send_slice(&semaphores, &client.channel_sender).unwrap();
+        send_slice(&params, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut node: cudaGraphNode_t = std::ptr::null_mut();
+        node.recv(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaGraphAddExternalSemaphoresSignalNode",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            unsafe {
+                *pGraphNode = node;
+            }
+            store_runtime_signal_node_params(node, semaphores, params, std::ptr::null_mut());
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExternalSemaphoresSignalNodeGetParams(
+    hNode: cudaGraphNode_t,
+    params_out: *mut cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t {
+    if params_out.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExternalSemaphoresSignalNodeGetParams", "[#{}]", client.id);
+
+        901142.send(&client.channel_sender).unwrap();
+        hNode.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let semaphores =
+            recv_slice::<cudaExternalSemaphore_t, _>(&client.channel_receiver).unwrap();
+        let params =
+            recv_slice::<cudaExternalSemaphoreSignalParams, _>(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaGraphExternalSemaphoresSignalNodeGetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            store_runtime_signal_node_params(
+                hNode,
+                semaphores.into_vec(),
+                params.into_vec(),
+                params_out,
+            );
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExternalSemaphoresSignalNodeSetParams(
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t {
+    let (semaphores, params) = match runtime_signal_node_params(nodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExternalSemaphoresSignalNodeSetParams", "[#{}]", client.id);
+
+        901143.send(&client.channel_sender).unwrap();
+        hNode.send(&client.channel_sender).unwrap();
+        send_slice(&semaphores, &client.channel_sender).unwrap();
+        send_slice(&params, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cuda_result(
+            "cudaGraphExternalSemaphoresSignalNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            store_runtime_signal_node_params(hNode, semaphores, params, std::ptr::null_mut());
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExecExternalSemaphoresSignalNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreSignalNodeParams,
+) -> cudaError_t {
+    let (semaphores, params) = match runtime_signal_node_params(nodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExecExternalSemaphoresSignalNodeSetParams", "[#{}]", client.id);
+
+        901144.send(&client.channel_sender).unwrap();
+        hGraphExec.send(&client.channel_sender).unwrap();
+        hNode.send(&client.channel_sender).unwrap();
+        send_slice(&semaphores, &client.channel_sender).unwrap();
+        send_slice(&params, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cuda_result(
+            "cudaGraphExecExternalSemaphoresSignalNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphAddExternalSemaphoresWaitNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    nodeParams: *const cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t {
+    if pGraphNode.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    let dependencies = match runtime_graph_dependencies(pDependencies, numDependencies) {
+        Ok(dependencies) => dependencies,
+        Err(result) => return result,
+    };
+    let (semaphores, params) = match runtime_wait_node_params(nodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphAddExternalSemaphoresWaitNode", "[#{}]", client.id);
+
+        901145.send(&client.channel_sender).unwrap();
+        graph.send(&client.channel_sender).unwrap();
+        send_slice(&dependencies, &client.channel_sender).unwrap();
+        send_slice(&semaphores, &client.channel_sender).unwrap();
+        send_slice(&params, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut node: cudaGraphNode_t = std::ptr::null_mut();
+        node.recv(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaGraphAddExternalSemaphoresWaitNode",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            unsafe {
+                *pGraphNode = node;
+            }
+            store_runtime_wait_node_params(node, semaphores, params, std::ptr::null_mut());
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExternalSemaphoresWaitNodeGetParams(
+    hNode: cudaGraphNode_t,
+    params_out: *mut cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t {
+    if params_out.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExternalSemaphoresWaitNodeGetParams", "[#{}]", client.id);
+
+        901146.send(&client.channel_sender).unwrap();
+        hNode.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let semaphores =
+            recv_slice::<cudaExternalSemaphore_t, _>(&client.channel_receiver).unwrap();
+        let params =
+            recv_slice::<cudaExternalSemaphoreWaitParams, _>(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result(
+            "cudaGraphExternalSemaphoresWaitNodeGetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            store_runtime_wait_node_params(
+                hNode,
+                semaphores.into_vec(),
+                params.into_vec(),
+                params_out,
+            );
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExternalSemaphoresWaitNodeSetParams(
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t {
+    let (semaphores, params) = match runtime_wait_node_params(nodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExternalSemaphoresWaitNodeSetParams", "[#{}]", client.id);
+
+        901147.send(&client.channel_sender).unwrap();
+        hNode.send(&client.channel_sender).unwrap();
+        send_slice(&semaphores, &client.channel_sender).unwrap();
+        send_slice(&params, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cuda_result(
+            "cudaGraphExternalSemaphoresWaitNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            store_runtime_wait_node_params(hNode, semaphores, params, std::ptr::null_mut());
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExecExternalSemaphoresWaitNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    hNode: cudaGraphNode_t,
+    nodeParams: *const cudaExternalSemaphoreWaitNodeParams,
+) -> cudaError_t {
+    let (semaphores, params) = match runtime_wait_node_params(nodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExecExternalSemaphoresWaitNodeSetParams", "[#{}]", client.id);
+
+        901148.send(&client.channel_sender).unwrap();
+        hGraphExec.send(&client.channel_sender).unwrap();
+        hNode.send(&client.channel_sender).unwrap();
+        send_slice(&semaphores, &client.channel_sender).unwrap();
+        send_slice(&params, &client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        recv_cuda_result(
+            "cudaGraphExecExternalSemaphoresWaitNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
 #[no_mangle]
 pub extern "C" fn cudaGraphGetNodes(
     graph: cudaGraph_t,
