@@ -378,6 +378,39 @@ fn ncclWinGetUserPtr(
     outUserPtr: *mut *mut c_void,
 ) -> ncclResult_t;
 
+#[cuda_hook(proc_id = 3242, async_api)]
+fn ncclPutSignal(
+    #[device] localbuff: *const c_void,
+    count: usize,
+    datatype: ncclDataType_t,
+    peer: c_int,
+    peerWin: ncclWindow_t,
+    peerWinOffset: usize,
+    sigIdx: c_int,
+    ctx: c_int,
+    flags: c_uint,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3243, async_api)]
+fn ncclSignal(
+    peer: c_int,
+    sigIdx: c_int,
+    ctx: c_int,
+    flags: c_uint,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3244, async_api)]
+fn ncclWaitSignal(
+    nDesc: c_int,
+    #[host(input, len = nDesc)] signalDescs: *mut ncclWaitSignalDesc_t,
+    comm: ncclComm_t,
+    stream: cudaStream_t,
+) -> ncclResult_t;
+
 #[cuda_hook(proc_id = 3236)]
 fn ncclCommSuspend(comm: ncclComm_t, flags: c_int) -> ncclResult_t;
 

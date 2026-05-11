@@ -177,8 +177,10 @@ int main(void) {
   cudaStream_t streams[nranks];
   float *send[nranks];
   float *recv[nranks];
+  void *rma_source_buffers[nranks] = {NULL, NULL};
   void *window_buffers[nranks] = {NULL, NULL};
   void *registration_handles[nranks] = {NULL, NULL};
+  ncclWindow_t rma_source_windows[nranks] = {NULL, NULL};
   ncclWindow_t windows[nranks] = {NULL, NULL};
   for (int rank = 0; rank < nranks; ++rank) {
     if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
@@ -187,6 +189,13 @@ int main(void) {
                  "cudaMalloc(send)") ||
         !cuda_ok(cudaMalloc(&recv[rank], elem_count * sizeof(float)),
                  "cudaMalloc(recv)") ||
+        !nccl_ok(ncclMemAlloc(&rma_source_buffers[rank],
+                              NCCL_WIN_REQUIRED_ALIGNMENT),
+                 "ncclMemAlloc(rma source)") ||
+        rma_source_buffers[rank] == NULL ||
+        !cuda_ok(cudaMemset(rma_source_buffers[rank], 0,
+                            NCCL_WIN_REQUIRED_ALIGNMENT),
+                 "cudaMemset(rma source)") ||
         !nccl_ok(ncclMemAlloc(&window_buffers[rank],
                               NCCL_WIN_REQUIRED_ALIGNMENT),
                  "ncclMemAlloc(window)") ||
@@ -211,9 +220,14 @@ int main(void) {
   for (int rank = 0; rank < nranks; ++rank) {
     if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
         !nccl_ok(ncclCommWindowRegister(
+                     comms[rank], rma_source_buffers[rank],
+                     NCCL_WIN_REQUIRED_ALIGNMENT, &rma_source_windows[rank],
+                     NCCL_WIN_COLL_SYMMETRIC),
+                 "ncclCommWindowRegister(source)") ||
+        !nccl_ok(ncclCommWindowRegister(
                      comms[rank], window_buffers[rank],
                      NCCL_WIN_REQUIRED_ALIGNMENT, &windows[rank],
-                     NCCL_WIN_DEFAULT),
+                     NCCL_WIN_COLL_SYMMETRIC),
                  "ncclCommWindowRegister")) {
       return EXIT_FAILURE;
     }
@@ -223,6 +237,16 @@ int main(void) {
   }
   for (int rank = 0; rank < nranks; ++rank) {
     void *user_ptr = NULL;
+    if (rma_source_windows[rank] == NULL ||
+        !nccl_ok(ncclWinGetUserPtr(comms[rank], rma_source_windows[rank],
+                                   &user_ptr),
+                 "ncclWinGetUserPtr(source)") ||
+        user_ptr != rma_source_buffers[rank]) {
+      fprintf(stderr, "NCCL source window user pointer mismatch for rank %d\n",
+              rank);
+      return EXIT_FAILURE;
+    }
+    user_ptr = NULL;
     if (windows[rank] == NULL ||
         !nccl_ok(ncclWinGetUserPtr(comms[rank], windows[rank], &user_ptr),
                  "ncclWinGetUserPtr") ||
@@ -231,11 +255,99 @@ int main(void) {
       return EXIT_FAILURE;
     }
   }
+
+  ncclWaitSignalDesc_t signal_wait_from_rank1 = {1, 1, 0, 0};
+  ncclWaitSignalDesc_t signal_wait_from_rank0 = {1, 0, 0, 0};
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(signal)")) {
+    return EXIT_FAILURE;
+  }
+  if (!cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !nccl_ok(ncclSignal(1, 0, 0, 0, comms[0], streams[0]),
+               "ncclSignal(rank0)") ||
+      !nccl_ok(ncclWaitSignal(1, &signal_wait_from_rank1, comms[0],
+                              streams[0]),
+               "ncclWaitSignal(signal rank0)") ||
+      !cuda_ok(cudaSetDevice(devs[1]), "cudaSetDevice") ||
+      !nccl_ok(ncclSignal(0, 0, 0, 0, comms[1], streams[1]),
+               "ncclSignal(rank1)") ||
+      !nccl_ok(ncclWaitSignal(1, &signal_wait_from_rank0, comms[1],
+                              streams[1]),
+               "ncclWaitSignal(signal rank1)")) {
+    return EXIT_FAILURE;
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(signal)") ||
+      !sync_all(devs, streams, nranks)) {
+    return EXIT_FAILURE;
+  }
+
+  const float signal_rank0_values[elem_count] = {5.0f, 6.0f, 7.0f, 8.0f};
+  const float signal_rank1_values[elem_count] = {50.0f, 60.0f, 70.0f, 80.0f};
+  if (!cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !cuda_ok(cudaMemcpy(rma_source_buffers[0], signal_rank0_values,
+                          elem_count * sizeof(float), cudaMemcpyHostToDevice),
+               "cudaMemcpy H2D(signal rank0)") ||
+      !cuda_ok(cudaSetDevice(devs[1]), "cudaSetDevice") ||
+      !cuda_ok(cudaMemcpy(rma_source_buffers[1], signal_rank1_values,
+                          elem_count * sizeof(float), cudaMemcpyHostToDevice),
+               "cudaMemcpy H2D(signal rank1)") ||
+      !cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !cuda_ok(cudaMemset(window_buffers[0], 0, elem_count * sizeof(float)),
+               "cudaMemset(window signal rank0)") ||
+      !cuda_ok(cudaSetDevice(devs[1]), "cudaSetDevice") ||
+      !cuda_ok(cudaMemset(window_buffers[1], 0, elem_count * sizeof(float)),
+               "cudaMemset(window signal rank1)")) {
+    return EXIT_FAILURE;
+  }
+
+  ncclWaitSignalDesc_t wait_from_rank1 = {1, 1, 0, 0};
+  ncclWaitSignalDesc_t wait_from_rank0 = {1, 0, 0, 0};
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(put signal)")) {
+    return EXIT_FAILURE;
+  }
+  if (!cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !nccl_ok(ncclWaitSignal(1, &wait_from_rank1, comms[0], streams[0]),
+               "ncclWaitSignal(put rank0)") ||
+      !nccl_ok(ncclPutSignal(rma_source_buffers[0], elem_count, ncclFloat, 1,
+                             windows[0], 0, 0, 0, 0, comms[0], streams[0]),
+               "ncclPutSignal(rank0)") ||
+      !cuda_ok(cudaSetDevice(devs[1]), "cudaSetDevice") ||
+      !nccl_ok(ncclPutSignal(rma_source_buffers[1], elem_count, ncclFloat, 0,
+                             windows[1], 0, 0, 0, 0, comms[1], streams[1]),
+               "ncclPutSignal(rank1)") ||
+      !nccl_ok(ncclWaitSignal(1, &wait_from_rank0, comms[1], streams[1]),
+               "ncclWaitSignal(put rank1)")) {
+    return EXIT_FAILURE;
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(put signal)") ||
+      !sync_all(devs, streams, nranks)) {
+    return EXIT_FAILURE;
+  }
+
+  float signal_rank0_actual[elem_count] = {0.0f};
+  float signal_rank1_actual[elem_count] = {0.0f};
+  if (!cuda_ok(cudaSetDevice(devs[0]), "cudaSetDevice") ||
+      !cuda_ok(cudaMemcpy(signal_rank0_actual, window_buffers[0],
+                          elem_count * sizeof(float), cudaMemcpyDeviceToHost),
+               "cudaMemcpy D2H(signal rank0)") ||
+      !check_values("put signal", 0, signal_rank0_actual,
+                    signal_rank1_values, elem_count) ||
+      !cuda_ok(cudaSetDevice(devs[1]), "cudaSetDevice") ||
+      !cuda_ok(cudaMemcpy(signal_rank1_actual, window_buffers[1],
+                          elem_count * sizeof(float), cudaMemcpyDeviceToHost),
+               "cudaMemcpy D2H(signal rank1)") ||
+      !check_values("put signal", 1, signal_rank1_actual,
+                    signal_rank0_values, elem_count)) {
+    return EXIT_FAILURE;
+  }
+
   if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(window deregister)")) {
     return EXIT_FAILURE;
   }
   for (int rank = 0; rank < nranks; ++rank) {
-    if (!nccl_ok(ncclCommWindowDeregister(comms[rank], windows[rank]),
+    if (!nccl_ok(ncclCommWindowDeregister(comms[rank],
+                                          rma_source_windows[rank]),
+                 "ncclCommWindowDeregister(source)") ||
+        !nccl_ok(ncclCommWindowDeregister(comms[rank], windows[rank]),
                  "ncclCommWindowDeregister")) {
       return EXIT_FAILURE;
     }
@@ -374,6 +486,7 @@ int main(void) {
     }
     cudaFree(send[rank]);
     cudaFree(recv[rank]);
+    ncclMemFree(rma_source_buffers[rank]);
     ncclMemFree(window_buffers[rank]);
     cudaStreamDestroy(streams[rank]);
     ncclCommDestroy(comms[rank]);
