@@ -346,6 +346,27 @@ pub fn cuCheckpointProcessUnlockExe<C: CommChannel>(server: &mut ServerWorker<C>
     );
 }
 
+pub fn cuTensorMapReplaceAddressExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuTensorMapReplaceAddress", "[#{}]", server.id);
+
+    let mut tensor_map = std::mem::MaybeUninit::<CUtensorMap>::uninit();
+    tensor_map.recv(channel_receiver).unwrap();
+    let mut tensor_map = unsafe { tensor_map.assume_init() };
+    let mut global_address = std::mem::MaybeUninit::<*mut c_void>::uninit();
+    global_address.recv(channel_receiver).unwrap();
+    let global_address = unsafe { global_address.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let result = unsafe { cuTensorMapReplaceAddress(&raw mut tensor_map, global_address) };
+    tensor_map.send(channel_sender).unwrap();
+    send_result("cuTensorMapReplaceAddress", server.id, result, channel_sender);
+}
+
 fn send_graph_launch_result<C: CommChannel>(
     target: &'static str,
     server_id: i32,

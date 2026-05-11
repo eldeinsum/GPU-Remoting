@@ -164,6 +164,35 @@ extern "C" fn cuCheckpointProcessUnlock(pid: c_int, args: *mut CUcheckpointUnloc
     checkpoint_call_with_args(901162, "cuCheckpointProcessUnlock", pid, args)
 }
 
+#[no_mangle]
+extern "C" fn cuTensorMapReplaceAddress(
+    tensorMap: *mut CUtensorMap,
+    globalAddress: *mut c_void,
+) -> CUresult {
+    if tensorMap.is_null() || globalAddress.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuTensorMapReplaceAddress", "[#{}]", client.id);
+
+        901174.send(&client.channel_sender).unwrap();
+        unsafe { &*tensorMap }.send(&client.channel_sender).unwrap();
+        globalAddress.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *tensorMap }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cu_result(
+            "cuTensorMapReplaceAddress",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
 fn recv_cu_graph_node_slice<C: CommChannel>(
     target: &'static str,
     dst: *mut CUgraphNode,

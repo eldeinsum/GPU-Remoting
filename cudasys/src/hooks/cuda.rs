@@ -123,6 +123,67 @@ fn cuSurfObjectGetResourceDesc(
     surfObject: CUsurfObject,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901171)]
+fn cuTensorMapEncodeTiled(
+    #[host(output, len = 1)] tensorMap: *mut CUtensorMap,
+    tensorDataType: CUtensorMapDataType,
+    tensorRank: cuuint32_t,
+    #[device] globalAddress: *mut c_void,
+    #[host(len = tensorRank as usize)] globalDim: *const cuuint64_t,
+    #[host(len = tensorRank.saturating_sub(1) as usize)] globalStrides: *const cuuint64_t,
+    #[host(len = tensorRank as usize)] boxDim: *const cuuint32_t,
+    #[host(len = tensorRank as usize)] elementStrides: *const cuuint32_t,
+    interleave: CUtensorMapInterleave,
+    swizzle: CUtensorMapSwizzle,
+    l2Promotion: CUtensorMapL2promotion,
+    oobFill: CUtensorMapFloatOOBfill,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901172)]
+fn cuTensorMapEncodeIm2col(
+    #[host(output, len = 1)] tensorMap: *mut CUtensorMap,
+    tensorDataType: CUtensorMapDataType,
+    tensorRank: cuuint32_t,
+    #[device] globalAddress: *mut c_void,
+    #[host(len = tensorRank as usize)] globalDim: *const cuuint64_t,
+    #[host(len = tensorRank.saturating_sub(1) as usize)] globalStrides: *const cuuint64_t,
+    #[host(len = tensorRank.saturating_sub(2) as usize)] pixelBoxLowerCorner: *const c_int,
+    #[host(len = tensorRank.saturating_sub(2) as usize)] pixelBoxUpperCorner: *const c_int,
+    channelsPerPixel: cuuint32_t,
+    pixelsPerColumn: cuuint32_t,
+    #[host(len = tensorRank as usize)] elementStrides: *const cuuint32_t,
+    interleave: CUtensorMapInterleave,
+    swizzle: CUtensorMapSwizzle,
+    l2Promotion: CUtensorMapL2promotion,
+    oobFill: CUtensorMapFloatOOBfill,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901173)]
+fn cuTensorMapEncodeIm2colWide(
+    #[host(output, len = 1)] tensorMap: *mut CUtensorMap,
+    tensorDataType: CUtensorMapDataType,
+    tensorRank: cuuint32_t,
+    #[device] globalAddress: *mut c_void,
+    #[host(len = tensorRank as usize)] globalDim: *const cuuint64_t,
+    #[host(len = tensorRank.saturating_sub(1) as usize)] globalStrides: *const cuuint64_t,
+    pixelBoxLowerCornerWidth: c_int,
+    pixelBoxUpperCornerWidth: c_int,
+    channelsPerPixel: cuuint32_t,
+    pixelsPerColumn: cuuint32_t,
+    #[host(len = tensorRank as usize)] elementStrides: *const cuuint32_t,
+    interleave: CUtensorMapInterleave,
+    mode: CUtensorMapIm2ColWideMode,
+    swizzle: CUtensorMapSwizzle,
+    l2Promotion: CUtensorMapL2promotion,
+    oobFill: CUtensorMapFloatOOBfill,
+) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901174)]
+fn cuTensorMapReplaceAddress(
+    tensorMap: *mut CUtensorMap,
+    globalAddress: *mut c_void,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 901053)]
 fn cuTexRefCreate(pTexRef: *mut CUtexref) -> CUresult;
 
