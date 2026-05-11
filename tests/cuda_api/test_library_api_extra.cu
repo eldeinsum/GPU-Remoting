@@ -1,4 +1,5 @@
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <nvrtc.h>
 #include <unistd.h>
 
@@ -20,6 +21,16 @@
                       << std::endl;                                                                                    \
             return 1;                                                                                                   \
         }                                                                                                               \
+    } while (0)
+
+#define CHECK_CUDA(expr)                                                                                              \
+    do {                                                                                                               \
+        cudaError_t result = (expr);                                                                                   \
+        if (result != cudaSuccess) {                                                                                   \
+            std::cerr << #expr << " failed: " << cudaGetErrorString(result) << " (" << static_cast<int>(result)       \
+                      << ")" << std::endl;                                                                            \
+            return 1;                                                                                                  \
+        }                                                                                                              \
     } while (0)
 
 #define CHECK_NVRTC(expr)                                                                                              \
@@ -89,6 +100,24 @@ static int launch_and_check(CUfunction function, CUdeviceptr d_output, int expec
     return 0;
 }
 
+static int runtime_launch_and_check(cudaKernel_t kernel, void *d_output, int value, int expected)
+{
+    CHECK_CUDA(cudaMemset(d_output, 0, sizeof(int)));
+    void *args[] = {
+        (void *)&d_output,
+        (void *)&value,
+    };
+    CHECK_CUDA(cudaLaunchKernel((const void *)kernel, dim3(1), dim3(1), args, 0, nullptr));
+    CHECK_CUDA(cudaDeviceSynchronize());
+    int output = 0;
+    CHECK_CUDA(cudaMemcpy(&output, d_output, sizeof(output), cudaMemcpyDeviceToHost));
+    if (output != expected) {
+        std::cerr << "runtime library kernel produced " << output << " expected " << expected << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
 static int write_temp_cubin(const std::vector<char> &cubin, std::string *path)
 {
     *path = "/tmp/gpu_remoting_library_api_" + std::to_string(getpid()) + ".cubin";
@@ -128,7 +157,6 @@ int main()
     }
     CHECK_DRV(cuLibraryLoadFromFile(&file_library, cubin_path.c_str(), nullptr, nullptr, 0, nullptr, nullptr, 0));
     CHECK_DRV(cuLibraryUnload(file_library));
-    unlink(cubin_path.c_str());
 
     CUlibrary library;
     CHECK_DRV(cuLibraryLoadData(&library, cubin.data(), nullptr, nullptr, 0, nullptr, nullptr, 0));
@@ -303,6 +331,77 @@ int main()
     if (launch_and_check(module_function, d_output, 91) != 0) {
         return 1;
     }
+
+    cudaLibrary_t runtime_file_library;
+    CHECK_CUDA(cudaLibraryLoadFromFile(&runtime_file_library, cubin_path.c_str(), nullptr, nullptr, 0, nullptr, nullptr,
+                                       0));
+    CHECK_CUDA(cudaLibraryUnload(runtime_file_library));
+    unlink(cubin_path.c_str());
+
+    cudaLibrary_t runtime_library;
+    CHECK_CUDA(cudaLibraryLoadData(&runtime_library, cubin.data(), nullptr, nullptr, 0, nullptr, nullptr, 0));
+
+    cudaKernel_t runtime_kernel;
+    CHECK_CUDA(cudaLibraryGetKernel(&runtime_kernel, runtime_library, "library_kernel"));
+
+    unsigned int runtime_kernel_count = 0;
+    CHECK_CUDA(cudaLibraryGetKernelCount(&runtime_kernel_count, runtime_library));
+    if (runtime_kernel_count != 1) {
+        std::cerr << "unexpected runtime library kernel count: " << runtime_kernel_count << std::endl;
+        return 1;
+    }
+    std::vector<cudaKernel_t> runtime_kernels(runtime_kernel_count);
+    CHECK_CUDA(cudaLibraryEnumerateKernels(runtime_kernels.data(), runtime_kernel_count, runtime_library));
+    if (runtime_kernels[0] == nullptr) {
+        std::cerr << "cudaLibraryEnumerateKernels returned null" << std::endl;
+        return 1;
+    }
+
+    void *runtime_global = nullptr;
+    size_t runtime_global_size = 0;
+    CHECK_CUDA(cudaLibraryGetGlobal(&runtime_global, &runtime_global_size, runtime_library, "device_value"));
+    if (runtime_global_size != sizeof(int)) {
+        std::cerr << "unexpected runtime global size: " << runtime_global_size << std::endl;
+        return 1;
+    }
+    int runtime_global_value = 17;
+    CHECK_CUDA(cudaMemcpy(runtime_global, &runtime_global_value, sizeof(runtime_global_value), cudaMemcpyHostToDevice));
+
+    void *runtime_managed = nullptr;
+    size_t runtime_managed_size = 0;
+    CHECK_CUDA(cudaLibraryGetManaged(&runtime_managed, &runtime_managed_size, runtime_library, "managed_value"));
+    if (runtime_managed_size != sizeof(int)) {
+        std::cerr << "unexpected runtime managed size: " << runtime_managed_size << std::endl;
+        return 1;
+    }
+    int runtime_managed_value = 41;
+    CHECK_CUDA(
+        cudaMemcpy(runtime_managed, &runtime_managed_value, sizeof(runtime_managed_value), cudaMemcpyHostToDevice));
+    int runtime_managed_output = 0;
+    CHECK_CUDA(
+        cudaMemcpy(&runtime_managed_output, runtime_managed, sizeof(runtime_managed_output), cudaMemcpyDeviceToHost));
+    if (runtime_managed_output != runtime_managed_value) {
+        std::cerr << "runtime managed value mismatch: " << runtime_managed_output << std::endl;
+        return 1;
+    }
+
+    cudaFuncAttributes runtime_attributes;
+    CHECK_CUDA(cudaFuncGetAttributes(&runtime_attributes, (const void *)runtime_kernel));
+    if (runtime_attributes.maxThreadsPerBlock < 1) {
+        std::cerr << "unexpected runtime max threads per block: " << runtime_attributes.maxThreadsPerBlock << std::endl;
+        return 1;
+    }
+
+    void *runtime_output = nullptr;
+    CHECK_CUDA(cudaMalloc(&runtime_output, sizeof(int)));
+    if (runtime_launch_and_check(runtime_kernel, runtime_output, 23, 40) != 0) {
+        return 1;
+    }
+    if (runtime_launch_and_check(runtime_kernels[0], runtime_output, 31, 48) != 0) {
+        return 1;
+    }
+    CHECK_CUDA(cudaFree(runtime_output));
+    CHECK_CUDA(cudaLibraryUnload(runtime_library));
 
     CHECK_DRV(cuMemFree(d_output));
     CHECK_DRV(cuLibraryUnload(library));

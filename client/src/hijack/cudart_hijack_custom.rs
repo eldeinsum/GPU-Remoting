@@ -1,8 +1,8 @@
 #![expect(non_snake_case)]
 use super::*;
 use cudasys::types::cuda::{
-    CUDA_KERNEL_NODE_PARAMS, CUdeviceptr, CUgraphNode, CUlaunchAttribute, CUlaunchConfig, CUmodule,
-    CUresult,
+    CUDA_KERNEL_NODE_PARAMS, CUdeviceptr, CUgraphNode, CUkernel, CUlaunchAttribute, CUlaunchConfig,
+    CUmodule, CUresult,
 };
 use cudasys::types::cudart::*;
 use network::type_impl::recv_slice;
@@ -502,6 +502,254 @@ fn load_module_for_fatbin(runtime: &mut RuntimeCache, fatCubinHandle: FatBinaryH
         })
 }
 
+fn cached_driver_function(func: HostPtr) -> Option<cudasys::types::cuda::CUfunction> {
+    let cufunc = func as cudasys::types::cuda::CUfunction;
+    DRIVER_CACHE
+        .read()
+        .unwrap()
+        .function_params
+        .contains_key(&cufunc)
+        .then_some(cufunc)
+}
+
+fn driver_library(library: cudaLibrary_t) -> cudasys::types::cuda::CUlibrary {
+    library.cast::<cudasys::types::cuda::CUlib_st>()
+}
+
+fn runtime_result(result: CUresult) -> cudaError_t {
+    unsafe { std::mem::transmute(result) }
+}
+
+fn cache_runtime_library_kernel(kernel: cudaKernel_t) -> cudaError_t {
+    if kernel.is_null() {
+        return cudaError_t::cudaErrorInvalidResourceHandle;
+    }
+
+    let mut function = std::ptr::null_mut();
+    let result = super::cuda_hijack::cuKernelGetFunction(
+        &raw mut function,
+        kernel.cast::<cudasys::types::cuda::CUkern_st>(),
+    );
+    if result == CUresult::CUDA_SUCCESS {
+        RUNTIME_CACHE
+            .write()
+            .unwrap()
+            .loaded_functions
+            .insert(kernel as HostPtr, function);
+    }
+    runtime_result(result)
+}
+
+fn runtime_library_load_data(
+    library: *mut cudaLibrary_t,
+    code: *const c_void,
+    num_jit_options: c_uint,
+    num_library_options: c_uint,
+) -> cudaError_t {
+    if library.is_null() || code.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if num_jit_options != 0 || num_library_options != 0 {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+
+    runtime_result(super::cuda_hijack::cuLibraryLoadDataInternal(
+        library.cast::<cudasys::types::cuda::CUlibrary>(),
+        code.cast(),
+    ))
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryLoadData(
+    library: *mut cudaLibrary_t,
+    code: *const c_void,
+    _jitOptions: *mut cudaJitOption,
+    _jitOptionsValues: *mut *mut c_void,
+    numJitOptions: c_uint,
+    _libraryOptions: *mut cudaLibraryOption,
+    _libraryOptionValues: *mut *mut c_void,
+    numLibraryOptions: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryLoadData", "");
+    runtime_library_load_data(library, code, numJitOptions, numLibraryOptions)
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryLoadFromFile(
+    library: *mut cudaLibrary_t,
+    fileName: *const c_char,
+    _jitOptions: *mut cudaJitOption,
+    _jitOptionsValues: *mut *mut c_void,
+    numJitOptions: c_uint,
+    _libraryOptions: *mut cudaLibraryOption,
+    _libraryOptionValues: *mut *mut c_void,
+    numLibraryOptions: c_uint,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryLoadFromFile", "");
+    if library.is_null() || fileName.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if numJitOptions != 0 || numLibraryOptions != 0 {
+        return cudaError_t::cudaErrorNotSupported;
+    }
+
+    let path = unsafe { CStr::from_ptr(fileName) };
+    let Ok(mut image) = std::fs::read(path.to_string_lossy().as_ref()) else {
+        return cudaError_t::cudaErrorFileNotFound;
+    };
+    if image.last().copied() != Some(0) {
+        image.push(0);
+    }
+
+    runtime_library_load_data(library, image.as_ptr().cast(), 0, 0)
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryUnload(library: cudaLibrary_t) -> cudaError_t {
+    log::debug!(target: "cudaLibraryUnload", "");
+    let driver_library = driver_library(library);
+    let runtime_kernels = DRIVER_CACHE
+        .read()
+        .unwrap()
+        .kernel_libraries
+        .iter()
+        .filter_map(|(kernel, owner)| (*owner == driver_library).then_some(*kernel as HostPtr))
+        .collect::<Vec<_>>();
+    let result = runtime_result(super::cuda_hijack::cuLibraryUnload(driver_library));
+    if result == cudaError_t::cudaSuccess {
+        let mut runtime = RUNTIME_CACHE.write().unwrap();
+        for kernel in runtime_kernels {
+            runtime.loaded_functions.remove(&kernel);
+        }
+    }
+    result
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryGetKernel(
+    pKernel: *mut cudaKernel_t,
+    library: cudaLibrary_t,
+    name: *const c_char,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryGetKernel", "");
+    if pKernel.is_null() || name.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let result = runtime_result(super::cuda_hijack::cuLibraryGetKernel(
+        pKernel.cast::<CUkernel>(),
+        driver_library(library),
+        name,
+    ));
+    if result == cudaError_t::cudaSuccess {
+        unsafe { cache_runtime_library_kernel(*pKernel) }
+    } else {
+        result
+    }
+}
+
+fn runtime_library_get_device_symbol(
+    dptr: *mut *mut c_void,
+    bytes: *mut usize,
+    library: cudaLibrary_t,
+    name: *const c_char,
+    get_symbol: unsafe extern "C" fn(
+        *mut CUdeviceptr,
+        *mut usize,
+        cudasys::types::cuda::CUlibrary,
+        *const c_char,
+    ) -> CUresult,
+) -> cudaError_t {
+    if dptr.is_null() && bytes.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    if name.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+
+    let mut device_ptr = 0;
+    let device_ptr_out = if dptr.is_null() {
+        std::ptr::null_mut()
+    } else {
+        &raw mut device_ptr
+    };
+    let result = unsafe { get_symbol(device_ptr_out, bytes, driver_library(library), name) };
+    if result == CUresult::CUDA_SUCCESS && !dptr.is_null() {
+        unsafe {
+            *dptr = device_ptr as *mut c_void;
+        }
+    }
+    runtime_result(result)
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryGetGlobal(
+    dptr: *mut *mut c_void,
+    bytes: *mut usize,
+    library: cudaLibrary_t,
+    name: *const c_char,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryGetGlobal", "");
+    runtime_library_get_device_symbol(
+        dptr,
+        bytes,
+        library,
+        name,
+        super::cuda_hijack::cuLibraryGetGlobal,
+    )
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryGetManaged(
+    dptr: *mut *mut c_void,
+    bytes: *mut usize,
+    library: cudaLibrary_t,
+    name: *const c_char,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryGetManaged", "");
+    runtime_library_get_device_symbol(
+        dptr,
+        bytes,
+        library,
+        name,
+        super::cuda_hijack::cuLibraryGetManaged,
+    )
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryGetKernelCount(count: *mut c_uint, lib: cudaLibrary_t) -> cudaError_t {
+    log::debug!(target: "cudaLibraryGetKernelCount", "");
+    runtime_result(super::cuda_hijack::cuLibraryGetKernelCount(
+        count,
+        driver_library(lib),
+    ))
+}
+
+#[no_mangle]
+extern "C" fn cudaLibraryEnumerateKernels(
+    kernels: *mut cudaKernel_t,
+    numKernels: c_uint,
+    lib: cudaLibrary_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaLibraryEnumerateKernels", "");
+    let result = runtime_result(super::cuda_hijack_custom::cuLibraryEnumerateKernels(
+        kernels.cast::<CUkernel>(),
+        numKernels,
+        driver_library(lib),
+    ));
+    if result != cudaError_t::cudaSuccess || kernels.is_null() || numKernels == 0 {
+        return result;
+    }
+
+    for kernel in unsafe { std::slice::from_raw_parts(kernels, numKernels as usize) } {
+        let cache_result = cache_runtime_library_kernel(*kernel);
+        if cache_result != cudaError_t::cudaSuccess {
+            return cache_result;
+        }
+    }
+    cudaError_t::cudaSuccess
+}
+
 fn allocate_host(ptr_out: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t {
     super::host_memory::allocate(ptr_out, size, flags)
         .map(|_| cudaError_t::cudaSuccess)
@@ -972,6 +1220,10 @@ fn get_cufunction(func: HostPtr) -> cudasys::cuda::CUfunction {
         return cufunc;
     }
 
+    if let Some(cufunc) = cached_driver_function(func) {
+        return cufunc;
+    }
+
     let runtime = &mut *RUNTIME_CACHE.write().unwrap();
 
     // TODO: In CUDA 12, use `cuLibrary{LoadData,GetKernel}` to avoid pinning device.
@@ -1021,15 +1273,18 @@ fn pack_runtime_kernel_node_params(
     }
 
     let host_func = node_params.func as HostPtr;
-    if !RUNTIME_CACHE
+    let has_lazy_function = RUNTIME_CACHE
         .read()
         .unwrap()
         .lazy_functions
-        .contains_key(&host_func)
-    {
+        .contains_key(&host_func);
+    let cufunc = if has_lazy_function {
+        get_cufunction(host_func)
+    } else if let Some(cufunc) = cached_driver_function(host_func) {
+        cufunc
+    } else {
         return Err(cudaError_t::cudaErrorInvalidDeviceFunction);
-    }
-    let cufunc = get_cufunction(host_func);
+    };
     let driver = DRIVER_CACHE.read().unwrap();
     let Some(param_info) = driver.function_params.get(&cufunc) else {
         return Err(cudaError_t::cudaErrorInvalidDeviceFunction);

@@ -1098,7 +1098,7 @@ fn cache_library_kernel_metadata(library: CUlibrary, kernel: CUkernel, name_byte
 }
 
 #[no_mangle]
-extern "C" fn cuLibraryEnumerateKernels(
+pub(super) extern "C" fn cuLibraryEnumerateKernels(
     kernels: *mut CUkernel,
     numKernels: c_uint,
     lib: CUlibrary,

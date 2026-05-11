@@ -1568,6 +1568,66 @@ fn cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> 
 fn __cudaGetKernel(kernelPtr: *mut cudaKernel_t, entryFuncAddr: *const c_void) -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
+fn cudaLibraryLoadData(
+    library: *mut cudaLibrary_t,
+    code: *const c_void,
+    jitOptions: *mut cudaJitOption,
+    jitOptionsValues: *mut *mut c_void,
+    numJitOptions: c_uint,
+    libraryOptions: *mut cudaLibraryOption,
+    libraryOptionValues: *mut *mut c_void,
+    numLibraryOptions: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryLoadFromFile(
+    library: *mut cudaLibrary_t,
+    fileName: *const c_char,
+    jitOptions: *mut cudaJitOption,
+    jitOptionsValues: *mut *mut c_void,
+    numJitOptions: c_uint,
+    libraryOptions: *mut cudaLibraryOption,
+    libraryOptionValues: *mut *mut c_void,
+    numLibraryOptions: c_uint,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryUnload(library: cudaLibrary_t) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryGetKernel(
+    pKernel: *mut cudaKernel_t,
+    library: cudaLibrary_t,
+    name: *const c_char,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryGetGlobal(
+    dptr: *mut *mut c_void,
+    bytes: *mut usize,
+    library: cudaLibrary_t,
+    name: *const c_char,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryGetManaged(
+    dptr: *mut *mut c_void,
+    bytes: *mut usize,
+    library: cudaLibrary_t,
+    name: *const c_char,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryGetKernelCount(count: *mut c_uint, lib: cudaLibrary_t) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
+fn cudaLibraryEnumerateKernels(
+    kernels: *mut cudaKernel_t,
+    numKernels: c_uint,
+    lib: cudaLibrary_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // calls driver API
 fn __cudaLaunchKernel(
     kernel: cudaKernel_t,
     gridDim: dim3,
