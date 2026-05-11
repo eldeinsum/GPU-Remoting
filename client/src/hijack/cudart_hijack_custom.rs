@@ -1,9 +1,9 @@
 #![expect(non_snake_case)]
-use super::*;
 use super::cuda_hijack_utils::send_fd;
+use super::*;
 use cudasys::types::cuda::{
-    CUDA_KERNEL_NODE_PARAMS, CUdeviceptr, CUgraphNode, CUkernel, CUlaunchAttribute, CUlaunchConfig,
-    CUmodule, CUresult,
+    CUdeviceptr, CUgraphNode, CUkernel, CUlaunchAttribute, CUlaunchConfig, CUmodule, CUresult,
+    CUDA_KERNEL_NODE_PARAMS,
 };
 use cudasys::types::cudart::*;
 use network::type_impl::recv_slice;
@@ -332,7 +332,9 @@ pub extern "C" fn cudaMemPoolImportPointer(
 
         901115.send(&client.channel_sender).unwrap();
         memPool.send(&client.channel_sender).unwrap();
-        unsafe { &*exportData }.send(&client.channel_sender).unwrap();
+        unsafe { &*exportData }
+            .send(&client.channel_sender)
+            .unwrap();
         client.channel_sender.flush_out().unwrap();
 
         unsafe { &mut *ptr }.recv(&client.channel_receiver).unwrap();
@@ -803,7 +805,7 @@ pub extern "C" fn cudaGraphLaunch(graphExec: cudaGraphExec_t, stream: cudaStream
     if result != cudaError_t::cudaSuccess {
         return result;
     }
-    runtime_result(super::cuda_hijack::cuGraphLaunch(
+    runtime_result(super::cuda_hijack_custom::cuGraphLaunch(
         graphExec.cast(),
         stream.cast(),
     ))
@@ -2618,6 +2620,14 @@ struct RuntimeGraphWaitNodeState {
 
 unsafe impl Send for RuntimeGraphWaitNodeState {}
 
+#[derive(Clone, Copy)]
+struct RuntimeGraphHostNodeState {
+    fn_: cudaHostFn_t,
+    user_data: *mut c_void,
+}
+
+unsafe impl Send for RuntimeGraphHostNodeState {}
+
 fn runtime_graph_signal_nodes() -> &'static Mutex<BTreeMap<usize, RuntimeGraphSignalNodeState>> {
     static STATE: OnceLock<Mutex<BTreeMap<usize, RuntimeGraphSignalNodeState>>> = OnceLock::new();
     STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
@@ -2625,6 +2635,18 @@ fn runtime_graph_signal_nodes() -> &'static Mutex<BTreeMap<usize, RuntimeGraphSi
 
 fn runtime_graph_wait_nodes() -> &'static Mutex<BTreeMap<usize, RuntimeGraphWaitNodeState>> {
     static STATE: OnceLock<Mutex<BTreeMap<usize, RuntimeGraphWaitNodeState>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn runtime_graph_host_nodes() -> &'static Mutex<BTreeMap<usize, RuntimeGraphHostNodeState>> {
+    static STATE: OnceLock<Mutex<BTreeMap<usize, RuntimeGraphHostNodeState>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn runtime_graph_exec_host_nodes(
+) -> &'static Mutex<BTreeMap<(usize, usize), RuntimeGraphHostNodeState>> {
+    static STATE: OnceLock<Mutex<BTreeMap<(usize, usize), RuntimeGraphHostNodeState>>> =
+        OnceLock::new();
     STATE.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
@@ -2639,6 +2661,83 @@ fn runtime_graph_dependencies(
         return Err(cudaError_t::cudaErrorInvalidValue);
     }
     Ok(unsafe { std::slice::from_raw_parts(dependencies, num_dependencies) }.to_vec())
+}
+
+fn runtime_host_node_params(
+    node_params: *const cudaHostNodeParams,
+) -> Result<RuntimeGraphHostNodeState, cudaError_t> {
+    if node_params.is_null() {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    let node_params = unsafe { &*node_params };
+    if node_params.fn_.is_none() {
+        return Err(cudaError_t::cudaErrorInvalidValue);
+    }
+    Ok(RuntimeGraphHostNodeState {
+        fn_: node_params.fn_,
+        user_data: node_params.userData,
+    })
+}
+
+fn store_runtime_host_params(node: cudaGraphNode_t, params: RuntimeGraphHostNodeState) {
+    runtime_graph_host_nodes()
+        .lock()
+        .unwrap()
+        .insert(node as usize, params);
+}
+
+fn write_runtime_host_params_out(
+    node: cudaGraphNode_t,
+    params_out: *mut cudaHostNodeParams,
+) -> cudaError_t {
+    if params_out.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    let Some(params) = runtime_graph_host_nodes()
+        .lock()
+        .unwrap()
+        .get(&(node as usize))
+        .copied()
+    else {
+        return cudaError_t::cudaErrorInvalidResourceHandle;
+    };
+    unsafe {
+        *params_out = cudaHostNodeParams {
+            fn_: params.fn_,
+            userData: params.user_data,
+        };
+    }
+    cudaError_t::cudaSuccess
+}
+
+pub(super) fn invoke_runtime_graph_host_callback(node: usize, graph_exec: usize) -> CUresult {
+    let params = if graph_exec != 0 {
+        runtime_graph_exec_host_nodes()
+            .lock()
+            .unwrap()
+            .get(&(graph_exec, node))
+            .copied()
+    } else {
+        None
+    }
+    .or_else(|| {
+        runtime_graph_host_nodes()
+            .lock()
+            .unwrap()
+            .get(&node)
+            .copied()
+    });
+
+    let Some(params) = params else {
+        return CUresult::CUDA_ERROR_INVALID_HANDLE;
+    };
+    let Some(callback) = params.fn_ else {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    };
+    unsafe {
+        callback(params.user_data);
+    }
+    CUresult::CUDA_SUCCESS
 }
 
 fn runtime_signal_node_params(
@@ -2708,7 +2807,10 @@ fn store_runtime_signal_node_params(
     params_out: *mut cudaExternalSemaphoreSignalNodeParams,
 ) {
     let mut nodes = runtime_graph_signal_nodes().lock().unwrap();
-    nodes.insert(node as usize, RuntimeGraphSignalNodeState { semaphores, params });
+    nodes.insert(
+        node as usize,
+        RuntimeGraphSignalNodeState { semaphores, params },
+    );
     if !params_out.is_null() {
         let entry = nodes.get_mut(&(node as usize)).unwrap();
         unsafe {
@@ -2736,7 +2838,10 @@ fn store_runtime_wait_node_params(
     params_out: *mut cudaExternalSemaphoreWaitNodeParams,
 ) {
     let mut nodes = runtime_graph_wait_nodes().lock().unwrap();
-    nodes.insert(node as usize, RuntimeGraphWaitNodeState { semaphores, params });
+    nodes.insert(
+        node as usize,
+        RuntimeGraphWaitNodeState { semaphores, params },
+    );
     if !params_out.is_null() {
         let entry = nodes.get_mut(&(node as usize)).unwrap();
         unsafe {
@@ -2755,6 +2860,221 @@ fn store_runtime_wait_node_params(
             };
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphInstantiate(
+    pGraphExec: *mut cudaGraphExec_t,
+    graph: cudaGraph_t,
+    flags: c_ulonglong,
+) -> cudaError_t {
+    cudaGraphInstantiateWithFlags(pGraphExec, graph, flags)
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphInstantiateWithFlags(
+    pGraphExec: *mut cudaGraphExec_t,
+    graph: cudaGraph_t,
+    flags: c_ulonglong,
+) -> cudaError_t {
+    if pGraphExec.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphInstantiateWithFlags", "[#{}]", client.id);
+
+        999567.send(&client.channel_sender).unwrap();
+        graph.send(&client.channel_sender).unwrap();
+        flags.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pGraphExec }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaGraphInstantiateWithFlags",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphInstantiateWithParams(
+    pGraphExec: *mut cudaGraphExec_t,
+    graph: cudaGraph_t,
+    instantiateParams: *mut cudaGraphInstantiateParams,
+) -> cudaError_t {
+    if pGraphExec.is_null() || instantiateParams.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphInstantiateWithParams", "[#{}]", client.id);
+
+        900554.send(&client.channel_sender).unwrap();
+        graph.send(&client.channel_sender).unwrap();
+        unsafe { &*instantiateParams }
+            .send(&client.channel_sender)
+            .unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        unsafe { &mut *pGraphExec }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        unsafe { &mut *instantiateParams }
+            .recv(&client.channel_receiver)
+            .unwrap();
+        recv_cuda_result(
+            "cudaGraphInstantiateWithParams",
+            client.id,
+            &client.channel_receiver,
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphAddHostNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    pNodeParams: *const cudaHostNodeParams,
+) -> cudaError_t {
+    if pGraphNode.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    let dependencies = match runtime_graph_dependencies(pDependencies, numDependencies) {
+        Ok(dependencies) => dependencies,
+        Err(result) => return result,
+    };
+    let params = match runtime_host_node_params(pNodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphAddHostNode", "[#{}]", client.id);
+
+        901153.send(&client.channel_sender).unwrap();
+        graph.send(&client.channel_sender).unwrap();
+        send_slice(&dependencies, &client.channel_sender).unwrap();
+        unsafe { &*pNodeParams }
+            .send(&client.channel_sender)
+            .unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let mut node: cudaGraphNode_t = std::ptr::null_mut();
+        node.recv(&client.channel_receiver).unwrap();
+        let result = recv_cuda_result("cudaGraphAddHostNode", client.id, &client.channel_receiver);
+        if result == cudaError_t::cudaSuccess {
+            store_runtime_host_params(node, params);
+            unsafe {
+                *pGraphNode = node;
+            }
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphHostNodeGetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *mut cudaHostNodeParams,
+) -> cudaError_t {
+    if pNodeParams.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphHostNodeGetParams", "[#{}]", client.id);
+
+        901154.send(&client.channel_sender).unwrap();
+        node.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cuda_result(
+            "cudaGraphHostNodeGetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            write_runtime_host_params_out(node, pNodeParams)
+        } else {
+            result
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphHostNodeSetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaHostNodeParams,
+) -> cudaError_t {
+    let params = match runtime_host_node_params(pNodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphHostNodeSetParams", "[#{}]", client.id);
+
+        901155.send(&client.channel_sender).unwrap();
+        node.send(&client.channel_sender).unwrap();
+        unsafe { &*pNodeParams }
+            .send(&client.channel_sender)
+            .unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cuda_result(
+            "cudaGraphHostNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            store_runtime_host_params(node, params);
+        }
+        result
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudaGraphExecHostNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaHostNodeParams,
+) -> cudaError_t {
+    let params = match runtime_host_node_params(pNodeParams) {
+        Ok(params) => params,
+        Err(result) => return result,
+    };
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudaGraphExecHostNodeSetParams", "[#{}]", client.id);
+
+        901156.send(&client.channel_sender).unwrap();
+        hGraphExec.send(&client.channel_sender).unwrap();
+        node.send(&client.channel_sender).unwrap();
+        unsafe { &*pNodeParams }
+            .send(&client.channel_sender)
+            .unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let result = recv_cuda_result(
+            "cudaGraphExecHostNodeSetParams",
+            client.id,
+            &client.channel_receiver,
+        );
+        if result == cudaError_t::cudaSuccess {
+            runtime_graph_exec_host_nodes()
+                .lock()
+                .unwrap()
+                .insert((hGraphExec as usize, node as usize), params);
+        }
+        result
+    })
 }
 
 #[no_mangle]

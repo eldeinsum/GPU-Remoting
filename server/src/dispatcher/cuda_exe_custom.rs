@@ -7,7 +7,7 @@ use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int, c_uint, c_void};
+use std::os::raw::{c_char, c_int, c_uint, c_ulonglong, c_void};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Default)]
@@ -19,6 +19,138 @@ struct DriverIpcEventState {
 fn driver_ipc_events() -> &'static Mutex<DriverIpcEventState> {
     static STATE: OnceLock<Mutex<DriverIpcEventState>> = OnceLock::new();
     STATE.get_or_init(|| Mutex::new(DriverIpcEventState::default()))
+}
+
+const GRAPH_LAUNCH_RESULT_MESSAGE: c_int = 0;
+const GRAPH_HOST_CALLBACK_MESSAGE: c_int = 1;
+pub(super) const GRAPH_HOST_FAMILY_DRIVER: c_int = 1;
+pub(super) const GRAPH_HOST_FAMILY_RUNTIME: c_int = 2;
+
+#[derive(Default)]
+struct GraphHostNodeState {
+    graph_has_host_nodes: BTreeMap<usize, bool>,
+    graph_exec_has_host_nodes: BTreeMap<usize, bool>,
+    payloads: Vec<usize>,
+}
+
+fn graph_host_nodes() -> &'static Mutex<GraphHostNodeState> {
+    static STATE: OnceLock<Mutex<GraphHostNodeState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(GraphHostNodeState::default()))
+}
+
+pub(super) struct GraphHostCallbackPayload {
+    pub(super) family: c_int,
+    pub(super) node: usize,
+    pub(super) graph_exec: usize,
+    sender: *const c_void,
+    receiver: *const c_void,
+    send_request: unsafe fn(*const c_void, &GraphHostCallbackPayload),
+    recv_ack: unsafe fn(*const c_void) -> CUresult,
+}
+
+static GRAPH_HOST_CALLBACK_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn graph_host_callback_lock() -> &'static Mutex<()> {
+    GRAPH_HOST_CALLBACK_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+pub(super) fn mark_graph_has_host_nodes(graph: CUgraph) {
+    graph_host_nodes()
+        .lock()
+        .unwrap()
+        .graph_has_host_nodes
+        .insert(graph as usize, true);
+}
+
+pub(super) fn mark_graph_exec_has_host_nodes(graph_exec: CUgraphExec) {
+    graph_host_nodes()
+        .lock()
+        .unwrap()
+        .graph_exec_has_host_nodes
+        .insert(graph_exec as usize, true);
+}
+
+pub(super) fn remember_graph_exec_host_nodes(graph_exec: CUgraphExec, graph: CUgraph) {
+    let mut state = graph_host_nodes().lock().unwrap();
+    if state
+        .graph_has_host_nodes
+        .get(&(graph as usize))
+        .copied()
+        .unwrap_or(false)
+    {
+        state
+            .graph_exec_has_host_nodes
+            .insert(graph_exec as usize, true);
+    }
+}
+
+fn graph_exec_has_host_nodes(graph_exec: CUgraphExec) -> bool {
+    graph_host_nodes()
+        .lock()
+        .unwrap()
+        .graph_exec_has_host_nodes
+        .get(&(graph_exec as usize))
+        .copied()
+        .unwrap_or(false)
+}
+
+pub(super) fn graph_host_callback_user_data<C: CommChannel>(
+    server: &ServerWorker<C>,
+    family: c_int,
+    node: usize,
+    graph_exec: usize,
+) -> *mut c_void {
+    let payload = Box::new(GraphHostCallbackPayload {
+        family,
+        node,
+        graph_exec,
+        sender: &server.channel_sender as *const C as *const c_void,
+        receiver: &server.channel_receiver as *const C as *const c_void,
+        send_request: send_graph_host_callback_request::<C>,
+        recv_ack: recv_graph_host_callback_ack::<C>,
+    });
+    let ptr = Box::into_raw(payload);
+    graph_host_nodes()
+        .lock()
+        .unwrap()
+        .payloads
+        .push(ptr as usize);
+    ptr.cast()
+}
+
+unsafe fn send_graph_host_callback_request<C: CommChannel>(
+    sender: *const c_void,
+    payload: &GraphHostCallbackPayload,
+) {
+    let sender = unsafe { &*(sender as *const C) };
+    GRAPH_HOST_CALLBACK_MESSAGE.send(sender).unwrap();
+    payload.family.send(sender).unwrap();
+    payload.node.send(sender).unwrap();
+    payload.graph_exec.send(sender).unwrap();
+    sender.flush_out().unwrap();
+}
+
+unsafe fn recv_graph_host_callback_ack<C: CommChannel>(receiver: *const c_void) -> CUresult {
+    let receiver = unsafe { &*(receiver as *const C) };
+    let mut ack = CUresult::CUDA_SUCCESS;
+    ack.recv(receiver).unwrap();
+    receiver.recv_ts().unwrap();
+    ack
+}
+
+pub(super) unsafe extern "C" fn graph_host_callback(user_data: *mut c_void) {
+    if user_data.is_null() {
+        return;
+    }
+    let payload = unsafe { &*(user_data as *const GraphHostCallbackPayload) };
+    let _guard = graph_host_callback_lock().lock().unwrap();
+    unsafe {
+        (payload.send_request)(payload.sender, payload);
+    }
+    let ack = unsafe { (payload.recv_ack)(payload.receiver) };
+    if ack != CUresult::CUDA_SUCCESS {
+        log::error!(target: "graphHostCallback", "client callback returned {:?}", ack);
+    }
 }
 
 fn recv_output_request<C: CommChannel>(channel_receiver: &C) -> (bool, usize) {
@@ -38,6 +170,20 @@ fn send_result<C: CommChannel>(
     if result != CUresult::CUDA_SUCCESS {
         log::error!(target: target, "[#{}] returned error: {:?}", server_id, result);
     }
+    result.send(channel_sender).unwrap();
+    channel_sender.flush_out().unwrap();
+}
+
+fn send_graph_launch_result<C: CommChannel>(
+    target: &'static str,
+    server_id: i32,
+    result: CUresult,
+    channel_sender: &C,
+) {
+    if result != CUresult::CUDA_SUCCESS {
+        log::error!(target: target, "[#{}] returned error: {:?}", server_id, result);
+    }
+    GRAPH_LAUNCH_RESULT_MESSAGE.send(channel_sender).unwrap();
     result.send(channel_sender).unwrap();
     channel_sender.flush_out().unwrap();
 }
@@ -467,23 +613,22 @@ pub fn cuImportExternalMemoryExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     server.channel_receiver.recv_ts().unwrap();
 
     let mut external_memory = std::ptr::null_mut();
-    let result = if desc.type_
-        == CUexternalMemoryHandleType::CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD
-    {
-        let synthetic_fd = unsafe { desc.handle.fd };
-        if let Some(server_fd) = server.take_shareable_handle(synthetic_fd) {
-            desc.handle.fd = server_fd;
-            let result = unsafe { cuImportExternalMemory(&mut external_memory, &desc) };
-            if result != CUresult::CUDA_SUCCESS {
-                server.restore_shareable_handle(synthetic_fd, server_fd);
+    let result =
+        if desc.type_ == CUexternalMemoryHandleType::CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD {
+            let synthetic_fd = unsafe { desc.handle.fd };
+            if let Some(server_fd) = server.take_shareable_handle(synthetic_fd) {
+                desc.handle.fd = server_fd;
+                let result = unsafe { cuImportExternalMemory(&mut external_memory, &desc) };
+                if result != CUresult::CUDA_SUCCESS {
+                    server.restore_shareable_handle(synthetic_fd, server_fd);
+                }
+                result
+            } else {
+                CUresult::CUDA_ERROR_INVALID_VALUE
             }
-            result
         } else {
-            CUresult::CUDA_ERROR_INVALID_VALUE
-        }
-    } else {
-        CUresult::CUDA_ERROR_NOT_SUPPORTED
-    };
+            CUresult::CUDA_ERROR_NOT_SUPPORTED
+        };
 
     external_memory.send(&server.channel_sender).unwrap();
     send_result(
@@ -1132,9 +1277,237 @@ fn driver_wait_params_from_node(
     (semaphores, params)
 }
 
-pub fn cuGraphAddExternalSemaphoresSignalNodeExe<C: CommChannel>(
-    server: &mut ServerWorker<C>,
-) {
+pub fn cuGraphInstantiateWithFlagsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphInstantiateWithFlags", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<CUgraph>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let mut flags = 0 as c_ulonglong;
+    flags.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut graph_exec: CUgraphExec = std::ptr::null_mut();
+    let result = unsafe { cuGraphInstantiateWithFlags(&raw mut graph_exec, graph, flags) };
+    if result == CUresult::CUDA_SUCCESS {
+        remember_graph_exec_host_nodes(graph_exec, graph);
+    }
+
+    graph_exec.send(channel_sender).unwrap();
+    send_result(
+        "cuGraphInstantiateWithFlags",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphInstantiateWithParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphInstantiateWithParams", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<CUgraph>::uninit();
+    graph.recv(channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let mut instantiate_params = std::mem::MaybeUninit::<CUDA_GRAPH_INSTANTIATE_PARAMS>::uninit();
+    instantiate_params.recv(channel_receiver).unwrap();
+    let mut instantiate_params = unsafe { instantiate_params.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut graph_exec: CUgraphExec = std::ptr::null_mut();
+    let result = unsafe {
+        cuGraphInstantiateWithParams(&raw mut graph_exec, graph, &raw mut instantiate_params)
+    };
+    if result == CUresult::CUDA_SUCCESS {
+        remember_graph_exec_host_nodes(graph_exec, graph);
+    }
+
+    graph_exec.send(channel_sender).unwrap();
+    instantiate_params.send(channel_sender).unwrap();
+    send_result(
+        "cuGraphInstantiateWithParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphLaunchExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphLaunch", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<CUgraphExec>::uninit();
+    graph_exec.recv(channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut stream = std::mem::MaybeUninit::<CUstream>::uninit();
+    stream.recv(channel_receiver).unwrap();
+    let stream = unsafe { stream.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut result = unsafe { cuGraphLaunch(graph_exec, stream) };
+    if result == CUresult::CUDA_SUCCESS && graph_exec_has_host_nodes(graph_exec) {
+        result = unsafe { cuStreamSynchronize(stream) };
+    }
+
+    send_graph_launch_result("cuGraphLaunch", server.id, result, channel_sender);
+}
+
+pub fn cuGraphAddHostNodeExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuGraphAddHostNode", "[#{}]", server.id);
+
+    let mut graph = std::mem::MaybeUninit::<CUgraph>::uninit();
+    graph.recv(&server.channel_receiver).unwrap();
+    let graph = unsafe { graph.assume_init() };
+    let dependencies = recv_slice::<CUgraphNode, _>(&server.channel_receiver).unwrap();
+    let mut client_params = std::mem::MaybeUninit::<CUDA_HOST_NODE_PARAMS>::uninit();
+    client_params.recv(&server.channel_receiver).unwrap();
+    let client_params = unsafe { client_params.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let mut node: CUgraphNode = std::ptr::null_mut();
+    let user_data = graph_host_callback_user_data(server, GRAPH_HOST_FAMILY_DRIVER, 0, 0);
+    let server_params = CUDA_HOST_NODE_PARAMS {
+        fn_: Some(graph_host_callback),
+        userData: user_data,
+    };
+    let result = if client_params.fn_.is_some() {
+        unsafe {
+            cuGraphAddHostNode(
+                &raw mut node,
+                graph,
+                driver_graph_dependencies_ptr(&dependencies),
+                dependencies.len(),
+                &raw const server_params,
+            )
+        }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+    if result == CUresult::CUDA_SUCCESS {
+        unsafe {
+            (*(user_data as *mut GraphHostCallbackPayload)).node = node as usize;
+        }
+        mark_graph_has_host_nodes(graph);
+    }
+
+    node.send(&server.channel_sender).unwrap();
+    send_result(
+        "cuGraphAddHostNode",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuGraphHostNodeGetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuGraphHostNodeGetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    channel_receiver.recv_ts().unwrap();
+
+    let mut params = std::mem::MaybeUninit::<CUDA_HOST_NODE_PARAMS>::uninit();
+    let result = unsafe { cuGraphHostNodeGetParams(node, params.as_mut_ptr()) };
+    send_result(
+        "cuGraphHostNodeGetParams",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuGraphHostNodeSetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuGraphHostNodeSetParams", "[#{}]", server.id);
+
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(&server.channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut client_params = std::mem::MaybeUninit::<CUDA_HOST_NODE_PARAMS>::uninit();
+    client_params.recv(&server.channel_receiver).unwrap();
+    let client_params = unsafe { client_params.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let user_data =
+        graph_host_callback_user_data(server, GRAPH_HOST_FAMILY_DRIVER, node as usize, 0);
+    let server_params = CUDA_HOST_NODE_PARAMS {
+        fn_: Some(graph_host_callback),
+        userData: user_data,
+    };
+    let result = if client_params.fn_.is_some() {
+        unsafe { cuGraphHostNodeSetParams(node, &raw const server_params) }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+
+    send_result(
+        "cuGraphHostNodeSetParams",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuGraphExecHostNodeSetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    log::debug!(target: "cuGraphExecHostNodeSetParams", "[#{}]", server.id);
+
+    let mut graph_exec = std::mem::MaybeUninit::<CUgraphExec>::uninit();
+    graph_exec.recv(&server.channel_receiver).unwrap();
+    let graph_exec = unsafe { graph_exec.assume_init() };
+    let mut node = std::mem::MaybeUninit::<CUgraphNode>::uninit();
+    node.recv(&server.channel_receiver).unwrap();
+    let node = unsafe { node.assume_init() };
+    let mut client_params = std::mem::MaybeUninit::<CUDA_HOST_NODE_PARAMS>::uninit();
+    client_params.recv(&server.channel_receiver).unwrap();
+    let client_params = unsafe { client_params.assume_init() };
+    server.channel_receiver.recv_ts().unwrap();
+
+    let user_data = graph_host_callback_user_data(
+        server,
+        GRAPH_HOST_FAMILY_DRIVER,
+        node as usize,
+        graph_exec as usize,
+    );
+    let server_params = CUDA_HOST_NODE_PARAMS {
+        fn_: Some(graph_host_callback),
+        userData: user_data,
+    };
+    let result = if client_params.fn_.is_some() {
+        unsafe { cuGraphExecHostNodeSetParams(graph_exec, node, &raw const server_params) }
+    } else {
+        CUresult::CUDA_ERROR_INVALID_VALUE
+    };
+    if result == CUresult::CUDA_SUCCESS {
+        mark_graph_exec_has_host_nodes(graph_exec);
+    }
+
+    send_result(
+        "cuGraphExecHostNodeSetParams",
+        server.id,
+        result,
+        &server.channel_sender,
+    );
+}
+
+pub fn cuGraphAddExternalSemaphoresSignalNodeExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,
         channel_receiver,
@@ -1191,9 +1564,8 @@ pub fn cuGraphExternalSemaphoresSignalNodeGetParamsExe<C: CommChannel>(
     channel_receiver.recv_ts().unwrap();
 
     let mut node_params = unsafe { std::mem::zeroed::<CUDA_EXT_SEM_SIGNAL_NODE_PARAMS>() };
-    let result = unsafe {
-        cuGraphExternalSemaphoresSignalNodeGetParams(node, &raw mut node_params)
-    };
+    let result =
+        unsafe { cuGraphExternalSemaphoresSignalNodeGetParams(node, &raw mut node_params) };
     let (semaphores, params) = driver_signal_params_from_node(&node_params, result);
     send_slice(&semaphores, channel_sender).unwrap();
     send_slice(&params, channel_sender).unwrap();
@@ -1317,9 +1689,7 @@ pub fn cuGraphAddExternalSemaphoresWaitNodeExe<C: CommChannel>(server: &mut Serv
     );
 }
 
-pub fn cuGraphExternalSemaphoresWaitNodeGetParamsExe<C: CommChannel>(
-    server: &mut ServerWorker<C>,
-) {
+pub fn cuGraphExternalSemaphoresWaitNodeGetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,
         channel_receiver,
@@ -1333,8 +1703,7 @@ pub fn cuGraphExternalSemaphoresWaitNodeGetParamsExe<C: CommChannel>(
     channel_receiver.recv_ts().unwrap();
 
     let mut node_params = unsafe { std::mem::zeroed::<CUDA_EXT_SEM_WAIT_NODE_PARAMS>() };
-    let result =
-        unsafe { cuGraphExternalSemaphoresWaitNodeGetParams(node, &raw mut node_params) };
+    let result = unsafe { cuGraphExternalSemaphoresWaitNodeGetParams(node, &raw mut node_params) };
     let (semaphores, params) = driver_wait_params_from_node(&node_params, result);
     send_slice(&semaphores, channel_sender).unwrap();
     send_slice(&params, channel_sender).unwrap();
@@ -1346,9 +1715,7 @@ pub fn cuGraphExternalSemaphoresWaitNodeGetParamsExe<C: CommChannel>(
     );
 }
 
-pub fn cuGraphExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(
-    server: &mut ServerWorker<C>,
-) {
+pub fn cuGraphExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let ServerWorker {
         channel_sender,
         channel_receiver,
@@ -1400,11 +1767,7 @@ pub fn cuGraphExecExternalSemaphoresWaitNodeSetParamsExe<C: CommChannel>(
     let result = if semaphores.len() == params.len() {
         let node_params = driver_wait_node_params(&mut semaphores, &params);
         unsafe {
-            cuGraphExecExternalSemaphoresWaitNodeSetParams(
-                graph_exec,
-                node,
-                &raw const node_params,
-            )
+            cuGraphExecExternalSemaphoresWaitNodeSetParams(graph_exec, node, &raw const node_params)
         }
     } else {
         CUresult::CUDA_ERROR_INVALID_VALUE

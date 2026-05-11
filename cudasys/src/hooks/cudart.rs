@@ -2782,41 +2782,26 @@ fn cudaGraphNodeGetDependentNodes(
     pNumDependentNodes: *mut usize,
 ) -> cudaError_t;
 
-#[cuda_hook(proc_id = 567, min_cuda_version = 12)]
+#[cuda_custom_hook(proc_id = 567)]
 fn cudaGraphInstantiate(
     pGraphExec: *mut cudaGraphExec_t,
     graph: cudaGraph_t,
     flags: c_ulonglong,
 ) -> cudaError_t;
 
-#[cuda_hook(proc_id = 999567, min_cuda_version = 12)]
+#[cuda_custom_hook(proc_id = 999567)]
 fn cudaGraphInstantiateWithFlags(
     pGraphExec: *mut cudaGraphExec_t,
     graph: cudaGraph_t,
     flags: c_ulonglong,
 ) -> cudaError_t;
 
-#[cuda_hook(proc_id = 900554)]
+#[cuda_custom_hook(proc_id = 900554)]
 fn cudaGraphInstantiateWithParams(
     pGraphExec: *mut cudaGraphExec_t,
     graph: cudaGraph_t,
-    #[host(input, len = 1)] instantiateParams: *mut cudaGraphInstantiateParams,
-) -> cudaError_t {
-    'client_after_recv: {
-        let mut instantiate_params_out: cudaGraphInstantiateParams = unsafe { std::mem::zeroed() };
-        instantiate_params_out.recv(channel_receiver).unwrap();
-        unsafe {
-            std::ptr::write(
-                instantiateParams.as_ptr().cast_mut(),
-                instantiate_params_out,
-            );
-        }
-    }
-    'server_after_send: {
-        instantiateParams[0].send(channel_sender).unwrap();
-        channel_sender.flush_out().unwrap();
-    }
-}
+    instantiateParams: *mut cudaGraphInstantiateParams,
+) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900512)]
 fn cudaGraphExecGetFlags(graphExec: cudaGraphExec_t, flags: *mut c_ulonglong) -> cudaError_t;
@@ -2843,6 +2828,34 @@ fn cudaGraphExecEventWaitNodeSetEvent(
     hGraphExec: cudaGraphExec_t,
     hNode: cudaGraphNode_t,
     event: cudaEvent_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901153)]
+fn cudaGraphAddHostNode(
+    pGraphNode: *mut cudaGraphNode_t,
+    graph: cudaGraph_t,
+    pDependencies: *const cudaGraphNode_t,
+    numDependencies: usize,
+    pNodeParams: *const cudaHostNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901154)]
+fn cudaGraphHostNodeGetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *mut cudaHostNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901155)]
+fn cudaGraphHostNodeSetParams(
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaHostNodeParams,
+) -> cudaError_t;
+
+#[cuda_custom_hook(proc_id = 901156)]
+fn cudaGraphExecHostNodeSetParams(
+    hGraphExec: cudaGraphExec_t,
+    node: cudaGraphNode_t,
+    pNodeParams: *const cudaHostNodeParams,
 ) -> cudaError_t;
 
 #[cuda_custom_hook(proc_id = 901141)]
