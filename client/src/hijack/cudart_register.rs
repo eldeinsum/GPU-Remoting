@@ -149,6 +149,7 @@ pub extern "C" fn __cudaRegisterManagedVar(
         ManagedVariableShadow {
             bytes: shadow,
             synced_bytes: synced_shadow,
+            pending_device_write: false,
             size: _size,
         },
     ) {

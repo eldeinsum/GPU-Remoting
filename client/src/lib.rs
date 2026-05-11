@@ -340,6 +340,7 @@ impl RuntimeCache {
 struct ManagedVariableShadow {
     bytes: Box<[u8]>,
     synced_bytes: Box<[u8]>,
+    pending_device_write: bool,
     size: usize,
 }
 

@@ -138,6 +138,61 @@ int main()
         return 1;
     }
 
+    cudaStream_t async_stream = nullptr;
+    CHECK_CUDA(cudaStreamCreate(&async_stream));
+
+    managed_value = 37;
+    int async_symbol_copy = 0;
+    CHECK_CUDA(cudaMemcpyFromSymbolAsync(&async_symbol_copy, managed_value, sizeof(async_symbol_copy), 0,
+                                         cudaMemcpyDeviceToHost, async_stream));
+    CHECK_CUDA(cudaStreamSynchronize(async_stream));
+    if (async_symbol_copy != managed_value) {
+        std::cerr << "cudaMemcpyFromSymbolAsync saw " << async_symbol_copy << " after host write " << managed_value
+                  << std::endl;
+        return 1;
+    }
+
+    int async_address_copy = 0;
+    managed_value = 41;
+    CHECK_CUDA(cudaMemcpyAsync(&async_address_copy, symbol_address, sizeof(async_address_copy), cudaMemcpyDeviceToHost,
+                               async_stream));
+    CHECK_CUDA(cudaStreamSynchronize(async_stream));
+    if (async_address_copy != managed_value) {
+        std::cerr << "cudaMemcpyAsync from managed address saw " << async_address_copy << " after host write "
+                  << managed_value << std::endl;
+        return 1;
+    }
+
+    int async_to_symbol = 43;
+    CHECK_CUDA(cudaMemcpyToSymbolAsync(managed_value, &async_to_symbol, sizeof(async_to_symbol), 0,
+                                       cudaMemcpyHostToDevice, async_stream));
+    CHECK_CUDA(cudaStreamSynchronize(async_stream));
+    if (managed_value != async_to_symbol) {
+        std::cerr << "cudaMemcpyToSymbolAsync left host managed value at " << managed_value << std::endl;
+        return 1;
+    }
+    if (launch_and_check(d_output, async_to_symbol) != 0) {
+        return 1;
+    }
+
+    int *d_async_source = nullptr;
+    CHECK_CUDA(cudaMalloc(&d_async_source, sizeof(int)));
+    int async_d2d_value = 47;
+    CHECK_CUDA(cudaMemcpyAsync(d_async_source, &async_d2d_value, sizeof(async_d2d_value), cudaMemcpyHostToDevice,
+                               async_stream));
+    CHECK_CUDA(cudaMemcpyAsync(symbol_address, d_async_source, sizeof(async_d2d_value), cudaMemcpyDeviceToDevice,
+                               async_stream));
+    CHECK_CUDA(cudaStreamSynchronize(async_stream));
+    if (managed_value != async_d2d_value) {
+        std::cerr << "cudaMemcpyAsync device-to-device left host managed value at " << managed_value << std::endl;
+        return 1;
+    }
+    if (launch_and_check(d_output, async_d2d_value) != 0) {
+        return 1;
+    }
+
+    CHECK_CUDA(cudaFree(d_async_source));
+    CHECK_CUDA(cudaStreamDestroy(async_stream));
     CHECK_CUDA(cudaFree(d_output));
     std::cout << "managed variable test passed" << std::endl;
     return 0;

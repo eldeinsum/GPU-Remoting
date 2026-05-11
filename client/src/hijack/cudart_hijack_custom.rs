@@ -903,9 +903,22 @@ pub extern "C" fn cudaMemcpyAsync(
     }
 
     let kind = resolve_memcpy_kind(dst, src, kind);
-    match kind {
+    if matches!(
+        kind,
+        cudaMemcpyKind::cudaMemcpyDeviceToHost | cudaMemcpyKind::cudaMemcpyDeviceToDevice
+    ) {
+        let result = flush_managed_variables_to_device();
+        if result != cudaError_t::cudaSuccess {
+            return result;
+        }
+    }
+
+    let result = match kind {
         cudaMemcpyKind::cudaMemcpyHostToHost => unsafe {
-            cudaStreamSynchronize(stream);
+            let result = cudaStreamSynchronize(stream);
+            if result != cudaError_t::cudaSuccess {
+                return result;
+            }
             std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, count);
             cudaError_t::cudaSuccess
         },
@@ -917,6 +930,18 @@ pub extern "C" fn cudaMemcpyAsync(
         }
         cudaMemcpyKind::cudaMemcpyDeviceToDevice => {
             super::cudart_hijack::cudaMemcpyAsyncDtod(dst, src, count, kind, stream)
+        }
+        cudaMemcpyKind::cudaMemcpyDefault => unreachable!(),
+    };
+    if result != cudaError_t::cudaSuccess {
+        return result;
+    }
+
+    match kind {
+        cudaMemcpyKind::cudaMemcpyHostToDevice => update_managed_shadow_from_host(dst, src, count),
+        cudaMemcpyKind::cudaMemcpyDeviceToDevice => mark_managed_device_write_pending(dst, count),
+        cudaMemcpyKind::cudaMemcpyDeviceToHost | cudaMemcpyKind::cudaMemcpyHostToHost => {
+            cudaError_t::cudaSuccess
         }
         cudaMemcpyKind::cudaMemcpyDefault => unreachable!(),
     }
@@ -1536,7 +1561,10 @@ pub(crate) fn flush_managed_variables_to_device() -> cudaError_t {
                 continue;
             };
             let bytes = entry.bytes;
-            if bytes == 0 || shadow.bytes[..bytes] == shadow.synced_bytes[..bytes] {
+            if bytes == 0
+                || shadow.pending_device_write
+                || shadow.bytes[..bytes] == shadow.synced_bytes[..bytes]
+            {
                 continue;
             }
             plans.push((
@@ -1601,6 +1629,7 @@ pub(crate) fn refresh_managed_variables_from_device() -> cudaError_t {
             let len = std::cmp::min(bytes.len(), shadow.size);
             shadow.bytes[..len].copy_from_slice(&bytes[..len]);
             shadow.synced_bytes[..len].copy_from_slice(&bytes[..len]);
+            shadow.pending_device_write = false;
         }
     }
 
@@ -1681,6 +1710,26 @@ fn update_managed_shadow_from_host(
         }
         let shadow_range = copy.shadow_offset..copy.shadow_offset + copy.bytes;
         shadow.synced_bytes[shadow_range.clone()].copy_from_slice(&shadow.bytes[shadow_range]);
+        shadow.pending_device_write = false;
+    }
+
+    cudaError_t::cudaSuccess
+}
+
+fn mark_managed_device_write_pending(device_ptr: *const c_void, count: usize) -> cudaError_t {
+    let copies = match managed_variable_overlaps(device_ptr, count) {
+        Ok(copies) => copies,
+        Err(error) => return error,
+    };
+    if copies.is_empty() {
+        return cudaError_t::cudaSuccess;
+    }
+
+    let mut runtime = RUNTIME_CACHE.write().unwrap();
+    for copy in copies {
+        if let Some(shadow) = runtime.managed_variable_shadows.get_mut(&copy.host_key) {
+            shadow.pending_device_write = true;
+        }
     }
 
     cudaError_t::cudaSuccess
