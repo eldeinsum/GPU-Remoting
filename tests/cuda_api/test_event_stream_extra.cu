@@ -171,6 +171,54 @@ int main()
     CHECK_CUDA_SUCCESS(cudaEventDestroy(runtime_ctx_event));
     CHECK_CUDA_SUCCESS(cudaStreamDestroy(runtime_execution_stream));
 
+    cudaDevResourceDesc_t runtime_green_desc = nullptr;
+    CHECK_CUDA_SUCCESS(cudaDevResourceGenerateDesc(
+        &runtime_green_desc, &runtime_device_resource, 1));
+    cudaExecutionContext_t runtime_green_context = nullptr;
+    CHECK_CUDA_SUCCESS(
+        cudaGreenCtxCreate(&runtime_green_context, runtime_green_desc, 0, 0));
+    if (runtime_green_context == nullptr) {
+        std::fprintf(stderr, "missing runtime green execution context\n");
+        return 1;
+    }
+    int runtime_green_device = -1;
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxGetDevice(&runtime_green_device,
+                                                 runtime_green_context));
+    if (runtime_green_device != 0) {
+        std::fprintf(stderr, "unexpected runtime green device\n");
+        return 1;
+    }
+    unsigned long long runtime_green_id = 0;
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxGetId(runtime_green_context,
+                                             &runtime_green_id));
+    if (runtime_green_id == 0) {
+        std::fprintf(stderr, "unexpected runtime green context id\n");
+        return 1;
+    }
+    cudaDevResource runtime_green_resource = {};
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxGetDevResource(
+        runtime_green_context, &runtime_green_resource, cudaDevResourceTypeSm));
+    if (runtime_green_resource.type != cudaDevResourceTypeSm ||
+        runtime_green_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime green SM resource\n");
+        return 1;
+    }
+    cudaStream_t runtime_green_stream = nullptr;
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxStreamCreate(
+        &runtime_green_stream, runtime_green_context, cudaStreamNonBlocking,
+        0));
+    cudaDevResource runtime_green_stream_resource = {};
+    CHECK_CUDA_SUCCESS(cudaStreamGetDevResource(
+        runtime_green_stream, &runtime_green_stream_resource,
+        cudaDevResourceTypeSm));
+    if (runtime_green_stream_resource.type != cudaDevResourceTypeSm ||
+        runtime_green_stream_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime green stream SM resource\n");
+        return 1;
+    }
+    CHECK_CUDA_SUCCESS(cudaStreamDestroy(runtime_green_stream));
+    CHECK_CUDA_SUCCESS(cudaExecutionCtxDestroy(runtime_green_context));
+
     cudaStreamAttrValue runtime_attr = {};
     runtime_attr.syncPolicy = cudaSyncPolicyAuto;
     CHECK_CUDA_SUCCESS(cudaStreamSetAttribute(
@@ -290,6 +338,59 @@ int main()
         std::fprintf(stderr, "unexpected driver stream context metadata\n");
         return 1;
     }
+    CUdevResourceDesc driver_green_desc = nullptr;
+    CHECK_DRV_SUCCESS(cuDevResourceGenerateDesc(
+        &driver_green_desc, &driver_device_resource, 1));
+    CUgreenCtx driver_green = nullptr;
+    CHECK_DRV_SUCCESS(cuGreenCtxCreate(&driver_green, driver_green_desc,
+                                       driver_device,
+                                       CU_GREEN_CTX_DEFAULT_STREAM));
+    if (driver_green == nullptr) {
+        std::fprintf(stderr, "missing driver green context\n");
+        return 1;
+    }
+    unsigned long long driver_green_id = 0;
+    CHECK_DRV_SUCCESS(cuGreenCtxGetId(driver_green, &driver_green_id));
+    if (driver_green_id == 0) {
+        std::fprintf(stderr, "unexpected driver green context id\n");
+        return 1;
+    }
+    CUdevResource driver_green_resource = {};
+    CHECK_DRV_SUCCESS(cuGreenCtxGetDevResource(
+        driver_green, &driver_green_resource, CU_DEV_RESOURCE_TYPE_SM));
+    if (driver_green_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_green_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver green SM resource\n");
+        return 1;
+    }
+    CUcontext driver_green_primary = nullptr;
+    CHECK_DRV_SUCCESS(cuCtxFromGreenCtx(&driver_green_primary, driver_green));
+    if (driver_green_primary == nullptr) {
+        std::fprintf(stderr, "missing driver green primary context\n");
+        return 1;
+    }
+    CUstream driver_green_stream = nullptr;
+    CHECK_DRV_SUCCESS(cuGreenCtxStreamCreate(
+        &driver_green_stream, driver_green, CU_STREAM_NON_BLOCKING, 0));
+    CUgreenCtx driver_green_stream_context = nullptr;
+    CHECK_DRV_SUCCESS(cuStreamGetGreenCtx(driver_green_stream,
+                                          &driver_green_stream_context));
+    if (driver_green_stream_context != driver_green) {
+        std::fprintf(stderr, "unexpected driver green stream context\n");
+        return 1;
+    }
+    CUdevResource driver_green_stream_resource = {};
+    CHECK_DRV_SUCCESS(cuStreamGetDevResource(
+        driver_green_stream, &driver_green_stream_resource,
+        CU_DEV_RESOURCE_TYPE_SM));
+    if (driver_green_stream_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_green_stream_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver green stream SM resource\n");
+        return 1;
+    }
+    CHECK_DRV_SUCCESS(cuStreamDestroy(driver_green_stream));
+    CHECK_DRV_SUCCESS(cuGreenCtxDestroy(driver_green));
+
     CUstreamAttrValue driver_attr = {};
     driver_attr.syncPolicy = CU_SYNC_POLICY_AUTO;
     CHECK_DRV_SUCCESS(cuStreamSetAttribute(

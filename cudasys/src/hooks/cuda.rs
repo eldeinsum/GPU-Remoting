@@ -444,6 +444,9 @@ fn cuCtxGetFlags(flags: *mut c_uint) -> CUresult;
 #[cuda_hook(proc_id = 900449)]
 fn cuCtxGetId(ctx: CUcontext, ctxId: *mut c_ulonglong) -> CUresult;
 
+#[cuda_hook(proc_id = 900935)]
+fn cuCtxFromGreenCtx(pContext: *mut CUcontext, hCtx: CUgreenCtx) -> CUresult;
+
 #[cuda_hook(proc_id = 900889)]
 fn cuCtxGetDevResource(
     hCtx: CUcontext,
@@ -609,6 +612,24 @@ fn cuDeviceGetDevResource(
     type_: CUdevResourceType,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 900933)]
+fn cuDevResourceGenerateDesc(
+    phDesc: *mut CUdevResourceDesc,
+    #[host(input, len = nbResources as usize)] resources: *mut CUdevResource,
+    nbResources: c_uint,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!resources.is_null());
+        let resource_count = nbResources as usize;
+        let resource_slice = unsafe { std::slice::from_raw_parts(resources, resource_count) };
+        assert!(
+            resource_slice
+                .iter()
+                .all(|resource| resource.nextResource.is_null())
+        );
+    }
+}
+
 #[cuda_hook(proc_id = 900322)]
 fn cuDeviceGetProperties(prop: *mut CUdevprop, dev: CUdevice) -> CUresult;
 
@@ -663,6 +684,35 @@ fn cuCtxGetExecAffinity(
         }
     }
 }
+
+#[cuda_hook(proc_id = 900934)]
+fn cuGreenCtxCreate(
+    phCtx: *mut CUgreenCtx,
+    desc: CUdevResourceDesc,
+    dev: CUdevice,
+    flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900936, async_api = false)]
+fn cuGreenCtxDestroy(hCtx: CUgreenCtx) -> CUresult;
+
+#[cuda_hook(proc_id = 900937)]
+fn cuGreenCtxGetDevResource(
+    hCtx: CUgreenCtx,
+    #[host(output, len = 1)] resource: *mut CUdevResource,
+    type_: CUdevResourceType,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 900938)]
+fn cuGreenCtxGetId(greenCtx: CUgreenCtx, greenCtxId: *mut c_ulonglong) -> CUresult;
+
+#[cuda_hook(proc_id = 900939)]
+fn cuGreenCtxStreamCreate(
+    phStream: *mut CUstream,
+    greenCtx: CUgreenCtx,
+    flags: c_uint,
+    priority: c_int,
+) -> CUresult;
 
 #[cuda_hook(proc_id = 900433)]
 fn cuDeviceGetDefaultMemPool(pool_out: *mut CUmemoryPool, dev: CUdevice) -> CUresult;

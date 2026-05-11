@@ -194,8 +194,37 @@ fn cudaDeviceGetDevResource(
     type_: cudaDevResourceType,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 900940)]
+fn cudaDevResourceGenerateDesc(
+    phDesc: *mut cudaDevResourceDesc_t,
+    #[host(input, len = nbResources as usize)] resources: *mut cudaDevResource,
+    nbResources: c_uint,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(!resources.is_null());
+        let resource_count = nbResources as usize;
+        let resource_slice = unsafe { std::slice::from_raw_parts(resources, resource_count) };
+        assert!(
+            resource_slice
+                .iter()
+                .all(|resource| resource.nextResource.is_null())
+        );
+    }
+}
+
 #[cuda_hook(proc_id = 900894)]
 fn cudaDeviceGetExecutionCtx(ctx: *mut cudaExecutionContext_t, device: c_int) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900941)]
+fn cudaGreenCtxCreate(
+    phCtx: *mut cudaExecutionContext_t,
+    desc: cudaDevResourceDesc_t,
+    device: c_int,
+    flags: c_uint,
+) -> cudaError_t;
+
+#[cuda_hook(proc_id = 900942, async_api = false)]
+fn cudaExecutionCtxDestroy(ctx: cudaExecutionContext_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900895)]
 fn cudaExecutionCtxGetDevResource(
