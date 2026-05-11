@@ -2173,6 +2173,70 @@ fn cuMemRetainAllocationHandle(
     #[device] addr: *mut c_void,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901163)]
+fn cuMulticastCreate(
+    mcHandle: *mut CUmemGenericAllocationHandle,
+    #[host(len = 1)] prop: *const CUmulticastObjectProp,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901164)]
+fn cuMulticastAddDevice(mcHandle: CUmemGenericAllocationHandle, dev: CUdevice) -> CUresult;
+
+#[cuda_hook(proc_id = 901165)]
+fn cuMulticastBindMem(
+    mcHandle: CUmemGenericAllocationHandle,
+    mcOffset: usize,
+    memHandle: CUmemGenericAllocationHandle,
+    memOffset: usize,
+    size: usize,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901166)]
+fn cuMulticastBindMem_v2(
+    mcHandle: CUmemGenericAllocationHandle,
+    dev: CUdevice,
+    mcOffset: usize,
+    memHandle: CUmemGenericAllocationHandle,
+    memOffset: usize,
+    size: usize,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901167)]
+fn cuMulticastBindAddr(
+    mcHandle: CUmemGenericAllocationHandle,
+    mcOffset: usize,
+    memptr: CUdeviceptr,
+    size: usize,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901168)]
+fn cuMulticastBindAddr_v2(
+    mcHandle: CUmemGenericAllocationHandle,
+    dev: CUdevice,
+    mcOffset: usize,
+    memptr: CUdeviceptr,
+    size: usize,
+    flags: c_ulonglong,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901169)]
+fn cuMulticastUnbind(
+    mcHandle: CUmemGenericAllocationHandle,
+    dev: CUdevice,
+    mcOffset: usize,
+    size: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901170)]
+fn cuMulticastGetGranularity(
+    granularity: *mut usize,
+    #[host(len = 1)] prop: *const CUmulticastObjectProp,
+    option: CUmulticastGranularity_flags,
+) -> CUresult;
+
 #[cuda_custom_hook(proc_id = 901117)]
 fn cuImportExternalMemory(
     extMem_out: *mut CUexternalMemory,
