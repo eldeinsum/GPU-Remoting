@@ -90,6 +90,10 @@ template <typename T> struct StridedGemm;
 template <typename T> struct BatchedGemm;
 template <typename T> struct GroupedGemm;
 template <typename T> struct TypedGemmEx;
+template <typename T> struct Gemm3m;
+template <typename T> struct StridedGemm3m;
+template <typename T> struct BatchedGemm3m;
+template <typename T> struct TypedGemm3mEx;
 template <typename T> struct DataType;
 
 template <> struct DataType<float> {
@@ -312,6 +316,25 @@ template <> struct Gemm<cuComplex> {
   }
 };
 
+template <> struct Gemm3m<cuComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuComplex *alpha, const cuComplex *a,
+                               int lda, const cuComplex *b, int ldb,
+                               const cuComplex *beta, cuComplex *c, int ldc) {
+    return cublasCgemm3m(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a,
+                         lda, b, ldb, beta, c, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuComplex *alpha,
+                               const cuComplex *a, int64_t lda,
+                               const cuComplex *b, int64_t ldb,
+                               const cuComplex *beta, cuComplex *c,
+                               int64_t ldc) {
+    return cublasCgemm3m_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha,
+                            a, lda, b, ldb, beta, c, ldc);
+  }
+};
+
 template <> struct StridedGemm<cuComplex> {
   static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
                                const cuComplex *alpha, const cuComplex *a,
@@ -332,6 +355,31 @@ template <> struct StridedGemm<cuComplex> {
                                int64_t ldc, long long stride_c,
                                int64_t batch_count) {
     return cublasCgemmStridedBatched_64(
+        handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a, lda, stride_a, b,
+        ldb, stride_b, beta, c, ldc, stride_c, batch_count);
+  }
+};
+
+template <> struct StridedGemm3m<cuComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuComplex *alpha, const cuComplex *a,
+                               int lda, long long stride_a, const cuComplex *b,
+                               int ldb, long long stride_b,
+                               const cuComplex *beta, cuComplex *c, int ldc,
+                               long long stride_c, int batch_count) {
+    return cublasCgemm3mStridedBatched(
+        handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a, lda, stride_a, b,
+        ldb, stride_b, beta, c, ldc, stride_c, batch_count);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuComplex *alpha,
+                               const cuComplex *a, int64_t lda,
+                               long long stride_a, const cuComplex *b,
+                               int64_t ldb, long long stride_b,
+                               const cuComplex *beta, cuComplex *c,
+                               int64_t ldc, long long stride_c,
+                               int64_t batch_count) {
+    return cublasCgemm3mStridedBatched_64(
         handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a, lda, stride_a, b,
         ldb, stride_b, beta, c, ldc, stride_c, batch_count);
   }
@@ -360,6 +408,29 @@ template <> struct BatchedGemm<cuComplex> {
   }
 };
 
+template <> struct BatchedGemm3m<cuComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuComplex *alpha,
+                               const cuComplex *const *a, int lda,
+                               const cuComplex *const *b, int ldb,
+                               const cuComplex *beta, cuComplex *const *c,
+                               int ldc, int batch_count) {
+    return cublasCgemm3mBatched(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                                alpha, a, lda, b, ldb, beta, c, ldc,
+                                batch_count);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuComplex *alpha,
+                               const cuComplex *const *a, int64_t lda,
+                               const cuComplex *const *b, int64_t ldb,
+                               const cuComplex *beta, cuComplex *const *c,
+                               int64_t ldc, int64_t batch_count) {
+    return cublasCgemm3mBatched_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k,
+                                   alpha, a, lda, b, ldb, beta, c, ldc,
+                                   batch_count);
+  }
+};
+
 template <> struct TypedGemmEx<cuComplex> {
   static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
                                const cuComplex *alpha, const cuComplex *a,
@@ -381,6 +452,27 @@ template <> struct TypedGemmEx<cuComplex> {
   }
 };
 
+template <> struct TypedGemm3mEx<cuComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuComplex *alpha, const cuComplex *a,
+                               int lda, const cuComplex *b, int ldb,
+                               const cuComplex *beta, cuComplex *c, int ldc) {
+    return cublasCgemm3mEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a,
+                           CUDA_C_32F, lda, b, CUDA_C_32F, ldb, beta, c,
+                           CUDA_C_32F, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuComplex *alpha,
+                               const cuComplex *a, int64_t lda,
+                               const cuComplex *b, int64_t ldb,
+                               const cuComplex *beta, cuComplex *c,
+                               int64_t ldc) {
+    return cublasCgemm3mEx_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha,
+                              a, CUDA_C_32F, lda, b, CUDA_C_32F, ldb, beta, c,
+                              CUDA_C_32F, ldc);
+  }
+};
+
 template <> struct Gemm<cuDoubleComplex> {
   static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
                                const cuDoubleComplex *alpha,
@@ -399,6 +491,27 @@ template <> struct Gemm<cuDoubleComplex> {
                                int64_t ldc) {
     return cublasZgemm_v2_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha,
                              a, lda, b, ldb, beta, c, ldc);
+  }
+};
+
+template <> struct Gemm3m<cuDoubleComplex> {
+  static cublasStatus_t call32(cublasHandle_t handle, int m, int n, int k,
+                               const cuDoubleComplex *alpha,
+                               const cuDoubleComplex *a, int lda,
+                               const cuDoubleComplex *b, int ldb,
+                               const cuDoubleComplex *beta,
+                               cuDoubleComplex *c, int ldc) {
+    return cublasZgemm3m(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, a,
+                         lda, b, ldb, beta, c, ldc);
+  }
+  static cublasStatus_t call64(cublasHandle_t handle, int64_t m, int64_t n,
+                               int64_t k, const cuDoubleComplex *alpha,
+                               const cuDoubleComplex *a, int64_t lda,
+                               const cuDoubleComplex *b, int64_t ldb,
+                               const cuDoubleComplex *beta,
+                               cuDoubleComplex *c, int64_t ldc) {
+    return cublasZgemm3m_64(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha,
+                            a, lda, b, ldb, beta, c, ldc);
   }
 };
 
@@ -502,9 +615,9 @@ expected_strided_gemm(const std::vector<T> &a, const std::vector<T> &b,
   return out;
 }
 
-template <typename T>
-static void run_case(cublasHandle_t handle, const char *name, bool use_64,
-                     bool device_scalars) {
+template <typename T, template <typename> class GemmCall>
+static void run_case_impl(cublasHandle_t handle, const char *name, bool use_64,
+                          bool device_scalars) {
   const int m = 2;
   const int n = 2;
   const int k = 3;
@@ -559,11 +672,11 @@ static void run_case(cublasHandle_t handle, const char *name, bool use_64,
   }
 
   if (use_64) {
-    CHECK_CUBLAS(Gemm<T>::call64(handle, m, n, k, alpha_arg, d_a, m, d_b, k,
-                                 beta_arg, d_c, m));
+    CHECK_CUBLAS(GemmCall<T>::call64(handle, m, n, k, alpha_arg, d_a, m, d_b,
+                                     k, beta_arg, d_c, m));
   } else {
-    CHECK_CUBLAS(Gemm<T>::call32(handle, m, n, k, alpha_arg, d_a, m, d_b, k,
-                                 beta_arg, d_c, m));
+    CHECK_CUBLAS(GemmCall<T>::call32(handle, m, n, k, alpha_arg, d_a, m, d_b,
+                                     k, beta_arg, d_c, m));
   }
   CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
   CHECK_CUDA(cudaDeviceSynchronize());
@@ -587,8 +700,20 @@ static void run_case(cublasHandle_t handle, const char *name, bool use_64,
 }
 
 template <typename T>
-static void run_strided_case(cublasHandle_t handle, const char *name,
-                             bool use_64, bool device_scalars) {
+static void run_case(cublasHandle_t handle, const char *name, bool use_64,
+                     bool device_scalars) {
+  run_case_impl<T, Gemm>(handle, name, use_64, device_scalars);
+}
+
+template <typename T>
+static void run_gemm3m_case(cublasHandle_t handle, const char *name,
+                            bool use_64, bool device_scalars) {
+  run_case_impl<T, Gemm3m>(handle, name, use_64, device_scalars);
+}
+
+template <typename T, template <typename> class StridedGemmCall>
+static void run_strided_case_impl(cublasHandle_t handle, const char *name,
+                                  bool use_64, bool device_scalars) {
   const int m = 2;
   const int n = 2;
   const int k = 3;
@@ -650,11 +775,11 @@ static void run_strided_case(cublasHandle_t handle, const char *name,
   }
 
   if (use_64) {
-    CHECK_CUBLAS(StridedGemm<T>::call64(
+    CHECK_CUBLAS(StridedGemmCall<T>::call64(
         handle, m, n, k, alpha_arg, d_a, m, stride_a, d_b, k, stride_b,
         beta_arg, d_c, m, stride_c, batch_count));
   } else {
-    CHECK_CUBLAS(StridedGemm<T>::call32(
+    CHECK_CUBLAS(StridedGemmCall<T>::call32(
         handle, m, n, k, alpha_arg, d_a, m, stride_a, d_b, k, stride_b,
         beta_arg, d_c, m, stride_c, batch_count));
   }
@@ -680,8 +805,21 @@ static void run_strided_case(cublasHandle_t handle, const char *name,
 }
 
 template <typename T>
-static void run_batched_case(cublasHandle_t handle, const char *name,
+static void run_strided_case(cublasHandle_t handle, const char *name,
                              bool use_64, bool device_scalars) {
+  run_strided_case_impl<T, StridedGemm>(handle, name, use_64, device_scalars);
+}
+
+template <typename T>
+static void run_gemm3m_strided_case(cublasHandle_t handle, const char *name,
+                                    bool use_64, bool device_scalars) {
+  run_strided_case_impl<T, StridedGemm3m>(handle, name, use_64,
+                                          device_scalars);
+}
+
+template <typename T, template <typename> class BatchedGemmCall>
+static void run_batched_case_impl(cublasHandle_t handle, const char *name,
+                                  bool use_64, bool device_scalars) {
   const int m = 2;
   const int n = 2;
   const int k = 3;
@@ -767,13 +905,13 @@ static void run_batched_case(cublasHandle_t handle, const char *name,
   }
 
   if (use_64) {
-    CHECK_CUBLAS(BatchedGemm<T>::call64(handle, m, n, k, alpha_arg, d_a_array,
-                                        m, d_b_array, k, beta_arg, d_c_array,
-                                        m, batch_count));
+    CHECK_CUBLAS(BatchedGemmCall<T>::call64(
+        handle, m, n, k, alpha_arg, d_a_array, m, d_b_array, k, beta_arg,
+        d_c_array, m, batch_count));
   } else {
-    CHECK_CUBLAS(BatchedGemm<T>::call32(handle, m, n, k, alpha_arg, d_a_array,
-                                        m, d_b_array, k, beta_arg, d_c_array,
-                                        m, batch_count));
+    CHECK_CUBLAS(BatchedGemmCall<T>::call32(
+        handle, m, n, k, alpha_arg, d_a_array, m, d_b_array, k, beta_arg,
+        d_c_array, m, batch_count));
   }
   CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
   CHECK_CUDA(cudaDeviceSynchronize());
@@ -797,6 +935,19 @@ static void run_batched_case(cublasHandle_t handle, const char *name,
   cudaFree(d_c);
   cudaFree(d_b);
   cudaFree(d_a);
+}
+
+template <typename T>
+static void run_batched_case(cublasHandle_t handle, const char *name,
+                             bool use_64, bool device_scalars) {
+  run_batched_case_impl<T, BatchedGemm>(handle, name, use_64, device_scalars);
+}
+
+template <typename T>
+static void run_gemm3m_batched_case(cublasHandle_t handle, const char *name,
+                                    bool use_64, bool device_scalars) {
+  run_batched_case_impl<T, BatchedGemm3m>(handle, name, use_64,
+                                          device_scalars);
 }
 
 template <typename T>
@@ -945,9 +1096,9 @@ static void run_grouped_case(cublasHandle_t handle, const char *name,
   cudaFree(d_a);
 }
 
-template <typename T>
-static void run_typed_ex_case(cublasHandle_t handle, const char *name,
-                              bool use_64, bool device_scalars) {
+template <typename T, template <typename> class TypedGemmExCall>
+static void run_typed_ex_case_impl(cublasHandle_t handle, const char *name,
+                                   bool use_64, bool device_scalars) {
   const int m = 2;
   const int n = 2;
   const int k = 3;
@@ -1002,11 +1153,11 @@ static void run_typed_ex_case(cublasHandle_t handle, const char *name,
   }
 
   if (use_64) {
-    CHECK_CUBLAS(TypedGemmEx<T>::call64(handle, m, n, k, alpha_arg, d_a, m,
-                                        d_b, k, beta_arg, d_c, m));
+    CHECK_CUBLAS(TypedGemmExCall<T>::call64(handle, m, n, k, alpha_arg, d_a,
+                                            m, d_b, k, beta_arg, d_c, m));
   } else {
-    CHECK_CUBLAS(TypedGemmEx<T>::call32(handle, m, n, k, alpha_arg, d_a, m,
-                                        d_b, k, beta_arg, d_c, m));
+    CHECK_CUBLAS(TypedGemmExCall<T>::call32(handle, m, n, k, alpha_arg, d_a,
+                                            m, d_b, k, beta_arg, d_c, m));
   }
   CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
   CHECK_CUDA(cudaDeviceSynchronize());
@@ -1027,6 +1178,19 @@ static void run_typed_ex_case(cublasHandle_t handle, const char *name,
   cudaFree(d_c);
   cudaFree(d_b);
   cudaFree(d_a);
+}
+
+template <typename T>
+static void run_typed_ex_case(cublasHandle_t handle, const char *name,
+                              bool use_64, bool device_scalars) {
+  run_typed_ex_case_impl<T, TypedGemmEx>(handle, name, use_64, device_scalars);
+}
+
+template <typename T>
+static void run_typed_3m_ex_case(cublasHandle_t handle, const char *name,
+                                 bool use_64, bool device_scalars) {
+  run_typed_ex_case_impl<T, TypedGemm3mEx>(handle, name, use_64,
+                                           device_scalars);
 }
 
 static void run_generic_ex_case(cublasHandle_t handle, bool use_64,
@@ -1476,6 +1640,22 @@ int main() {
   run_type<double>(handle, "dgemm");
   run_type<cuComplex>(handle, "cgemm");
   run_type<cuDoubleComplex>(handle, "zgemm");
+  run_gemm3m_case<cuComplex>(handle, "cgemm3m", false, false);
+  run_gemm3m_case<cuComplex>(handle, "cgemm3m", false, true);
+  run_gemm3m_case<cuComplex>(handle, "cgemm3m", true, false);
+  run_gemm3m_case<cuComplex>(handle, "cgemm3m", true, true);
+  run_gemm3m_case<cuDoubleComplex>(handle, "zgemm3m", false, false);
+  run_gemm3m_case<cuDoubleComplex>(handle, "zgemm3m", false, true);
+  run_gemm3m_case<cuDoubleComplex>(handle, "zgemm3m", true, false);
+  run_gemm3m_case<cuDoubleComplex>(handle, "zgemm3m", true, true);
+  run_gemm3m_strided_case<cuComplex>(handle, "cgemm3m", false, false);
+  run_gemm3m_strided_case<cuComplex>(handle, "cgemm3m", false, true);
+  run_gemm3m_strided_case<cuComplex>(handle, "cgemm3m", true, false);
+  run_gemm3m_strided_case<cuComplex>(handle, "cgemm3m", true, true);
+  run_gemm3m_batched_case<cuComplex>(handle, "cgemm3m", false, false);
+  run_gemm3m_batched_case<cuComplex>(handle, "cgemm3m", false, true);
+  run_gemm3m_batched_case<cuComplex>(handle, "cgemm3m", true, false);
+  run_gemm3m_batched_case<cuComplex>(handle, "cgemm3m", true, true);
   run_grouped_case<float>(handle, "sgemm", false);
   run_grouped_case<float>(handle, "sgemm", true);
   run_grouped_case<double>(handle, "dgemm", false);
@@ -1488,6 +1668,10 @@ int main() {
   run_typed_ex_case<cuComplex>(handle, "cgemm", false, true);
   run_typed_ex_case<cuComplex>(handle, "cgemm", true, false);
   run_typed_ex_case<cuComplex>(handle, "cgemm", true, true);
+  run_typed_3m_ex_case<cuComplex>(handle, "cgemm3m", false, false);
+  run_typed_3m_ex_case<cuComplex>(handle, "cgemm3m", false, true);
+  run_typed_3m_ex_case<cuComplex>(handle, "cgemm3m", true, false);
+  run_typed_3m_ex_case<cuComplex>(handle, "cgemm3m", true, true);
   run_generic_ex_case(handle, false, false);
   run_generic_ex_case(handle, false, true);
   run_generic_ex_case(handle, true, false);
