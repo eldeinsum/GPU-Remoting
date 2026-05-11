@@ -1050,6 +1050,19 @@ fn cuGetExportTable(ppExportTable: *mut *const c_void, pExportTableId: *const CU
 #[cuda_hook(proc_id = 630, async_api = false)]
 fn cuInit(Flags: c_uint) -> CUresult;
 
+#[cuda_hook(proc_id = 901090, async_api = false)]
+fn cuProfilerInitialize(
+    configFile: *const c_char,
+    outputFile: *const c_char,
+    outputMode: CUoutput_mode,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901091, async_api = false)]
+fn cuProfilerStart() -> CUresult;
+
+#[cuda_hook(proc_id = 901092, async_api = false)]
+fn cuProfilerStop() -> CUresult;
+
 #[cuda_hook(proc_id = 684)]
 fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
 
