@@ -4392,6 +4392,1018 @@ fn cublasZhpmv_v2_64(
     }
 }
 
+#[cuda_hook(proc_id = 1450, async_api)]
+fn cublasSsyr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f32,
+    #[device] x: *const f32,
+    incx: c_int,
+    #[device] A: *mut f32,
+    lda: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSsyr_v2(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1451, async_api)]
+fn cublasSsyr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f32,
+    #[device] x: *const f32,
+    incx: i64,
+    #[device] A: *mut f32,
+    lda: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSsyr_v2_64(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1452, async_api)]
+fn cublasDsyr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f64,
+    #[device] x: *const f64,
+    incx: c_int,
+    #[device] A: *mut f64,
+    lda: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDsyr_v2(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1453, async_api)]
+fn cublasDsyr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f64,
+    #[device] x: *const f64,
+    incx: i64,
+    #[device] A: *mut f64,
+    lda: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDsyr_v2_64(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1454, async_api)]
+fn cublasCsyr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const cuComplex,
+    #[device] x: *const cuComplex,
+    incx: c_int,
+    #[device] A: *mut cuComplex,
+    lda: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuComplex
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasCsyr_v2(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1455, async_api)]
+fn cublasCsyr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const cuComplex,
+    #[device] x: *const cuComplex,
+    incx: i64,
+    #[device] A: *mut cuComplex,
+    lda: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuComplex
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasCsyr_v2_64(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1456, async_api)]
+fn cublasZsyr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const cuDoubleComplex,
+    #[device] x: *const cuDoubleComplex,
+    incx: c_int,
+    #[device] A: *mut cuDoubleComplex,
+    lda: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuDoubleComplex
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZsyr_v2(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1457, async_api)]
+fn cublasZsyr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const cuDoubleComplex,
+    #[device] x: *const cuDoubleComplex,
+    incx: i64,
+    #[device] A: *mut cuDoubleComplex,
+    lda: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            cuDoubleComplex { x: 0.0, y: 0.0 }
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = cuDoubleComplex { x: 0.0, y: 0.0 };
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const cuDoubleComplex
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZsyr_v2_64(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1458, async_api)]
+fn cublasCher_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f32,
+    #[device] x: *const cuComplex,
+    incx: c_int,
+    #[device] A: *mut cuComplex,
+    lda: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasCher_v2(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1459, async_api)]
+fn cublasCher_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f32,
+    #[device] x: *const cuComplex,
+    incx: i64,
+    #[device] A: *mut cuComplex,
+    lda: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasCher_v2_64(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1460, async_api)]
+fn cublasZher_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f64,
+    #[device] x: *const cuDoubleComplex,
+    incx: c_int,
+    #[device] A: *mut cuDoubleComplex,
+    lda: c_int,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZher_v2(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1461, async_api)]
+fn cublasZher_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f64,
+    #[device] x: *const cuDoubleComplex,
+    incx: i64,
+    #[device] A: *mut cuDoubleComplex,
+    lda: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZher_v2_64(handle, uplo, n, alpha_arg, x, incx, A, lda) };
+    }
+}
+
+#[cuda_hook(proc_id = 1462, async_api)]
+fn cublasSspr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f32,
+    #[device] x: *const f32,
+    incx: c_int,
+    #[device] AP: *mut f32,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSspr_v2(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1463, async_api)]
+fn cublasSspr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f32,
+    #[device] x: *const f32,
+    incx: i64,
+    #[device] AP: *mut f32,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSspr_v2_64(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1464, async_api)]
+fn cublasDspr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f64,
+    #[device] x: *const f64,
+    incx: c_int,
+    #[device] AP: *mut f64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDspr_v2(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1465, async_api)]
+fn cublasDspr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f64,
+    #[device] x: *const f64,
+    incx: i64,
+    #[device] AP: *mut f64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasDspr_v2_64(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1466, async_api)]
+fn cublasChpr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f32,
+    #[device] x: *const cuComplex,
+    incx: c_int,
+    #[device] AP: *mut cuComplex,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasChpr_v2(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1467, async_api)]
+fn cublasChpr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f32,
+    #[device] x: *const cuComplex,
+    incx: i64,
+    #[device] AP: *mut cuComplex,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f32
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f32;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f32
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasChpr_v2_64(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1468, async_api)]
+fn cublasZhpr_v2(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: c_int,
+    #[skip] alpha: *const f64,
+    #[device] x: *const cuDoubleComplex,
+    incx: c_int,
+    #[device] AP: *mut cuDoubleComplex,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZhpr_v2(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
+#[cuda_hook(proc_id = 1469, async_api)]
+fn cublasZhpr_v2_64(
+    handle: cublasHandle_t,
+    uplo: cublasFillMode_t,
+    n: i64,
+    #[skip] alpha: *const f64,
+    #[device] x: *const cuDoubleComplex,
+    incx: i64,
+    #[device] AP: *mut cuDoubleComplex,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        let alpha_value = if device_pointer_mode {
+            0.0f64
+        } else {
+            assert!(!alpha.is_null());
+            unsafe { *alpha }
+        };
+        let alpha_addr = alpha as usize;
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_value.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_value = 0.0f64;
+        alpha_value.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const f64
+        } else {
+            &raw const alpha_value
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasZhpr_v2_64(handle, uplo, n, alpha_arg, x, incx, AP) };
+    }
+}
+
 #[cuda_hook(proc_id = 1368, async_api)]
 fn cublasSsbmv_v2(
     handle: cublasHandle_t,
