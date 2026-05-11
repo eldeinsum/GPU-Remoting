@@ -601,6 +601,170 @@ fn cuModuleGetGlobal_v2(
     name: *const c_char,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901085, async_api = false)]
+fn cuLinkCreate_v2(
+    numOptions: c_uint,
+    #[skip] options: *mut CUjit_option,
+    #[skip] optionValues: *mut *mut c_void,
+    stateOut: *mut CUlinkState,
+) -> CUresult {
+    'client_before_send: {
+        assert_eq!(numOptions, 0);
+        assert!(options.is_null());
+        assert!(optionValues.is_null());
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuLinkCreate_v2(
+                numOptions,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                stateOut__ptr,
+            )
+        };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            server.links.push(stateOut);
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 901086)]
+fn cuLinkAddData_v2(
+    state: CUlinkState,
+    type_: CUjitInputType,
+    #[host(input, len = size)] data: *mut c_void,
+    size: usize,
+    name: *const c_char,
+    numOptions: c_uint,
+    #[skip] options: *mut CUjit_option,
+    #[skip] optionValues: *mut *mut c_void,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!data.is_null());
+        assert_eq!(numOptions, 0);
+        assert!(options.is_null());
+        assert!(optionValues.is_null());
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuLinkAddData_v2(
+                state,
+                type_,
+                data__ptr.cast(),
+                size,
+                name__ptr,
+                numOptions,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 901087)]
+fn cuLinkAddFile_v2(
+    state: CUlinkState,
+    type_: CUjitInputType,
+    path: *const c_char,
+    numOptions: c_uint,
+    #[skip] options: *mut CUjit_option,
+    #[skip] optionValues: *mut *mut c_void,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!path.is_null());
+        assert_eq!(numOptions, 0);
+        assert!(options.is_null());
+        assert!(optionValues.is_null());
+        let path_str = unsafe { std::ffi::CStr::from_ptr(path) }.to_str().unwrap();
+        let file_bytes = std::fs::read(path_str).unwrap();
+    }
+    'client_extra_send: {
+        send_slice(&file_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut file_bytes = recv_slice::<u8, _>(channel_receiver).unwrap().into_vec();
+        if type_ == CUjitInputType::CU_JIT_INPUT_PTX && !file_bytes.ends_with(&[0]) {
+            file_bytes.push(0);
+        }
+    }
+    'server_execution: {
+        let result = unsafe {
+            cuLinkAddData_v2(
+                state,
+                type_,
+                file_bytes.as_mut_ptr().cast(),
+                file_bytes.len(),
+                path__ptr,
+                numOptions,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 901088, async_api = false)]
+fn cuLinkComplete(
+    state: CUlinkState,
+    #[skip] cubinOut: *mut *mut c_void,
+    #[skip] sizeOut: *mut usize,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!cubinOut.is_null());
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let linked_image = recv_slice::<u8, _>(channel_receiver).unwrap();
+            let linked_ptr = linked_image.as_ptr().cast_mut().cast::<c_void>();
+            let linked_size = linked_image.len();
+            DRIVER_CACHE
+                .write()
+                .unwrap()
+                .linked_images
+                .insert(state, linked_image);
+            unsafe {
+                *cubinOut = linked_ptr;
+                if !sizeOut.is_null() {
+                    *sizeOut = linked_size;
+                }
+            }
+        }
+    }
+    'server_execution: {
+        let mut cubin = std::ptr::null_mut::<c_void>();
+        let mut size = 0usize;
+        let result = unsafe { cuLinkComplete(state, &raw mut cubin, &raw mut size) };
+        let linked_image = if result == CUresult::CUDA_SUCCESS {
+            assert!(!cubin.is_null());
+            unsafe { std::slice::from_raw_parts(cubin.cast::<u8>(), size).to_vec() }
+        } else {
+            Vec::new()
+        };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            send_slice(&linked_image, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 901089, async_api = false)]
+fn cuLinkDestroy(state: CUlinkState) -> CUresult {
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            DRIVER_CACHE.write().unwrap().linked_images.remove(&state);
+        }
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            server.links.retain(|item| *item != state);
+        }
+    }
+}
+
 #[cuda_custom_hook] // calls the internal API below
 fn cuLibraryLoadData(
     library: *mut CUlibrary,

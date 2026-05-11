@@ -31,7 +31,7 @@ use cudasys::types::cublasLt::{
 };
 use cudasys::types::cuda::{
     CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS, CUfunction, CUgraphNode, CUkernel,
-    CUlibrary, CUmodule, CUstreamBatchMemOpParams,
+    CUlibrary, CUlinkState, CUmodule, CUstreamBatchMemOpParams,
 };
 use cudasys::types::cudart::{cudaGraphNode_t, cudaKernelNodeParams};
 type FatBinaryHandle = usize;
@@ -170,6 +170,8 @@ struct DriverCache {
     images: BTreeMap<CUmodule, Cow<'static, [u8]>>,
     /// Used in `cuLibraryGetKernel`, populated by `cuLibraryLoadData`.
     library_images: BTreeMap<CUlibrary, Cow<'static, [u8]>>,
+    /// Client-owned outputs from `cuLinkComplete`, valid until `cuLinkDestroy`.
+    linked_images: BTreeMap<CUlinkState, Box<[u8]>>,
     /// Used in `cuLaunchKernel`, populated by `cuModuleGetFunction`.
     function_params: BTreeMap<CUfunction, Box<[KernelParamInfo]>>,
     /// Used in `cuFuncGetName`, populated by function lookup APIs.
@@ -194,6 +196,7 @@ impl DriverCache {
         Self {
             images: BTreeMap::new(),
             library_images: BTreeMap::new(),
+            linked_images: BTreeMap::new(),
             function_params: BTreeMap::new(),
             function_names: BTreeMap::new(),
             graph_kernel_nodes: BTreeMap::new(),
@@ -207,6 +210,7 @@ impl DriverCache {
     fn reset_after_fork(&mut self) {
         self.images.clear();
         self.library_images.clear();
+        self.linked_images.clear();
         self.function_params.clear();
         self.function_names.clear();
         self.graph_kernel_nodes.clear();

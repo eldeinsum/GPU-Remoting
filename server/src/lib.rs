@@ -1,7 +1,7 @@
 mod dispatcher;
 
 use cudasys::{
-    cuda::{CUlibrary, CUmodule},
+    cuda::{CUlibrary, CUlinkState, CUmodule},
     cudart::{cudaError_t, cudaGetDeviceCount},
 };
 use dispatcher::dispatch;
@@ -10,7 +10,7 @@ use dispatcher::dispatch;
 use network::ringbufferchannel::RDMAChannel;
 
 use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
-use network::{tcp, Channel, CommChannel, CommChannelError, NetworkConfig, Transportable};
+use network::{Channel, CommChannel, CommChannelError, NetworkConfig, Transportable, tcp};
 
 use log::{error, info};
 
@@ -24,6 +24,7 @@ struct ServerWorker<C> {
     pub channel_receiver: C,
     pub modules: Vec<CUmodule>,
     pub libraries: Vec<CUlibrary>,
+    pub links: Vec<CUlinkState>,
     pub resources: BTreeMap<usize, usize>,
     opt_async_api: bool,
     opt_shadow_desc: bool,
@@ -39,6 +40,11 @@ impl<C> Drop for ServerWorker<C> {
         for library in &self.libraries {
             unsafe {
                 cudasys::cuda::cuLibraryUnload(*library);
+            }
+        }
+        for link in &self.links {
+            unsafe {
+                cudasys::cuda::cuLinkDestroy(*link);
             }
         }
     }
@@ -160,6 +166,7 @@ pub fn launch_server(
         channel_receiver,
         modules: Default::default(),
         libraries: Default::default(),
+        links: Default::default(),
         resources: Default::default(),
         opt_async_api: config.opt_async_api,
         opt_shadow_desc: config.opt_shadow_desc,
