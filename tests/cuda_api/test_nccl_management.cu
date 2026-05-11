@@ -177,7 +177,9 @@ int main(void) {
   cudaStream_t streams[nranks];
   float *send[nranks];
   float *recv[nranks];
+  void *window_buffers[nranks] = {NULL, NULL};
   void *registration_handles[nranks] = {NULL, NULL};
+  ncclWindow_t windows[nranks] = {NULL, NULL};
   for (int rank = 0; rank < nranks; ++rank) {
     if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
         !cuda_ok(cudaStreamCreate(&streams[rank]), "cudaStreamCreate") ||
@@ -185,6 +187,13 @@ int main(void) {
                  "cudaMalloc(send)") ||
         !cuda_ok(cudaMalloc(&recv[rank], elem_count * sizeof(float)),
                  "cudaMalloc(recv)") ||
+        !nccl_ok(ncclMemAlloc(&window_buffers[rank],
+                              NCCL_WIN_REQUIRED_ALIGNMENT),
+                 "ncclMemAlloc(window)") ||
+        window_buffers[rank] == NULL ||
+        !cuda_ok(cudaMemset(window_buffers[rank], 0,
+                            NCCL_WIN_REQUIRED_ALIGNMENT),
+                 "cudaMemset(window)") ||
         !nccl_ok(ncclCommRegister(comms[rank], send[rank],
                                   elem_count * sizeof(float),
                                   &registration_handles[rank]),
@@ -196,6 +205,45 @@ int main(void) {
       return EXIT_FAILURE;
     }
   }
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(window register)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!cuda_ok(cudaSetDevice(devs[rank]), "cudaSetDevice") ||
+        !nccl_ok(ncclCommWindowRegister(
+                     comms[rank], window_buffers[rank],
+                     NCCL_WIN_REQUIRED_ALIGNMENT, &windows[rank],
+                     NCCL_WIN_DEFAULT),
+                 "ncclCommWindowRegister")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(window register)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    void *user_ptr = NULL;
+    if (windows[rank] == NULL ||
+        !nccl_ok(ncclWinGetUserPtr(comms[rank], windows[rank], &user_ptr),
+                 "ncclWinGetUserPtr") ||
+        user_ptr != window_buffers[rank]) {
+      fprintf(stderr, "NCCL window user pointer mismatch for rank %d\n", rank);
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupStart(), "ncclGroupStart(window deregister)")) {
+    return EXIT_FAILURE;
+  }
+  for (int rank = 0; rank < nranks; ++rank) {
+    if (!nccl_ok(ncclCommWindowDeregister(comms[rank], windows[rank]),
+                 "ncclCommWindowDeregister")) {
+      return EXIT_FAILURE;
+    }
+  }
+  if (!nccl_ok(ncclGroupEnd(), "ncclGroupEnd(window deregister)")) {
+    return EXIT_FAILURE;
+  }
+
   for (int rank = 0; rank < nranks; ++rank) {
     if (!nccl_ok(ncclCommDeregister(comms[rank], registration_handles[rank]),
                  "ncclCommDeregister")) {
@@ -326,6 +374,7 @@ int main(void) {
     }
     cudaFree(send[rank]);
     cudaFree(recv[rank]);
+    ncclMemFree(window_buffers[rank]);
     cudaStreamDestroy(streams[rank]);
     ncclCommDestroy(comms[rank]);
   }

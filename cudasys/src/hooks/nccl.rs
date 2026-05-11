@@ -37,10 +37,10 @@ fn ncclCommRevoke(comm: ncclComm_t, revokeFlags: c_int) -> ncclResult_t;
 #[cuda_hook(proc_id = 3205)]
 fn ncclCommGetAsyncError(comm: ncclComm_t, asyncError: *mut ncclResult_t) -> ncclResult_t;
 
-#[cuda_hook(proc_id = 3206)]
+#[cuda_custom_hook(proc_id = 3206)] // remoted: tracks grouped output completion
 fn ncclGroupStart() -> ncclResult_t;
 
-#[cuda_hook(proc_id = 3207)]
+#[cuda_custom_hook(proc_id = 3207)] // remoted: completes grouped output handles
 fn ncclGroupEnd() -> ncclResult_t;
 
 #[cuda_hook(proc_id = 3234)]
@@ -358,6 +358,25 @@ fn ncclRedOpDestroy(op: ncclRedOp_t, comm: ncclComm_t) -> ncclResult_t;
 
 #[cuda_hook(proc_id = 3233)]
 fn ncclCommMemStats(comm: ncclComm_t, stat: ncclCommMemStat_t, value: *mut u64) -> ncclResult_t;
+
+#[cuda_custom_hook(proc_id = 3239)] // remoted: window handles may complete at group end
+fn ncclCommWindowRegister(
+    comm: ncclComm_t,
+    buff: *mut c_void,
+    size: usize,
+    win: *mut ncclWindow_t,
+    winFlags: c_int,
+) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3240)]
+fn ncclCommWindowDeregister(comm: ncclComm_t, win: ncclWindow_t) -> ncclResult_t;
+
+#[cuda_hook(proc_id = 3241)]
+fn ncclWinGetUserPtr(
+    comm: ncclComm_t,
+    win: ncclWindow_t,
+    outUserPtr: *mut *mut c_void,
+) -> ncclResult_t;
 
 #[cuda_hook(proc_id = 3236)]
 fn ncclCommSuspend(comm: ncclComm_t, flags: c_int) -> ncclResult_t;

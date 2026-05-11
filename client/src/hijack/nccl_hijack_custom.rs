@@ -8,6 +8,17 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::{CLIENT_THREAD, ClientThread};
 
+#[derive(Default)]
+struct NcclGroupState {
+    depth: usize,
+    pending_window_outputs: Vec<usize>,
+}
+
+fn nccl_group_state() -> &'static Mutex<NcclGroupState> {
+    static STATE: OnceLock<Mutex<NcclGroupState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(NcclGroupState::default()))
+}
+
 fn real_nccl_handle() -> *mut c_void {
     static HANDLE: OnceLock<usize> = OnceLock::new();
     let handle = *HANDLE.get_or_init(|| {
@@ -70,6 +81,161 @@ fn nccl_error_text(result: ncclResult_t) -> &'static str {
         ncclResult_t::ncclTimeout => "NCCL operation timed out",
         ncclResult_t::ncclNumResults => "invalid NCCL result",
     }
+}
+
+#[no_mangle]
+pub extern "C" fn ncclGroupStart() -> ncclResult_t {
+    log::debug!(target: "ncclGroupStart", "remoted");
+
+    let result = CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "ncclGroupStart", "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        3206i32.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+
+        let mut result = ncclResult_t::ncclSuccess;
+        result.recv(channel_receiver).unwrap();
+        channel_receiver.recv_ts().unwrap();
+        result
+    });
+
+    if result == ncclResult_t::ncclSuccess {
+        let mut state = nccl_group_state().lock().unwrap();
+        state.depth += 1;
+    }
+    result
+}
+
+#[no_mangle]
+pub extern "C" fn ncclGroupEnd() -> ncclResult_t {
+    log::debug!(target: "ncclGroupEnd", "remoted");
+
+    let (result, handles) = CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "ncclGroupEnd", "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        3207i32.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+
+        let mut result = ncclResult_t::ncclSuccess;
+        result.recv(channel_receiver).unwrap();
+
+        let mut count = 0usize;
+        count.recv(channel_receiver).unwrap();
+        let mut handles = Vec::with_capacity(count);
+        for _ in 0..count {
+            let mut handle = std::mem::MaybeUninit::<ncclWindow_t>::uninit();
+            handle.recv(channel_receiver).unwrap();
+            handles.push(unsafe { handle.assume_init() });
+        }
+
+        channel_receiver.recv_ts().unwrap();
+        (result, handles)
+    });
+
+    let mut state = nccl_group_state().lock().unwrap();
+    if result == ncclResult_t::ncclSuccess {
+        if state.depth > 0 {
+            state.depth -= 1;
+        }
+        if state.depth == 0 {
+            if handles.len() != state.pending_window_outputs.len() {
+                log::error!(
+                    target: "ncclGroupEnd",
+                    "window handle completion mismatch: client pending {}, server returned {}",
+                    state.pending_window_outputs.len(),
+                    handles.len(),
+                );
+                state.pending_window_outputs.clear();
+                return ncclResult_t::ncclInternalError;
+            }
+
+            for (out_ptr, handle) in state.pending_window_outputs.drain(..).zip(handles) {
+                unsafe {
+                    *(out_ptr as *mut ncclWindow_t) = handle;
+                }
+            }
+        } else if !handles.is_empty() {
+            log::error!(
+                target: "ncclGroupEnd",
+                "received window handle completions before the outermost group ended",
+            );
+            return ncclResult_t::ncclInternalError;
+        }
+    } else {
+        state.depth = 0;
+        state.pending_window_outputs.clear();
+    }
+
+    result
+}
+
+#[no_mangle]
+pub extern "C" fn ncclCommWindowRegister(
+    comm: ncclComm_t,
+    buff: *mut c_void,
+    size: usize,
+    win: *mut ncclWindow_t,
+    winFlags: c_int,
+) -> ncclResult_t {
+    log::debug!(target: "ncclCommWindowRegister", "{comm:p}, {buff:p}, {size}, {win:p}, {winFlags}");
+    if win.is_null() {
+        return ncclResult_t::ncclInvalidArgument;
+    }
+
+    let (result, deferred, handle) = CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "ncclCommWindowRegister", "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        3239i32.send(channel_sender).unwrap();
+        comm.send(channel_sender).unwrap();
+        buff.send(channel_sender).unwrap();
+        size.send(channel_sender).unwrap();
+        winFlags.send(channel_sender).unwrap();
+        channel_sender.flush_out().unwrap();
+
+        let mut result = ncclResult_t::ncclSuccess;
+        result.recv(channel_receiver).unwrap();
+        let mut deferred = false;
+        deferred.recv(channel_receiver).unwrap();
+        let mut handle = std::mem::MaybeUninit::<ncclWindow_t>::uninit();
+        handle.recv(channel_receiver).unwrap();
+        channel_receiver.recv_ts().unwrap();
+
+        (result, deferred, unsafe { handle.assume_init() })
+    });
+
+    if result == ncclResult_t::ncclSuccess {
+        if deferred {
+            nccl_group_state()
+                .lock()
+                .unwrap()
+                .pending_window_outputs
+                .push(win as usize);
+        } else {
+            unsafe {
+                *win = handle;
+            }
+        }
+    }
+
+    result
 }
 
 #[no_mangle]
