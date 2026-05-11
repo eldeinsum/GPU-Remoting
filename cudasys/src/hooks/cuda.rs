@@ -291,6 +291,16 @@ fn cuModuleGetFunction(hfunc: *mut CUfunction, hmod: CUmodule, name: *const c_ch
     }
 }
 
+#[cuda_hook(proc_id = 901021)]
+fn cuModuleGetFunctionCount(count: *mut c_uint, mod_: CUmodule) -> CUresult;
+
+#[cuda_custom_hook(proc_id = 901022)]
+fn cuModuleEnumerateFunctions(
+    functions: *mut CUfunction,
+    numFunctions: c_uint,
+    mod_: CUmodule,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 900706, async_api = false)]
 fn cuModuleUnload(hmod: CUmodule) -> CUresult {
     'client_after_recv: {

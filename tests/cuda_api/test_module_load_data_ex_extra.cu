@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #define CHECK_DRV(call)                                                        \
     do {                                                                       \
@@ -52,6 +53,30 @@ int main()
     if (name == nullptr || std::strcmp(name, "load_data_ex_kernel") != 0) {
         std::fprintf(stderr, "unexpected function name: %s\n",
                      name == nullptr ? "(null)" : name);
+        return 1;
+    }
+
+    unsigned int function_count = 0;
+    CHECK_DRV(cuModuleGetFunctionCount(&function_count, module));
+    if (function_count != 1) {
+        std::fprintf(stderr, "unexpected function count: %u\n", function_count);
+        return 1;
+    }
+
+    std::vector<CUfunction> functions(function_count);
+    CHECK_DRV(
+        cuModuleEnumerateFunctions(functions.data(), function_count, module));
+    if (functions[0] == nullptr) {
+        std::fprintf(stderr, "cuModuleEnumerateFunctions returned null\n");
+        return 1;
+    }
+
+    const char *enumerated_name = nullptr;
+    CHECK_DRV(cuFuncGetName(&enumerated_name, functions[0]));
+    if (enumerated_name == nullptr ||
+        std::strcmp(enumerated_name, "load_data_ex_kernel") != 0) {
+        std::fprintf(stderr, "unexpected enumerated function name: %s\n",
+                     enumerated_name == nullptr ? "(null)" : enumerated_name);
         return 1;
     }
 

@@ -5,6 +5,7 @@ use cudasys::cuda::*;
 use network::type_impl::{recv_slice, send_slice};
 use network::{CommChannel, Transportable};
 use std::collections::BTreeMap;
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_void};
 use std::sync::{Mutex, OnceLock};
 
@@ -792,6 +793,52 @@ pub fn cuGraphNodeGetDependentNodes_v2Exe<C: CommChannel>(server: &mut ServerWor
     count.send(channel_sender).unwrap();
     send_result(
         "cuGraphNodeGetDependentNodes_v2",
+        server.id,
+        result,
+        channel_sender,
+    );
+}
+
+pub fn cuModuleEnumerateFunctionsExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let ServerWorker {
+        channel_sender,
+        channel_receiver,
+        ..
+    } = server;
+    log::debug!(target: "cuModuleEnumerateFunctions", "[#{}]", server.id);
+
+    let mut num_functions = 0u32;
+    num_functions.recv(channel_receiver).unwrap();
+    let mut module: CUmodule = std::ptr::null_mut();
+    module.recv(channel_receiver).unwrap();
+    channel_receiver.recv_ts().unwrap();
+
+    let mut functions = vec![std::ptr::null_mut(); num_functions as usize];
+    let functions_ptr = if functions.is_empty() {
+        std::ptr::null_mut()
+    } else {
+        functions.as_mut_ptr()
+    };
+    let result = unsafe { cuModuleEnumerateFunctions(functions_ptr, num_functions, module) };
+
+    let functions = if result == CUresult::CUDA_SUCCESS {
+        functions
+    } else {
+        Vec::new()
+    };
+    send_slice(&functions, channel_sender).unwrap();
+    for function in &functions {
+        let mut name = std::ptr::null();
+        let name_result = unsafe { cuFuncGetName(&raw mut name, *function) };
+        let bytes = if name_result == CUresult::CUDA_SUCCESS && !name.is_null() {
+            unsafe { CStr::from_ptr(name).to_bytes().to_vec() }
+        } else {
+            Vec::new()
+        };
+        send_slice(&bytes, channel_sender).unwrap();
+    }
+    send_result(
+        "cuModuleEnumerateFunctions",
         server.id,
         result,
         channel_sender,

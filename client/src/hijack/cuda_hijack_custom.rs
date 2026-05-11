@@ -940,6 +940,80 @@ extern "C" fn cuModuleLoadDataEx(
     super::cuda_hijack::cuModuleLoadDataInternal(module, image.cast(), false)
 }
 
+fn cache_module_function_metadata(hmod: CUmodule, hfunc: CUfunction, name_bytes: &[u8]) {
+    if name_bytes.is_empty() {
+        return;
+    }
+    let Ok(function_name) = std::str::from_utf8(name_bytes) else {
+        return;
+    };
+    let Ok(c_name) = CString::new(name_bytes) else {
+        return;
+    };
+
+    let target_arch = DRIVER_CACHE.read().unwrap().device_arch;
+    let mut driver = DRIVER_CACHE.write().unwrap();
+    let Some(image) = driver.images.get(&hmod) else {
+        return;
+    };
+    let params = if FatBinaryHeader::is_fat_binary(image.as_ptr()) {
+        let fatbin: &FatBinaryHeader = unsafe { &*image.as_ptr().cast() };
+        fatbin.find_kernel_params(function_name, target_arch)
+    } else {
+        crate::elf::find_kernel_params_or_empty(image, function_name)
+    };
+    driver.function_params.insert(hfunc, params);
+    driver.function_names.insert(hfunc, c_name);
+}
+
+#[no_mangle]
+extern "C" fn cuModuleEnumerateFunctions(
+    functions: *mut CUfunction,
+    numFunctions: c_uint,
+    mod_: CUmodule,
+) -> CUresult {
+    if numFunctions != 0 && functions.is_null() {
+        return CUresult::CUDA_ERROR_INVALID_VALUE;
+    }
+
+    let capacity = numFunctions as usize;
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cuModuleEnumerateFunctions", "[#{}]", client.id);
+
+        901022.send(&client.channel_sender).unwrap();
+        numFunctions.send(&client.channel_sender).unwrap();
+        mod_.send(&client.channel_sender).unwrap();
+        client.channel_sender.flush_out().unwrap();
+
+        let returned = recv_slice::<CUfunction, _>(&client.channel_receiver).unwrap();
+        let mut names = Vec::with_capacity(returned.len());
+        for _ in 0..returned.len() {
+            names.push(recv_slice::<u8, _>(&client.channel_receiver).unwrap());
+        }
+        let result = recv_cu_result(
+            "cuModuleEnumerateFunctions",
+            client.id,
+            &client.channel_receiver,
+        );
+
+        if returned.len() > capacity {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        if result == CUresult::CUDA_SUCCESS {
+            if !returned.is_empty() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(returned.as_ptr(), functions, returned.len());
+                }
+            }
+            for (function, name) in returned.iter().copied().zip(names.iter()) {
+                cache_module_function_metadata(mod_, function, name);
+            }
+        }
+        result
+    })
+}
+
 fn has_unsupported_library_options(numJitOptions: c_uint, numLibraryOptions: c_uint) -> bool {
     numJitOptions != 0 || numLibraryOptions != 0
 }
