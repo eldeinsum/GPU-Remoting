@@ -630,6 +630,234 @@ fn cuDevResourceGenerateDesc(
     }
 }
 
+#[cuda_hook(proc_id = 900943)]
+fn cuDevSmResourceSplitByCount(
+    #[skip] result_out: *mut CUdevResource,
+    #[skip] nbGroups: *mut c_uint,
+    #[skip] input: *const CUdevResource,
+    #[skip] remainder: *mut CUdevResource,
+    flags: c_uint,
+    minCount: c_uint,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!nbGroups.is_null());
+        assert!(!input.is_null());
+        let requested_groups = unsafe { *nbGroups };
+        let has_result = !result_out.is_null();
+        let result_capacity = if has_result {
+            assert!(requested_groups > 0);
+            requested_groups as usize
+        } else {
+            0
+        };
+        let input_resource = unsafe { *input };
+        assert!(input_resource.nextResource.is_null());
+        let has_remainder = !remainder.is_null();
+    }
+    'client_extra_send: {
+        has_result.send(channel_sender).unwrap();
+        requested_groups.send(channel_sender).unwrap();
+        input_resource.send(channel_sender).unwrap();
+        has_remainder.send(channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        let mut returned_groups = 0 as c_uint;
+        returned_groups.recv(channel_receiver).unwrap();
+        unsafe {
+            *nbGroups = returned_groups;
+        }
+        if result == CUresult::CUDA_SUCCESS {
+            if has_result {
+                let result_resources = recv_slice::<CUdevResource, _>(channel_receiver).unwrap();
+                assert!(result_resources.len() <= result_capacity);
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        result_resources.as_ptr(),
+                        result_out,
+                        result_resources.len(),
+                    );
+                }
+            }
+            if has_remainder {
+                let mut remainder_resource = std::mem::MaybeUninit::<CUdevResource>::uninit();
+                remainder_resource.recv(channel_receiver).unwrap();
+                unsafe {
+                    std::ptr::write(remainder, remainder_resource.assume_init());
+                }
+            }
+        }
+    }
+    'server_extra_recv: {
+        let mut has_result = false;
+        has_result.recv(channel_receiver).unwrap();
+        let mut requested_groups = 0 as c_uint;
+        requested_groups.recv(channel_receiver).unwrap();
+        let mut input_resource = std::mem::MaybeUninit::<CUdevResource>::uninit();
+        input_resource.recv(channel_receiver).unwrap();
+        let input_resource = unsafe { input_resource.assume_init() };
+        let mut has_remainder = false;
+        has_remainder.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut returned_groups = requested_groups;
+        let mut result_resources = if has_result {
+            unsafe { vec![std::mem::zeroed::<CUdevResource>(); requested_groups as usize] }
+        } else {
+            Vec::new()
+        };
+        let mut remainder_resource = unsafe { std::mem::zeroed::<CUdevResource>() };
+        let result_ptr = if has_result {
+            result_resources.as_mut_ptr()
+        } else {
+            std::ptr::null_mut()
+        };
+        let remainder_ptr = if has_remainder {
+            &raw mut remainder_resource
+        } else {
+            std::ptr::null_mut()
+        };
+        let result = unsafe {
+            cuDevSmResourceSplitByCount(
+                result_ptr,
+                &mut returned_groups,
+                &raw const input_resource,
+                remainder_ptr,
+                flags,
+                minCount,
+            )
+        };
+        if result == CUresult::CUDA_SUCCESS && has_result {
+            assert!(returned_groups as usize <= result_resources.len());
+        }
+    }
+    'server_after_send: {
+        returned_groups.send(channel_sender).unwrap();
+        if result == CUresult::CUDA_SUCCESS {
+            if has_result {
+                send_slice(
+                    &result_resources[..returned_groups as usize],
+                    channel_sender,
+                )
+                .unwrap();
+            }
+            if has_remainder {
+                remainder_resource.send(channel_sender).unwrap();
+            }
+        }
+        channel_sender.flush_out().unwrap();
+    }
+}
+
+#[cuda_hook(proc_id = 900944)]
+fn cuDevSmResourceSplit(
+    #[skip] result_out: *mut CUdevResource,
+    nbGroups: c_uint,
+    #[skip] input: *const CUdevResource,
+    #[skip] remainder: *mut CUdevResource,
+    flags: c_uint,
+    #[skip] groupParams: *mut CU_DEV_SM_RESOURCE_GROUP_PARAMS,
+) -> CUresult {
+    'client_before_send: {
+        assert!(!input.is_null());
+        assert!(!groupParams.is_null());
+        let has_result = !result_out.is_null();
+        let result_capacity = if has_result { nbGroups as usize } else { 0 };
+        let input_resource = unsafe { *input };
+        assert!(input_resource.nextResource.is_null());
+        let has_remainder = !remainder.is_null();
+        let group_params = unsafe { std::slice::from_raw_parts(groupParams, nbGroups as usize) };
+    }
+    'client_extra_send: {
+        has_result.send(channel_sender).unwrap();
+        input_resource.send(channel_sender).unwrap();
+        has_remainder.send(channel_sender).unwrap();
+        send_slice(group_params, channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            if has_result {
+                let result_resources = recv_slice::<CUdevResource, _>(channel_receiver).unwrap();
+                assert!(result_resources.len() <= result_capacity);
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        result_resources.as_ptr(),
+                        result_out,
+                        result_resources.len(),
+                    );
+                }
+            }
+            let returned_group_params =
+                recv_slice::<CU_DEV_SM_RESOURCE_GROUP_PARAMS, _>(channel_receiver).unwrap();
+            assert_eq!(returned_group_params.len(), nbGroups as usize);
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    returned_group_params.as_ptr(),
+                    groupParams,
+                    returned_group_params.len(),
+                );
+            }
+            if has_remainder {
+                let mut remainder_resource = std::mem::MaybeUninit::<CUdevResource>::uninit();
+                remainder_resource.recv(channel_receiver).unwrap();
+                unsafe {
+                    std::ptr::write(remainder, remainder_resource.assume_init());
+                }
+            }
+        }
+    }
+    'server_extra_recv: {
+        let mut has_result = false;
+        has_result.recv(channel_receiver).unwrap();
+        let mut input_resource = std::mem::MaybeUninit::<CUdevResource>::uninit();
+        input_resource.recv(channel_receiver).unwrap();
+        let input_resource = unsafe { input_resource.assume_init() };
+        let mut has_remainder = false;
+        has_remainder.recv(channel_receiver).unwrap();
+        let mut group_params =
+            recv_slice::<CU_DEV_SM_RESOURCE_GROUP_PARAMS, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut result_resources = if has_result {
+            unsafe { vec![std::mem::zeroed::<CUdevResource>(); nbGroups as usize] }
+        } else {
+            Vec::new()
+        };
+        let mut remainder_resource = unsafe { std::mem::zeroed::<CUdevResource>() };
+        let result_ptr = if has_result {
+            result_resources.as_mut_ptr()
+        } else {
+            std::ptr::null_mut()
+        };
+        let remainder_ptr = if has_remainder {
+            &raw mut remainder_resource
+        } else {
+            std::ptr::null_mut()
+        };
+        let result = unsafe {
+            cuDevSmResourceSplit(
+                result_ptr,
+                nbGroups,
+                &raw const input_resource,
+                remainder_ptr,
+                flags,
+                group_params.as_mut_ptr(),
+            )
+        };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            if has_result {
+                send_slice(&result_resources, channel_sender).unwrap();
+            }
+            send_slice(&group_params, channel_sender).unwrap();
+            if has_remainder {
+                remainder_resource.send(channel_sender).unwrap();
+            }
+        }
+        channel_sender.flush_out().unwrap();
+    }
+}
+
 #[cuda_hook(proc_id = 900322)]
 fn cuDeviceGetProperties(prop: *mut CUdevprop, dev: CUdevice) -> CUresult;
 

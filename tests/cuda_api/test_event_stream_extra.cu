@@ -43,6 +43,27 @@ static void CUDA_CB driver_stream_callback(CUstream stream, CUresult status,
     state->stream = stream;
 }
 
+static unsigned int aligned_sm_count(unsigned int sm_count,
+                                     unsigned int min_sm_count,
+                                     unsigned int alignment)
+{
+    if (min_sm_count == 0) {
+        min_sm_count = 1;
+    }
+    if (alignment == 0) {
+        alignment = min_sm_count;
+    }
+    unsigned int group_sm_count = min_sm_count;
+    if (group_sm_count < alignment) {
+        group_sm_count = alignment;
+    }
+    unsigned int remainder = group_sm_count % alignment;
+    if (remainder != 0) {
+        group_sm_count += alignment - remainder;
+    }
+    return group_sm_count <= sm_count ? group_sm_count : 0;
+}
+
 #define CHECK_CUDA(call)                                                       \
     do {                                                                       \
         cudaError_t result = (call);                                           \
@@ -118,6 +139,54 @@ int main()
         std::fprintf(stderr, "unexpected runtime device SM resource\n");
         return 1;
     }
+    unsigned int runtime_min_sm_count =
+        runtime_device_resource.sm.minSmPartitionSize == 0
+            ? 1
+            : runtime_device_resource.sm.minSmPartitionSize;
+    unsigned int runtime_query_groups = 0;
+    CHECK_CUDA_SUCCESS(cudaDevSmResourceSplitByCount(
+        nullptr, &runtime_query_groups, &runtime_device_resource, nullptr, 0,
+        runtime_min_sm_count));
+    if (runtime_query_groups == 0) {
+        std::fprintf(stderr, "runtime SM split query returned no groups\n");
+        return 1;
+    }
+    cudaDevResource runtime_split_resource = {};
+    cudaDevResource runtime_split_remainder = {};
+    unsigned int runtime_split_groups = 1;
+    CHECK_CUDA_SUCCESS(cudaDevSmResourceSplitByCount(
+        &runtime_split_resource, &runtime_split_groups, &runtime_device_resource,
+        &runtime_split_remainder, 0, runtime_min_sm_count));
+    if (runtime_split_groups != 1 ||
+        runtime_split_resource.type != cudaDevResourceTypeSm ||
+        runtime_split_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime split SM resource\n");
+        return 1;
+    }
+    unsigned int runtime_group_sm_count = aligned_sm_count(
+        runtime_device_resource.sm.smCount, runtime_min_sm_count,
+        runtime_device_resource.sm.smCoscheduledAlignment);
+    if (runtime_group_sm_count == 0) {
+        std::fprintf(stderr, "runtime SM resource cannot be grouped\n");
+        return 1;
+    }
+    cudaDevResource runtime_structured_resource = {};
+    cudaDevResource runtime_structured_remainder = {};
+    cudaDevSmResourceGroupParams runtime_group_params = {};
+    runtime_group_params.smCount = runtime_group_sm_count;
+    runtime_group_params.coscheduledSmCount =
+        runtime_device_resource.sm.smCoscheduledAlignment == 0
+            ? runtime_group_sm_count
+            : runtime_device_resource.sm.smCoscheduledAlignment;
+    CHECK_CUDA_SUCCESS(cudaDevSmResourceSplit(
+        &runtime_structured_resource, 1, &runtime_device_resource,
+        &runtime_structured_remainder, 0, &runtime_group_params));
+    if (runtime_structured_resource.type != cudaDevResourceTypeSm ||
+        runtime_structured_resource.sm.smCount == 0 ||
+        runtime_group_params.smCount == 0) {
+        std::fprintf(stderr, "unexpected runtime structured SM resource\n");
+        return 1;
+    }
     cudaExecutionContext_t runtime_execution_context = nullptr;
     CHECK_CUDA_SUCCESS(cudaDeviceGetExecutionCtx(&runtime_execution_context, 0));
     if (runtime_execution_context == nullptr) {
@@ -173,7 +242,7 @@ int main()
 
     cudaDevResourceDesc_t runtime_green_desc = nullptr;
     CHECK_CUDA_SUCCESS(cudaDevResourceGenerateDesc(
-        &runtime_green_desc, &runtime_device_resource, 1));
+        &runtime_green_desc, &runtime_split_resource, 1));
     cudaExecutionContext_t runtime_green_context = nullptr;
     CHECK_CUDA_SUCCESS(
         cudaGreenCtxCreate(&runtime_green_context, runtime_green_desc, 0, 0));
@@ -307,6 +376,54 @@ int main()
         std::fprintf(stderr, "unexpected driver device SM resource\n");
         return 1;
     }
+    unsigned int driver_min_sm_count =
+        driver_device_resource.sm.minSmPartitionSize == 0
+            ? 1
+            : driver_device_resource.sm.minSmPartitionSize;
+    unsigned int driver_query_groups = 0;
+    CHECK_DRV_SUCCESS(cuDevSmResourceSplitByCount(
+        nullptr, &driver_query_groups, &driver_device_resource, nullptr, 0,
+        driver_min_sm_count));
+    if (driver_query_groups == 0) {
+        std::fprintf(stderr, "driver SM split query returned no groups\n");
+        return 1;
+    }
+    CUdevResource driver_split_resource = {};
+    CUdevResource driver_split_remainder = {};
+    unsigned int driver_split_groups = 1;
+    CHECK_DRV_SUCCESS(cuDevSmResourceSplitByCount(
+        &driver_split_resource, &driver_split_groups, &driver_device_resource,
+        &driver_split_remainder, 0, driver_min_sm_count));
+    if (driver_split_groups != 1 ||
+        driver_split_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_split_resource.sm.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver split SM resource\n");
+        return 1;
+    }
+    unsigned int driver_group_sm_count = aligned_sm_count(
+        driver_device_resource.sm.smCount, driver_min_sm_count,
+        driver_device_resource.sm.smCoscheduledAlignment);
+    if (driver_group_sm_count == 0) {
+        std::fprintf(stderr, "driver SM resource cannot be grouped\n");
+        return 1;
+    }
+    CUdevResource driver_structured_resource = {};
+    CUdevResource driver_structured_remainder = {};
+    CU_DEV_SM_RESOURCE_GROUP_PARAMS driver_group_params = {};
+    driver_group_params.smCount = driver_group_sm_count;
+    driver_group_params.coscheduledSmCount =
+        driver_device_resource.sm.smCoscheduledAlignment == 0
+            ? driver_group_sm_count
+            : driver_device_resource.sm.smCoscheduledAlignment;
+    CHECK_DRV_SUCCESS(cuDevSmResourceSplit(
+        &driver_structured_resource, 1, &driver_device_resource,
+        &driver_structured_remainder, 0, &driver_group_params));
+    if (driver_structured_resource.type != CU_DEV_RESOURCE_TYPE_SM ||
+        driver_structured_resource.sm.smCount == 0 ||
+        driver_group_params.smCount == 0) {
+        std::fprintf(stderr, "unexpected driver structured SM resource\n");
+        return 1;
+    }
     CUdevResource driver_context_resource = {};
     CHECK_DRV_SUCCESS(cuCtxGetDevResource(
         driver_context, &driver_context_resource, CU_DEV_RESOURCE_TYPE_SM));
@@ -340,7 +457,7 @@ int main()
     }
     CUdevResourceDesc driver_green_desc = nullptr;
     CHECK_DRV_SUCCESS(cuDevResourceGenerateDesc(
-        &driver_green_desc, &driver_device_resource, 1));
+        &driver_green_desc, &driver_split_resource, 1));
     CUgreenCtx driver_green = nullptr;
     CHECK_DRV_SUCCESS(cuGreenCtxCreate(&driver_green, driver_green_desc,
                                        driver_device,
