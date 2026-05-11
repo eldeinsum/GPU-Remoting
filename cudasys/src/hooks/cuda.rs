@@ -548,6 +548,43 @@ fn cuFuncIsLoaded(state: *mut CUfunctionLoadingState, function: CUfunction) -> C
 #[cuda_hook(proc_id = 900725, async_api = false)]
 fn cuFuncLoad(function: CUfunction) -> CUresult;
 
+#[cuda_hook(proc_id = 901025, async_api = false)]
+fn cuFuncSetBlockShape(hfunc: CUfunction, x: c_int, y: c_int, z: c_int) -> CUresult;
+
+#[cuda_hook(proc_id = 901026, async_api = false)]
+fn cuFuncSetSharedSize(hfunc: CUfunction, bytes: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901027, async_api = false)]
+fn cuParamSetSize(hfunc: CUfunction, numbytes: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901028, async_api = false)]
+fn cuParamSeti(hfunc: CUfunction, offset: c_int, value: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901029, async_api = false)]
+fn cuParamSetf(hfunc: CUfunction, offset: c_int, value: f32) -> CUresult;
+
+#[cuda_hook(proc_id = 901030, async_api = false)]
+fn cuParamSetv(
+    hfunc: CUfunction,
+    offset: c_int,
+    #[host(input, len = numbytes as usize)] ptr: *mut c_void,
+    numbytes: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901031, async_api)]
+fn cuLaunch(f: CUfunction) -> CUresult;
+
+#[cuda_hook(proc_id = 901032, async_api)]
+fn cuLaunchGrid(f: CUfunction, grid_width: c_int, grid_height: c_int) -> CUresult;
+
+#[cuda_hook(proc_id = 901033, async_api)]
+fn cuLaunchGridAsync(
+    f: CUfunction,
+    grid_width: c_int,
+    grid_height: c_int,
+    hStream: CUstream,
+) -> CUresult;
+
 #[cuda_hook(proc_id = 640)]
 fn cuDriverGetVersion(driverVersion: *mut c_int) -> CUresult;
 
