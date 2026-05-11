@@ -1321,6 +1321,91 @@ fn cudaMemRangeGetAttributes(
     count: usize,
 ) -> cudaError_t;
 
+#[cuda_hook(proc_id = 901012, async_api)]
+fn cudaMemPrefetchBatchAsync(
+    #[host(input, len = count)] dptrs: *mut *mut c_void,
+    #[host(input, len = count)] sizes: *mut usize,
+    count: usize,
+    #[host(input, len = numPrefetchLocs)] prefetchLocs: *mut cudaMemLocation,
+    #[host(input, len = numPrefetchLocs)] prefetchLocIdxs: *mut usize,
+    numPrefetchLocs: usize,
+    flags: c_ulonglong,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(count > 0);
+        assert!(!dptrs.is_null());
+        assert!(!sizes.is_null());
+        assert!(numPrefetchLocs > 0);
+        assert!(numPrefetchLocs <= count);
+        assert!(!prefetchLocs.is_null());
+        assert!(!prefetchLocIdxs.is_null());
+        assert_eq!(flags, 0);
+        assert!(!stream.is_null());
+        let dptrs_slice = unsafe { std::slice::from_raw_parts(dptrs, count) };
+        let sizes_slice = unsafe { std::slice::from_raw_parts(sizes, count) };
+        let loc_idxs = unsafe { std::slice::from_raw_parts(prefetchLocIdxs, numPrefetchLocs) };
+        assert!(dptrs_slice.iter().all(|dptr| !dptr.is_null()));
+        assert!(sizes_slice.iter().all(|size| *size > 0));
+        assert_eq!(loc_idxs[0], 0);
+        assert!(loc_idxs.iter().all(|idx| *idx < count));
+        assert!(loc_idxs.windows(2).all(|idxs| idxs[0] < idxs[1]));
+    }
+}
+
+#[cuda_hook(proc_id = 901013, async_api)]
+fn cudaMemDiscardBatchAsync(
+    #[host(input, len = count)] dptrs: *mut *mut c_void,
+    #[host(input, len = count)] sizes: *mut usize,
+    count: usize,
+    flags: c_ulonglong,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(count > 0);
+        assert!(!dptrs.is_null());
+        assert!(!sizes.is_null());
+        assert_eq!(flags, 0);
+        assert!(!stream.is_null());
+        let dptrs_slice = unsafe { std::slice::from_raw_parts(dptrs, count) };
+        let sizes_slice = unsafe { std::slice::from_raw_parts(sizes, count) };
+        assert!(dptrs_slice.iter().all(|dptr| !dptr.is_null()));
+        assert!(sizes_slice.iter().all(|size| *size > 0));
+    }
+}
+
+#[cuda_hook(proc_id = 901014, async_api)]
+fn cudaMemDiscardAndPrefetchBatchAsync(
+    #[host(input, len = count)] dptrs: *mut *mut c_void,
+    #[host(input, len = count)] sizes: *mut usize,
+    count: usize,
+    #[host(input, len = numPrefetchLocs)] prefetchLocs: *mut cudaMemLocation,
+    #[host(input, len = numPrefetchLocs)] prefetchLocIdxs: *mut usize,
+    numPrefetchLocs: usize,
+    flags: c_ulonglong,
+    stream: cudaStream_t,
+) -> cudaError_t {
+    'client_before_send: {
+        assert!(count > 0);
+        assert!(!dptrs.is_null());
+        assert!(!sizes.is_null());
+        assert!(numPrefetchLocs > 0);
+        assert!(numPrefetchLocs <= count);
+        assert!(!prefetchLocs.is_null());
+        assert!(!prefetchLocIdxs.is_null());
+        assert_eq!(flags, 0);
+        assert!(!stream.is_null());
+        let dptrs_slice = unsafe { std::slice::from_raw_parts(dptrs, count) };
+        let sizes_slice = unsafe { std::slice::from_raw_parts(sizes, count) };
+        let loc_idxs = unsafe { std::slice::from_raw_parts(prefetchLocIdxs, numPrefetchLocs) };
+        assert!(dptrs_slice.iter().all(|dptr| !dptr.is_null()));
+        assert!(sizes_slice.iter().all(|size| *size > 0));
+        assert_eq!(loc_idxs[0], 0);
+        assert!(loc_idxs.iter().all(|idx| *idx < count));
+        assert!(loc_idxs.windows(2).all(|idxs| idxs[0] < idxs[1]));
+    }
+}
+
 #[cuda_custom_hook] // calls cudaMemcpy
 fn cudaMemcpyToSymbol(
     symbol: *const c_void,
