@@ -138,6 +138,179 @@ static int run_driver_objects()
     return 0;
 }
 
+static int close_enough(float lhs, float rhs)
+{
+    float diff = lhs > rhs ? lhs - rhs : rhs - lhs;
+    return diff < 0.0001f;
+}
+
+static int run_driver_legacy_texture_refs()
+{
+    constexpr size_t kBytes = 256;
+    constexpr size_t kWidth = 16;
+    constexpr size_t kHeight = 4;
+
+    CHECK_DRV(cuInit(0));
+    CHECK_CUDA(cudaSetDevice(0));
+    CHECK_CUDA(cudaFree(nullptr));
+
+    CUtexref tex = nullptr;
+    CHECK_DRV(cuTexRefCreate(&tex));
+    if (require(tex != nullptr, "legacy texture reference handle is null") != 0) {
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetFlags(
+        tex, CU_TRSF_READ_AS_INTEGER | CU_TRSF_NORMALIZED_COORDINATES));
+    unsigned int flags = 0;
+    CHECK_DRV(cuTexRefGetFlags(&flags, tex));
+    if ((flags & CU_TRSF_READ_AS_INTEGER) == 0 ||
+        (flags & CU_TRSF_NORMALIZED_COORDINATES) == 0) {
+        std::fprintf(stderr, "legacy texture flags mismatch: %u\n", flags);
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetAddressMode(tex, 0, CU_TR_ADDRESS_MODE_WRAP));
+    CUaddress_mode address_mode = CU_TR_ADDRESS_MODE_CLAMP;
+    CHECK_DRV(cuTexRefGetAddressMode(&address_mode, tex, 0));
+    if (address_mode != CU_TR_ADDRESS_MODE_WRAP) {
+        std::fprintf(stderr, "legacy texture address mode mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetFilterMode(tex, CU_TR_FILTER_MODE_LINEAR));
+    CUfilter_mode filter_mode = CU_TR_FILTER_MODE_POINT;
+    CHECK_DRV(cuTexRefGetFilterMode(&filter_mode, tex));
+    if (filter_mode != CU_TR_FILTER_MODE_LINEAR) {
+        std::fprintf(stderr, "legacy texture filter mode mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetFormat(tex, CU_AD_FORMAT_UNSIGNED_INT8, 1));
+    CUarray_format format = CU_AD_FORMAT_FLOAT;
+    int channels = 0;
+    CHECK_DRV(cuTexRefGetFormat(&format, &channels, tex));
+    if (format != CU_AD_FORMAT_UNSIGNED_INT8 || channels != 1) {
+        std::fprintf(stderr, "legacy texture format mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetMipmapFilterMode(tex, CU_TR_FILTER_MODE_POINT));
+    CUfilter_mode mip_filter_mode = CU_TR_FILTER_MODE_LINEAR;
+    CHECK_DRV(cuTexRefGetMipmapFilterMode(&mip_filter_mode, tex));
+    if (mip_filter_mode != CU_TR_FILTER_MODE_POINT) {
+        std::fprintf(stderr, "legacy texture mip filter mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetMipmapLevelBias(tex, 0.5f));
+    float mip_bias = 0.0f;
+    CHECK_DRV(cuTexRefGetMipmapLevelBias(&mip_bias, tex));
+    if (!close_enough(mip_bias, 0.5f)) {
+        std::fprintf(stderr, "legacy texture mip bias mismatch: %f\n", mip_bias);
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetMipmapLevelClamp(tex, 0.0f, 1.0f));
+    float min_clamp = -1.0f;
+    float max_clamp = -1.0f;
+    CHECK_DRV(cuTexRefGetMipmapLevelClamp(&min_clamp, &max_clamp, tex));
+    if (!close_enough(min_clamp, 0.0f) || !close_enough(max_clamp, 1.0f)) {
+        std::fprintf(stderr, "legacy texture mip clamp mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefSetMaxAnisotropy(tex, 1));
+    int max_anisotropy = 0;
+    CHECK_DRV(cuTexRefGetMaxAnisotropy(&max_anisotropy, tex));
+    if (max_anisotropy != 1) {
+        std::fprintf(stderr, "legacy texture anisotropy mismatch: %d\n",
+                     max_anisotropy);
+        return 1;
+    }
+
+    float border_color[4] = {1.0f, 0.5f, 0.25f, 0.0f};
+    CHECK_DRV(cuTexRefSetBorderColor(tex, border_color));
+    float actual_border_color[4] = {};
+    CHECK_DRV(cuTexRefGetBorderColor(actual_border_color, tex));
+    for (int i = 0; i < 4; ++i) {
+        if (!close_enough(actual_border_color[i], border_color[i])) {
+            std::fprintf(stderr, "legacy texture border mismatch at %d\n", i);
+            return 1;
+        }
+    }
+
+    CUdeviceptr linear = 0;
+    CHECK_DRV(cuMemAlloc(&linear, kBytes));
+    size_t byte_offset = 1;
+    CHECK_DRV(cuTexRefSetAddress(&byte_offset, tex, linear, kBytes));
+    CUdeviceptr queried_linear = 0;
+    CHECK_DRV(cuTexRefGetAddress(&queried_linear, tex));
+    if (queried_linear == 0) {
+        std::fprintf(stderr, "legacy texture linear address was not bound\n");
+        return 1;
+    }
+
+    CUdeviceptr pitched = 0;
+    size_t pitch = 0;
+    CHECK_DRV(cuMemAllocPitch(&pitched, &pitch, kWidth, kHeight, 4));
+    CUDA_ARRAY_DESCRIPTOR pitch_desc = {};
+    pitch_desc.Width = kWidth;
+    pitch_desc.Height = kHeight;
+    pitch_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    pitch_desc.NumChannels = 1;
+    CHECK_DRV(cuTexRefSetAddress2D(tex, &pitch_desc, pitched, pitch));
+
+    CUDA_ARRAY_DESCRIPTOR array_desc = {};
+    array_desc.Width = kWidth;
+    array_desc.Height = kHeight;
+    array_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    array_desc.NumChannels = 1;
+
+    CUarray array = nullptr;
+    CHECK_DRV(cuArrayCreate(&array, &array_desc));
+
+    CUtexref array_tex = nullptr;
+    CHECK_DRV(cuTexRefCreate(&array_tex));
+    CHECK_DRV(cuTexRefSetArray(array_tex, array, CU_TRSA_OVERRIDE_FORMAT));
+    CUarray queried_array = nullptr;
+    CHECK_DRV(cuTexRefGetArray(&queried_array, array_tex));
+    if (queried_array != array) {
+        std::fprintf(stderr, "legacy texture array binding mismatch\n");
+        return 1;
+    }
+
+    CUDA_ARRAY3D_DESCRIPTOR mip_desc = {};
+    mip_desc.Width = kWidth;
+    mip_desc.Height = kHeight;
+    mip_desc.Depth = 0;
+    mip_desc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+    mip_desc.NumChannels = 1;
+
+    CUmipmappedArray mipmap = nullptr;
+    CHECK_DRV(cuMipmappedArrayCreate(&mipmap, &mip_desc, 2));
+
+    CUtexref mip_tex = nullptr;
+    CHECK_DRV(cuTexRefCreate(&mip_tex));
+    CHECK_DRV(cuTexRefSetMipmappedArray(
+        mip_tex, mipmap, CU_TRSA_OVERRIDE_FORMAT));
+    CUmipmappedArray queried_mipmap = nullptr;
+    CHECK_DRV(cuTexRefGetMipmappedArray(&queried_mipmap, mip_tex));
+    if (queried_mipmap != mipmap) {
+        std::fprintf(stderr, "legacy texture mipmap binding mismatch\n");
+        return 1;
+    }
+
+    CHECK_DRV(cuTexRefDestroy(mip_tex));
+    CHECK_DRV(cuMipmappedArrayDestroy(mipmap));
+    CHECK_DRV(cuTexRefDestroy(array_tex));
+    CHECK_DRV(cuArrayDestroy(array));
+    CHECK_DRV(cuMemFree(pitched));
+    CHECK_DRV(cuMemFree(linear));
+    CHECK_DRV(cuTexRefDestroy(tex));
+    return 0;
+}
+
 int main()
 {
     constexpr size_t kWidth = 16;
@@ -233,6 +406,9 @@ int main()
     CHECK_CUDA(cudaFreeArray(array));
 
     if (run_driver_objects() != 0) {
+        return 1;
+    }
+    if (run_driver_legacy_texture_refs() != 0) {
         return 1;
     }
 

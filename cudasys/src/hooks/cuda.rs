@@ -116,6 +116,126 @@ fn cuSurfObjectGetResourceDesc(
     surfObject: CUsurfObject,
 ) -> CUresult;
 
+#[cuda_hook(proc_id = 901053)]
+fn cuTexRefCreate(pTexRef: *mut CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901054, async_api = false)]
+fn cuTexRefDestroy(hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901055)]
+fn cuTexRefSetArray(hTexRef: CUtexref, hArray: CUarray, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901056)]
+fn cuTexRefGetArray(phArray: *mut CUarray, hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901057)]
+fn cuTexRefSetMipmappedArray(
+    hTexRef: CUtexref,
+    hMipmappedArray: CUmipmappedArray,
+    Flags: c_uint,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901058)]
+fn cuTexRefGetMipmappedArray(
+    phMipmappedArray: *mut CUmipmappedArray,
+    hTexRef: CUtexref,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901059)]
+fn cuTexRefSetAddress_v2(
+    ByteOffset: *mut usize,
+    hTexRef: CUtexref,
+    dptr: CUdeviceptr,
+    bytes: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901060)]
+fn cuTexRefGetAddress_v2(pdptr: *mut CUdeviceptr, hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901061)]
+fn cuTexRefSetAddress2D_v3(
+    hTexRef: CUtexref,
+    #[host(len = 1)] desc: *const CUDA_ARRAY_DESCRIPTOR,
+    dptr: CUdeviceptr,
+    Pitch: usize,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901062)]
+fn cuTexRefSetFormat(
+    hTexRef: CUtexref,
+    fmt: CUarray_format,
+    NumPackedComponents: c_int,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901063)]
+fn cuTexRefGetFormat(
+    pFormat: *mut CUarray_format,
+    pNumChannels: *mut c_int,
+    hTexRef: CUtexref,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901064)]
+fn cuTexRefSetAddressMode(hTexRef: CUtexref, dim: c_int, am: CUaddress_mode) -> CUresult;
+
+#[cuda_hook(proc_id = 901065)]
+fn cuTexRefGetAddressMode(pam: *mut CUaddress_mode, hTexRef: CUtexref, dim: c_int) -> CUresult;
+
+#[cuda_hook(proc_id = 901066)]
+fn cuTexRefSetFilterMode(hTexRef: CUtexref, fm: CUfilter_mode) -> CUresult;
+
+#[cuda_hook(proc_id = 901067)]
+fn cuTexRefGetFilterMode(pfm: *mut CUfilter_mode, hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901068)]
+fn cuTexRefSetMipmapFilterMode(hTexRef: CUtexref, fm: CUfilter_mode) -> CUresult;
+
+#[cuda_hook(proc_id = 901069)]
+fn cuTexRefGetMipmapFilterMode(pfm: *mut CUfilter_mode, hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901070)]
+fn cuTexRefSetMipmapLevelBias(hTexRef: CUtexref, bias: f32) -> CUresult;
+
+#[cuda_hook(proc_id = 901071)]
+fn cuTexRefGetMipmapLevelBias(pbias: *mut f32, hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901072)]
+fn cuTexRefSetMipmapLevelClamp(
+    hTexRef: CUtexref,
+    minMipmapLevelClamp: f32,
+    maxMipmapLevelClamp: f32,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901073)]
+fn cuTexRefGetMipmapLevelClamp(
+    pminMipmapLevelClamp: *mut f32,
+    pmaxMipmapLevelClamp: *mut f32,
+    hTexRef: CUtexref,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901074)]
+fn cuTexRefSetMaxAnisotropy(hTexRef: CUtexref, maxAniso: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901075)]
+fn cuTexRefGetMaxAnisotropy(pmaxAniso: *mut c_int, hTexRef: CUtexref) -> CUresult;
+
+#[cuda_hook(proc_id = 901076)]
+fn cuTexRefSetBorderColor(
+    hTexRef: CUtexref,
+    #[host(input, len = 4)] pBorderColor: *mut f32,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901077)]
+fn cuTexRefGetBorderColor(
+    #[host(output, len = 4)] pBorderColor: *mut f32,
+    hTexRef: CUtexref,
+) -> CUresult;
+
+#[cuda_hook(proc_id = 901078)]
+fn cuTexRefSetFlags(hTexRef: CUtexref, Flags: c_uint) -> CUresult;
+
+#[cuda_hook(proc_id = 901079)]
+fn cuTexRefGetFlags(pFlags: *mut c_uint, hTexRef: CUtexref) -> CUresult;
+
 #[cuda_hook(proc_id = 900463, async_api = false)]
 fn cuArrayDestroy(hArray: CUarray) -> CUresult;
 
