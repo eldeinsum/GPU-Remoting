@@ -1063,6 +1063,238 @@ fn cuProfilerStart() -> CUresult;
 #[cuda_hook(proc_id = 901092, async_api = false)]
 fn cuProfilerStop() -> CUresult;
 
+#[cuda_hook(proc_id = 901100, async_api = false)]
+fn cuCoredumpGetAttribute(
+    attrib: CUcoredumpSettings,
+    #[skip] value: *mut c_void,
+    #[skip] size: *mut usize,
+) -> CUresult {
+    'client_before_send: {
+        if size.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let value_present = !value.is_null();
+        let capacity = if value_present { unsafe { *size } } else { 0 };
+    }
+    'client_extra_send: {
+        value_present.send(channel_sender).unwrap();
+        capacity.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut value_present = false;
+        value_present.recv(channel_receiver).unwrap();
+        let mut capacity = 0usize;
+        capacity.recv(channel_receiver).unwrap();
+        let mut value_buffer = vec![0u8; capacity];
+        let value_ptr = if value_present {
+            value_buffer.as_mut_ptr().cast()
+        } else {
+            std::ptr::null_mut()
+        };
+        let mut size_value = capacity;
+    }
+    'server_execution: {
+        let result = unsafe { cuCoredumpGetAttribute(attrib, value_ptr, &raw mut size_value) };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            size_value.send(channel_sender).unwrap();
+            let bytes = if value_present {
+                &value_buffer[..size_value.min(capacity)]
+            } else {
+                &[]
+            };
+            send_slice(bytes, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut size_out = 0usize;
+            size_out.recv(channel_receiver).unwrap();
+            let bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            unsafe {
+                *size = size_out;
+                if value_present && !bytes.is_empty() {
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), value.cast(), bytes.len());
+                }
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 901101, async_api = false)]
+fn cuCoredumpGetAttributeGlobal(
+    attrib: CUcoredumpSettings,
+    #[skip] value: *mut c_void,
+    #[skip] size: *mut usize,
+) -> CUresult {
+    'client_before_send: {
+        if size.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let value_present = !value.is_null();
+        let capacity = if value_present { unsafe { *size } } else { 0 };
+    }
+    'client_extra_send: {
+        value_present.send(channel_sender).unwrap();
+        capacity.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut value_present = false;
+        value_present.recv(channel_receiver).unwrap();
+        let mut capacity = 0usize;
+        capacity.recv(channel_receiver).unwrap();
+        let mut value_buffer = vec![0u8; capacity];
+        let value_ptr = if value_present {
+            value_buffer.as_mut_ptr().cast()
+        } else {
+            std::ptr::null_mut()
+        };
+        let mut size_value = capacity;
+    }
+    'server_execution: {
+        let result =
+            unsafe { cuCoredumpGetAttributeGlobal(attrib, value_ptr, &raw mut size_value) };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            size_value.send(channel_sender).unwrap();
+            let bytes = if value_present {
+                &value_buffer[..size_value.min(capacity)]
+            } else {
+                &[]
+            };
+            send_slice(bytes, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut size_out = 0usize;
+            size_out.recv(channel_receiver).unwrap();
+            let bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            unsafe {
+                *size = size_out;
+                if value_present && !bytes.is_empty() {
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), value.cast(), bytes.len());
+                }
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 901102, async_api = false)]
+fn cuCoredumpSetAttribute(
+    attrib: CUcoredumpSettings,
+    #[skip] value: *mut c_void,
+    #[skip] size: *mut usize,
+) -> CUresult {
+    'client_before_send: {
+        if size.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let value_present = !value.is_null();
+        let value_size = unsafe { *size };
+        let bytes = if value_present && value_size > 0 {
+            unsafe { std::slice::from_raw_parts(value.cast::<u8>(), value_size) }
+        } else {
+            &[]
+        };
+    }
+    'client_extra_send: {
+        value_present.send(channel_sender).unwrap();
+        value_size.send(channel_sender).unwrap();
+        send_slice(bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut value_present = false;
+        value_present.recv(channel_receiver).unwrap();
+        let mut size_value = 0usize;
+        size_value.recv(channel_receiver).unwrap();
+        let mut bytes = recv_slice::<u8, _>(channel_receiver).unwrap().to_vec();
+        let value_ptr = if value_present {
+            bytes.as_mut_ptr().cast()
+        } else {
+            std::ptr::null_mut()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cuCoredumpSetAttribute(attrib, value_ptr, &raw mut size_value) };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            size_value.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut size_out = 0usize;
+            size_out.recv(channel_receiver).unwrap();
+            unsafe {
+                *size = size_out;
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 901103, async_api = false)]
+fn cuCoredumpSetAttributeGlobal(
+    attrib: CUcoredumpSettings,
+    #[skip] value: *mut c_void,
+    #[skip] size: *mut usize,
+) -> CUresult {
+    'client_before_send: {
+        if size.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        let value_present = !value.is_null();
+        let value_size = unsafe { *size };
+        let bytes = if value_present && value_size > 0 {
+            unsafe { std::slice::from_raw_parts(value.cast::<u8>(), value_size) }
+        } else {
+            &[]
+        };
+    }
+    'client_extra_send: {
+        value_present.send(channel_sender).unwrap();
+        value_size.send(channel_sender).unwrap();
+        send_slice(bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut value_present = false;
+        value_present.recv(channel_receiver).unwrap();
+        let mut size_value = 0usize;
+        size_value.recv(channel_receiver).unwrap();
+        let mut bytes = recv_slice::<u8, _>(channel_receiver).unwrap().to_vec();
+        let value_ptr = if value_present {
+            bytes.as_mut_ptr().cast()
+        } else {
+            std::ptr::null_mut()
+        };
+    }
+    'server_execution: {
+        let result =
+            unsafe { cuCoredumpSetAttributeGlobal(attrib, value_ptr, &raw mut size_value) };
+    }
+    'server_after_send: {
+        if result == CUresult::CUDA_SUCCESS {
+            size_value.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == CUresult::CUDA_SUCCESS {
+            let mut size_out = 0usize;
+            size_out.recv(channel_receiver).unwrap();
+            unsafe {
+                *size = size_out;
+            }
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 901093, async_api = false)]
 fn cuLogsCurrent(iterator_out: *mut CUlogIterator, flags: c_uint) -> CUresult;
 
