@@ -18620,6 +18620,30 @@ fn cublasZcopy_v2_64(
     incy: i64,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1650, async_api)]
+fn cublasCopyEx(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *const c_void,
+    xType: cudaDataType,
+    incx: c_int,
+    #[device] y: *mut c_void,
+    yType: cudaDataType,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1651, async_api)]
+fn cublasCopyEx_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *const c_void,
+    xType: cudaDataType,
+    incx: i64,
+    #[device] y: *mut c_void,
+    yType: cudaDataType,
+    incy: i64,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1134)]
 fn cublasSswap_v2(
     handle: cublasHandle_t,
@@ -18697,6 +18721,30 @@ fn cublasZswap_v2_64(
     #[device] x: *mut cuDoubleComplex,
     incx: i64,
     #[device] y: *mut cuDoubleComplex,
+    incy: i64,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1652, async_api)]
+fn cublasSwapEx(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[device] x: *mut c_void,
+    xType: cudaDataType,
+    incx: c_int,
+    #[device] y: *mut c_void,
+    yType: cudaDataType,
+    incy: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1653, async_api)]
+fn cublasSwapEx_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[device] x: *mut c_void,
+    xType: cudaDataType,
+    incx: i64,
+    #[device] y: *mut c_void,
+    yType: cudaDataType,
     incy: i64,
 ) -> cublasStatus_t;
 

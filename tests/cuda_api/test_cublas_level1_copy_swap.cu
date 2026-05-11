@@ -74,6 +74,29 @@ static void expect_vector(const std::vector<T> &got, const std::vector<T> &want,
     }
 }
 
+template <typename T>
+static cudaDataType_t cuda_type();
+
+template <>
+cudaDataType_t cuda_type<float>() {
+    return CUDA_R_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<double>() {
+    return CUDA_R_64F;
+}
+
+template <>
+cudaDataType_t cuda_type<cuComplex>() {
+    return CUDA_C_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<cuDoubleComplex>() {
+    return CUDA_C_64F;
+}
+
 template <typename T, typename CopyFn, typename Copy64Fn>
 static void run_copy_case(cublasHandle_t handle, const std::vector<T> &src,
                           CopyFn copy_fn, Copy64Fn copy64_fn,
@@ -88,6 +111,27 @@ static void run_copy_case(cublasHandle_t handle, const std::vector<T> &src,
 
     CHECK_CUDA(cudaMemset(y, 0, src.size() * sizeof(T)));
     CHECK_CUBLAS(copy64_fn(handle, static_cast<long long>(n), x, 1, y, 1));
+    expect_vector(from_device(y, src.size()), src, label);
+
+    CHECK_CUDA(cudaFree(x));
+    CHECK_CUDA(cudaFree(y));
+}
+
+template <typename T>
+static void run_copy_ex_case(cublasHandle_t handle, const std::vector<T> &src,
+                             const char *label) {
+    const int n = static_cast<int>(src.size());
+    std::vector<T> empty(src.size());
+    T *x = to_device(src);
+    T *y = to_device(empty);
+
+    CHECK_CUBLAS(cublasCopyEx(handle, n, x, cuda_type<T>(), 1, y,
+                              cuda_type<T>(), 1));
+    expect_vector(from_device(y, src.size()), src, label);
+
+    CHECK_CUDA(cudaMemset(y, 0, src.size() * sizeof(T)));
+    CHECK_CUBLAS(cublasCopyEx_64(handle, static_cast<long long>(n), x,
+                                 cuda_type<T>(), 1, y, cuda_type<T>(), 1));
     expect_vector(from_device(y, src.size()), src, label);
 
     CHECK_CUDA(cudaFree(x));
@@ -114,6 +158,27 @@ static void run_swap_case(cublasHandle_t handle, const std::vector<T> &left,
     CHECK_CUDA(cudaFree(y));
 }
 
+template <typename T>
+static void run_swap_ex_case(cublasHandle_t handle, const std::vector<T> &left,
+                             const std::vector<T> &right, const char *label) {
+    const int n = static_cast<int>(left.size());
+    T *x = to_device(left);
+    T *y = to_device(right);
+
+    CHECK_CUBLAS(cublasSwapEx(handle, n, x, cuda_type<T>(), 1, y,
+                              cuda_type<T>(), 1));
+    expect_vector(from_device(x, left.size()), right, label);
+    expect_vector(from_device(y, right.size()), left, label);
+
+    CHECK_CUBLAS(cublasSwapEx_64(handle, static_cast<long long>(n), x,
+                                 cuda_type<T>(), 1, y, cuda_type<T>(), 1));
+    expect_vector(from_device(x, left.size()), left, label);
+    expect_vector(from_device(y, right.size()), right, label);
+
+    CHECK_CUDA(cudaFree(x));
+    CHECK_CUDA(cudaFree(y));
+}
+
 static void test_copy(cublasHandle_t handle) {
     run_copy_case<float>(
         handle, {1.0f, 2.0f, 3.0f}, cublasScopy_v2, cublasScopy_v2_64,
@@ -127,6 +192,14 @@ static void test_copy(cublasHandle_t handle) {
     run_copy_case<cuDoubleComplex>(
         handle, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}}, cublasZcopy_v2,
         cublasZcopy_v2_64, "Zcopy");
+    run_copy_ex_case<float>(handle, {1.0f, 2.0f, 3.0f}, "CopyEx float");
+    run_copy_ex_case<double>(handle, {1.0, 2.0, 3.0}, "CopyEx double");
+    run_copy_ex_case<cuComplex>(
+        handle, {{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}},
+        "CopyEx complex-float");
+    run_copy_ex_case<cuDoubleComplex>(
+        handle, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}},
+        "CopyEx complex-double");
 }
 
 static void test_swap(cublasHandle_t handle) {
@@ -144,6 +217,18 @@ static void test_swap(cublasHandle_t handle) {
         handle, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}},
         {{7.0, 8.0}, {9.0, 10.0}, {11.0, 12.0}}, cublasZswap_v2,
         cublasZswap_v2_64, "Zswap");
+    run_swap_ex_case<float>(
+        handle, {1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, "SwapEx float");
+    run_swap_ex_case<double>(
+        handle, {1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, "SwapEx double");
+    run_swap_ex_case<cuComplex>(
+        handle, {{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}},
+        {{7.0f, 8.0f}, {9.0f, 10.0f}, {11.0f, 12.0f}},
+        "SwapEx complex-float");
+    run_swap_ex_case<cuDoubleComplex>(
+        handle, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}},
+        {{7.0, 8.0}, {9.0, 10.0}, {11.0, 12.0}},
+        "SwapEx complex-double");
 }
 
 int main() {
