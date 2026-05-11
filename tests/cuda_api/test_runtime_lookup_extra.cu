@@ -45,6 +45,41 @@ int main()
         return 1;
     }
 
+    const void *export_table = reinterpret_cast<const void *>(0x1);
+    cudaUUID_t runtime_export_id = {};
+    cudaError_t runtime_export_result =
+        cudaGetExportTable(&export_table, &runtime_export_id);
+    if (runtime_export_result != cudaErrorInvalidValue &&
+        runtime_export_result != cudaErrorNotSupported) {
+        std::cerr << "unexpected runtime export table result: "
+                  << cudaGetErrorString(runtime_export_result) << " ("
+                  << runtime_export_result << ")" << std::endl;
+        return 1;
+    }
+    if (export_table != nullptr) {
+        std::cerr << "runtime export table pointer was not cleared" << std::endl;
+        return 1;
+    }
+    cudaGetLastError();
+
+    export_table = reinterpret_cast<const void *>(0x1);
+    CUuuid driver_export_id = {};
+    CUresult driver_export_result =
+        cuGetExportTable(&export_table, &driver_export_id);
+    if (driver_export_result != CUDA_ERROR_INVALID_VALUE &&
+        driver_export_result != CUDA_ERROR_NOT_SUPPORTED) {
+        const char *name = nullptr;
+        cuGetErrorName(driver_export_result, &name);
+        std::cerr << "unexpected driver export table result: "
+                  << (name ? name : "unknown") << " ("
+                  << driver_export_result << ")" << std::endl;
+        return 1;
+    }
+    if (export_table != nullptr) {
+        std::cerr << "driver export table pointer was not cleared" << std::endl;
+        return 1;
+    }
+
     CUmoduleLoadingMode mode;
     CHECK_DRV(cuModuleGetLoadingMode(&mode));
     if (mode != CU_MODULE_EAGER_LOADING && mode != CU_MODULE_LAZY_LOADING) {

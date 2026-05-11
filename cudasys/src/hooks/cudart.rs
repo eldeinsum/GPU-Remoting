@@ -1256,6 +1256,12 @@ fn cudaGetDriverEntryPointByVersion(
 ) -> cudaError_t;
 
 #[cuda_custom_hook] // local
+fn cudaGetExportTable(
+    ppExportTable: *mut *const c_void,
+    pExportTableId: *const cudaUUID_t,
+) -> cudaError_t;
+
+#[cuda_custom_hook] // local
 fn cudaHostAlloc(pHost: *mut *mut c_void, size: usize, flags: c_uint) -> cudaError_t;
 
 #[cuda_custom_hook] // local

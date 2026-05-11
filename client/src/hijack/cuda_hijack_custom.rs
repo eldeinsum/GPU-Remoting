@@ -1303,12 +1303,18 @@ fn real_cuda_handle() -> *mut c_void {
 }
 
 #[no_mangle]
-extern "C" fn cuGetExportTable(
+pub extern "C" fn cuGetExportTable(
     ppExportTable: *mut *const c_void,
     pExportTableId: *const CUuuid,
 ) -> CUresult {
     if !crate::dl::real_cuda_dlopen_active() {
-        unimplemented!("cuGetExportTable")
+        if ppExportTable.is_null() || pExportTableId.is_null() {
+            return CUresult::CUDA_ERROR_INVALID_VALUE;
+        }
+        unsafe {
+            *ppExportTable = std::ptr::null();
+        }
+        return CUresult::CUDA_ERROR_NOT_SUPPORTED;
     }
     type FnTy = extern "C" fn(*mut *const c_void, *const CUuuid) -> CUresult;
     static FN: OnceLock<usize> = OnceLock::new();

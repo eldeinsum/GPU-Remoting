@@ -1823,6 +1823,24 @@ pub extern "C" fn cudaGetDriverEntryPointByVersion(
 }
 
 #[no_mangle]
+pub extern "C" fn cudaGetExportTable(
+    ppExportTable: *mut *const c_void,
+    pExportTableId: *const cudaUUID_t,
+) -> cudaError_t {
+    log::debug!(target: "cudaGetExportTable", "");
+    if ppExportTable.is_null() || pExportTableId.is_null() {
+        return cudaError_t::cudaErrorInvalidValue;
+    }
+    unsafe {
+        *ppExportTable = std::ptr::null();
+    }
+    runtime_result(super::cuda_hijack_custom::cuGetExportTable(
+        ppExportTable,
+        pExportTableId.cast(),
+    ))
+}
+
+#[no_mangle]
 pub extern "C" fn cudaGetSymbolAddress(
     devPtr: *mut *mut c_void,
     symbol: *const c_void,
