@@ -191,6 +191,43 @@ int main() {
       transform_desc, 4, CUDNN_TENSOR_NCHW, pad_before, pad_after, fold,
       CUDNN_TRANSFORM_FOLD));
 
+  cudnnFilterDescriptor_t folded_filter_desc = nullptr;
+  cudnnTensorDescriptor_t padded_diff_desc = nullptr;
+  cudnnConvolutionDescriptor_t folded_conv_desc = nullptr;
+  cudnnTensorDescriptor_t folded_grad_desc = nullptr;
+  cudnnTensorTransformDescriptor_t filter_fold_trans_desc = nullptr;
+  cudnnTensorTransformDescriptor_t diff_pad_trans_desc = nullptr;
+  cudnnTensorTransformDescriptor_t grad_fold_trans_desc = nullptr;
+  cudnnTensorTransformDescriptor_t grad_unfold_trans_desc = nullptr;
+  CUDNN_CALL(cudnnCreateFilterDescriptor(&folded_filter_desc));
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&padded_diff_desc));
+  CUDNN_CALL(cudnnCreateConvolutionDescriptor(&folded_conv_desc));
+  CUDNN_CALL(cudnnCreateTensorDescriptor(&folded_grad_desc));
+  CUDNN_CALL(cudnnCreateTensorTransformDescriptor(&filter_fold_trans_desc));
+  CUDNN_CALL(cudnnCreateTensorTransformDescriptor(&diff_pad_trans_desc));
+  CUDNN_CALL(cudnnCreateTensorTransformDescriptor(&grad_fold_trans_desc));
+  CUDNN_CALL(cudnnCreateTensorTransformDescriptor(&grad_unfold_trans_desc));
+
+  CUDNN_CALL(cudnnGetFoldedConvBackwardDataDescriptors(
+      handle, filter_desc, y_desc, conv_desc, x_desc, CUDNN_TENSOR_NCHW,
+      folded_filter_desc, padded_diff_desc, folded_conv_desc, folded_grad_desc,
+      filter_fold_trans_desc, diff_pad_trans_desc, grad_fold_trans_desc,
+      grad_unfold_trans_desc));
+  cudnnDataType_t folded_type = CUDNN_DATA_DOUBLE;
+  cudnnTensorFormat_t folded_format = CUDNN_TENSOR_NHWC;
+  int folded_k = 0;
+  int folded_c = 0;
+  int folded_h = 0;
+  int folded_w = 0;
+  CUDNN_CALL(cudnnGetFilter4dDescriptor(folded_filter_desc, &folded_type,
+                                        &folded_format, &folded_k, &folded_c,
+                                        &folded_h, &folded_w));
+  if (folded_type != CUDNN_DATA_FLOAT || folded_k <= 0 || folded_c <= 0 ||
+      folded_h <= 0 || folded_w <= 0) {
+    std::cerr << "invalid folded convolution filter descriptor" << std::endl;
+    std::exit(1);
+  }
+
   const float one = 1.0f;
   const float zero = 0.0f;
   float *transformed_filter =
@@ -224,6 +261,14 @@ int main() {
   CUDA_CALL(cudaFree(reordered_filter));
   CUDA_CALL(cudaFree(bias));
   CUDA_CALL(cudaFree(transformed_filter));
+  CUDNN_CALL(cudnnDestroyTensorTransformDescriptor(grad_unfold_trans_desc));
+  CUDNN_CALL(cudnnDestroyTensorTransformDescriptor(grad_fold_trans_desc));
+  CUDNN_CALL(cudnnDestroyTensorTransformDescriptor(diff_pad_trans_desc));
+  CUDNN_CALL(cudnnDestroyTensorTransformDescriptor(filter_fold_trans_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(folded_grad_desc));
+  CUDNN_CALL(cudnnDestroyConvolutionDescriptor(folded_conv_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(padded_diff_desc));
+  CUDNN_CALL(cudnnDestroyFilterDescriptor(folded_filter_desc));
   CUDNN_CALL(cudnnDestroyTensorTransformDescriptor(transform_desc));
   CUDA_CALL(cudaFree(col));
   if (workspace) CUDA_CALL(cudaFree(workspace));

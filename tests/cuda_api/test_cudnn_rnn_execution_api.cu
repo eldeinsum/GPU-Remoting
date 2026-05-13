@@ -75,6 +75,14 @@ int main() {
 
   cudnnHandle_t handle = nullptr;
   CUDNN_CALL(cudnnCreate(&handle));
+  cudnnStatus_t runtime_status = CUDNN_STATUS_NOT_INITIALIZED;
+  CUDNN_CALL(cudnnQueryRuntimeError(handle, &runtime_status,
+                                    CUDNN_ERRQUERY_RAWCODE, nullptr));
+  if (runtime_status != CUDNN_STATUS_SUCCESS) {
+    std::cerr << "unexpected cuDNN runtime status " << runtime_status
+              << std::endl;
+    std::exit(1);
+  }
 
   cudnnDropoutDescriptor_t dropout_desc = nullptr;
   CUDNN_CALL(cudnnCreateDropoutDescriptor(&dropout_desc));
@@ -91,6 +99,7 @@ int main() {
       CUDNN_RNN_DOUBLE_BIAS, CUDNN_UNIDIRECTIONAL, CUDNN_LINEAR_INPUT,
       CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, CUDNN_DEFAULT_MATH, input_size,
       hidden_size, hidden_size, num_layers, dropout_desc, 0));
+  CUDNN_CALL(cudnnBuildRNNDynamic(handle, rnn_desc, batch_size));
 
   cudnnRNNDataDescriptor_t x_desc = nullptr;
   cudnnRNNDataDescriptor_t y_desc = nullptr;

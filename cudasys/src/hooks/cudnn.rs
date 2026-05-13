@@ -23,6 +23,19 @@ fn cudnnGetLastErrorString(message: *mut c_char, max_size: usize);
 #[cuda_hook(proc_id = 1803)]
 fn cudnnGraphVersionCheck() -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2411)]
+fn cudnnQueryRuntimeError(
+    handle: cudnnHandle_t,
+    rstatus: *mut cudnnStatus_t,
+    mode: cudnnErrQueryMode_t,
+    #[skip] _tag: *mut cudnnRuntimeTag_t,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result =
+            unsafe { cudnnQueryRuntimeError(handle, rstatus__ptr, mode, std::ptr::null_mut()) };
+    }
+}
+
 #[cuda_hook(proc_id = 1806)]
 fn cudnnAdvVersionCheck() -> cudnnStatus_t;
 
@@ -699,6 +712,13 @@ fn cudnnSetRNNDescriptor_v8(
     numLayers: i32,
     dropoutDesc: cudnnDropoutDescriptor_t,
     auxFlags: u32,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2410)]
+fn cudnnBuildRNNDynamic(
+    handle: cudnnHandle_t,
+    rnnDesc: cudnnRNNDescriptor_t,
+    miniBatch: c_int,
 ) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 2364)]
@@ -3130,6 +3150,24 @@ fn cudnnGetConvolutionBackwardDataWorkspaceSize(
     dxDesc: cudnnTensorDescriptor_t,
     algo: cudnnConvolutionBwdDataAlgo_t,
     sizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2412)]
+fn cudnnGetFoldedConvBackwardDataDescriptors(
+    handle: cudnnHandle_t,
+    filterDesc: cudnnFilterDescriptor_t,
+    diffDesc: cudnnTensorDescriptor_t,
+    convDesc: cudnnConvolutionDescriptor_t,
+    gradDesc: cudnnTensorDescriptor_t,
+    transformFormat: cudnnTensorFormat_t,
+    foldedFilterDesc: cudnnFilterDescriptor_t,
+    paddedDiffDesc: cudnnTensorDescriptor_t,
+    foldedConvDesc: cudnnConvolutionDescriptor_t,
+    foldedGradDesc: cudnnTensorDescriptor_t,
+    filterFoldTransDesc: cudnnTensorTransformDescriptor_t,
+    diffPadTransDesc: cudnnTensorTransformDescriptor_t,
+    gradFoldTransDesc: cudnnTensorTransformDescriptor_t,
+    gradUnfoldTransDesc: cudnnTensorTransformDescriptor_t,
 ) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 2101, async_api)]
