@@ -2410,3 +2410,845 @@ fn nvmlGetExcludedDeviceInfoByIndex(
     index: c_uint,
     info: *mut nvmlExcludedDeviceInfo_t,
 ) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991187)]
+fn nvmlSystemGetHicVersion(
+    #[skip] hwbcCount: *mut c_uint,
+    #[skip] hwbcEntries: *mut nvmlHwbcEntry_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let hwbcCount_is_null = hwbcCount.is_null();
+        let hwbcEntries_is_null = hwbcEntries.is_null();
+        let hwbcCount_in = if hwbcCount_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(hwbcCount) }
+        };
+    }
+    'client_extra_send: {
+        hwbcCount_is_null.send(channel_sender).unwrap();
+        hwbcEntries_is_null.send(channel_sender).unwrap();
+        hwbcCount_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut hwbcCount_is_null = false;
+        hwbcCount_is_null.recv(channel_receiver).unwrap();
+        let mut hwbcEntries_is_null = false;
+        hwbcEntries_is_null.recv(channel_receiver).unwrap();
+        let mut hwbcCount_in = 0u32;
+        hwbcCount_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut hwbcCount_storage = hwbcCount_in;
+        let mut hwbcEntries_storage =
+            Vec::<std::mem::MaybeUninit<nvmlHwbcEntry_t>>::with_capacity(hwbcCount_in as usize);
+        let hwbcCount_ptr = if hwbcCount_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut hwbcCount_storage
+        };
+        let hwbcEntries_ptr = if hwbcEntries_is_null {
+            std::ptr::null_mut()
+        } else {
+            hwbcEntries_storage.as_mut_ptr().cast::<nvmlHwbcEntry_t>()
+        };
+        let result = unsafe { nvmlSystemGetHicVersion(hwbcCount_ptr, hwbcEntries_ptr) };
+    }
+    'server_after_send: {
+        if !hwbcCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            hwbcCount_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !hwbcEntries_is_null && hwbcCount_storage > 0
+            {
+                assert!((hwbcCount_storage as usize) <= hwbcCount_in as usize);
+                let hwbcEntries_out = unsafe {
+                    std::slice::from_raw_parts(
+                        hwbcEntries_storage.as_ptr().cast::<nvmlHwbcEntry_t>(),
+                        hwbcCount_storage as usize,
+                    )
+                };
+                send_slice(hwbcEntries_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !hwbcCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut hwbcCount_out = 0u32;
+            hwbcCount_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(hwbcCount, hwbcCount_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !hwbcEntries_is_null && hwbcCount_out > 0 {
+                assert!((hwbcCount_out as usize) <= hwbcCount_in as usize);
+                let hwbcEntries_out =
+                    unsafe { std::slice::from_raw_parts_mut(hwbcEntries, hwbcCount_out as usize) };
+                recv_slice_to(hwbcEntries_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991188)]
+fn nvmlSystemGetTopologyGpuSet(
+    cpuNumber: c_uint,
+    #[skip] count: *mut c_uint,
+    #[skip] deviceArray: *mut nvmlDevice_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let count_is_null = count.is_null();
+        let deviceArray_is_null = deviceArray.is_null();
+        let count_in = if count_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(count) }
+        };
+    }
+    'client_extra_send: {
+        count_is_null.send(channel_sender).unwrap();
+        deviceArray_is_null.send(channel_sender).unwrap();
+        count_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut count_is_null = false;
+        count_is_null.recv(channel_receiver).unwrap();
+        let mut deviceArray_is_null = false;
+        deviceArray_is_null.recv(channel_receiver).unwrap();
+        let mut count_in = 0u32;
+        count_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut count_storage = count_in;
+        let mut deviceArray_storage =
+            Vec::<std::mem::MaybeUninit<nvmlDevice_t>>::with_capacity(count_in as usize);
+        let count_ptr = if count_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut count_storage
+        };
+        let deviceArray_ptr = if deviceArray_is_null {
+            std::ptr::null_mut()
+        } else {
+            deviceArray_storage.as_mut_ptr().cast::<nvmlDevice_t>()
+        };
+        let result = unsafe { nvmlSystemGetTopologyGpuSet(cpuNumber, count_ptr, deviceArray_ptr) };
+    }
+    'server_after_send: {
+        if !count_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            count_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !deviceArray_is_null && count_storage > 0 {
+                assert!((count_storage as usize) <= count_in as usize);
+                let deviceArray_out = unsafe {
+                    std::slice::from_raw_parts(
+                        deviceArray_storage.as_ptr().cast::<nvmlDevice_t>(),
+                        count_storage as usize,
+                    )
+                };
+                send_slice(deviceArray_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !count_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut count_out = 0u32;
+            count_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(count, count_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !deviceArray_is_null && count_out > 0 {
+                assert!((count_out as usize) <= count_in as usize);
+                let deviceArray_out =
+                    unsafe { std::slice::from_raw_parts_mut(deviceArray, count_out as usize) };
+                recv_slice_to(deviceArray_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991189)]
+fn nvmlUnitGetHandleByIndex(index: c_uint, unit: *mut nvmlUnit_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991190)]
+fn nvmlUnitGetUnitInfo(unit: nvmlUnit_t, info: *mut nvmlUnitInfo_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991191)]
+fn nvmlUnitGetLedState(unit: nvmlUnit_t, state: *mut nvmlLedState_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991192)]
+fn nvmlUnitGetPsuInfo(unit: nvmlUnit_t, psu: *mut nvmlPSUInfo_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991193)]
+fn nvmlUnitGetTemperature(unit: nvmlUnit_t, type_: c_uint, temp: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991194)]
+fn nvmlUnitGetFanSpeedInfo(unit: nvmlUnit_t, fanSpeeds: *mut nvmlUnitFanSpeeds_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991195)]
+fn nvmlUnitGetDevices(
+    unit: nvmlUnit_t,
+    #[skip] deviceCount: *mut c_uint,
+    #[skip] devices: *mut nvmlDevice_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let deviceCount_is_null = deviceCount.is_null();
+        let devices_is_null = devices.is_null();
+        let deviceCount_in = if deviceCount_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(deviceCount) }
+        };
+    }
+    'client_extra_send: {
+        deviceCount_is_null.send(channel_sender).unwrap();
+        devices_is_null.send(channel_sender).unwrap();
+        deviceCount_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut deviceCount_is_null = false;
+        deviceCount_is_null.recv(channel_receiver).unwrap();
+        let mut devices_is_null = false;
+        devices_is_null.recv(channel_receiver).unwrap();
+        let mut deviceCount_in = 0u32;
+        deviceCount_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut deviceCount_storage = deviceCount_in;
+        let mut devices_storage =
+            Vec::<std::mem::MaybeUninit<nvmlDevice_t>>::with_capacity(deviceCount_in as usize);
+        let deviceCount_ptr = if deviceCount_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut deviceCount_storage
+        };
+        let devices_ptr = if devices_is_null {
+            std::ptr::null_mut()
+        } else {
+            devices_storage.as_mut_ptr().cast::<nvmlDevice_t>()
+        };
+        let result = unsafe { nvmlUnitGetDevices(unit, deviceCount_ptr, devices_ptr) };
+    }
+    'server_after_send: {
+        if !deviceCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            deviceCount_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !devices_is_null && deviceCount_storage > 0 {
+                assert!((deviceCount_storage as usize) <= deviceCount_in as usize);
+                let devices_out = unsafe {
+                    std::slice::from_raw_parts(
+                        devices_storage.as_ptr().cast::<nvmlDevice_t>(),
+                        deviceCount_storage as usize,
+                    )
+                };
+                send_slice(devices_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !deviceCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut deviceCount_out = 0u32;
+            deviceCount_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(deviceCount, deviceCount_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !devices_is_null && deviceCount_out > 0 {
+                assert!((deviceCount_out as usize) <= deviceCount_in as usize);
+                let devices_out =
+                    unsafe { std::slice::from_raw_parts_mut(devices, deviceCount_out as usize) };
+                recv_slice_to(devices_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991196)]
+fn nvmlDeviceGetHandleBySerial(serial: *const c_char, device: *mut nvmlDevice_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991197)]
+fn nvmlDeviceGetHandleByUUIDV(
+    #[host(len = 1)] uuid: *const nvmlUUID_t,
+    device: *mut nvmlDevice_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991198)]
+fn nvmlDeviceGetEncoderSessions(
+    device: nvmlDevice_t,
+    #[skip] sessionCount: *mut c_uint,
+    #[skip] sessionInfos: *mut nvmlEncoderSessionInfo_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let sessionCount_is_null = sessionCount.is_null();
+        let sessionInfos_is_null = sessionInfos.is_null();
+        let sessionCount_in = if sessionCount_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(sessionCount) }
+        };
+    }
+    'client_extra_send: {
+        sessionCount_is_null.send(channel_sender).unwrap();
+        sessionInfos_is_null.send(channel_sender).unwrap();
+        sessionCount_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut sessionCount_is_null = false;
+        sessionCount_is_null.recv(channel_receiver).unwrap();
+        let mut sessionInfos_is_null = false;
+        sessionInfos_is_null.recv(channel_receiver).unwrap();
+        let mut sessionCount_in = 0u32;
+        sessionCount_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut sessionCount_storage = sessionCount_in;
+        let mut sessionInfos_storage =
+            Vec::<std::mem::MaybeUninit<nvmlEncoderSessionInfo_t>>::with_capacity(
+                sessionCount_in as usize,
+            );
+        let sessionCount_ptr = if sessionCount_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut sessionCount_storage
+        };
+        let sessionInfos_ptr = if sessionInfos_is_null {
+            std::ptr::null_mut()
+        } else {
+            sessionInfos_storage
+                .as_mut_ptr()
+                .cast::<nvmlEncoderSessionInfo_t>()
+        };
+        let result =
+            unsafe { nvmlDeviceGetEncoderSessions(device, sessionCount_ptr, sessionInfos_ptr) };
+    }
+    'server_after_send: {
+        if !sessionCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            sessionCount_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !sessionInfos_is_null
+                && sessionCount_storage > 0
+            {
+                assert!((sessionCount_storage as usize) <= sessionCount_in as usize);
+                let sessionInfos_out = unsafe {
+                    std::slice::from_raw_parts(
+                        sessionInfos_storage
+                            .as_ptr()
+                            .cast::<nvmlEncoderSessionInfo_t>(),
+                        sessionCount_storage as usize,
+                    )
+                };
+                send_slice(sessionInfos_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !sessionCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut sessionCount_out = 0u32;
+            sessionCount_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(sessionCount, sessionCount_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !sessionInfos_is_null && sessionCount_out > 0
+            {
+                assert!((sessionCount_out as usize) <= sessionCount_in as usize);
+                let sessionInfos_out = unsafe {
+                    std::slice::from_raw_parts_mut(sessionInfos, sessionCount_out as usize)
+                };
+                recv_slice_to(sessionInfos_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991199)]
+fn nvmlDeviceGetFBCSessions(
+    device: nvmlDevice_t,
+    #[skip] sessionCount: *mut c_uint,
+    #[skip] sessionInfo: *mut nvmlFBCSessionInfo_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let sessionCount_is_null = sessionCount.is_null();
+        let sessionInfo_is_null = sessionInfo.is_null();
+        let sessionCount_in = if sessionCount_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(sessionCount) }
+        };
+    }
+    'client_extra_send: {
+        sessionCount_is_null.send(channel_sender).unwrap();
+        sessionInfo_is_null.send(channel_sender).unwrap();
+        sessionCount_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut sessionCount_is_null = false;
+        sessionCount_is_null.recv(channel_receiver).unwrap();
+        let mut sessionInfo_is_null = false;
+        sessionInfo_is_null.recv(channel_receiver).unwrap();
+        let mut sessionCount_in = 0u32;
+        sessionCount_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut sessionCount_storage = sessionCount_in;
+        let mut sessionInfo_storage =
+            Vec::<std::mem::MaybeUninit<nvmlFBCSessionInfo_t>>::with_capacity(
+                sessionCount_in as usize,
+            );
+        let sessionCount_ptr = if sessionCount_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut sessionCount_storage
+        };
+        let sessionInfo_ptr = if sessionInfo_is_null {
+            std::ptr::null_mut()
+        } else {
+            sessionInfo_storage
+                .as_mut_ptr()
+                .cast::<nvmlFBCSessionInfo_t>()
+        };
+        let result = unsafe { nvmlDeviceGetFBCSessions(device, sessionCount_ptr, sessionInfo_ptr) };
+    }
+    'server_after_send: {
+        if !sessionCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            sessionCount_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !sessionInfo_is_null
+                && sessionCount_storage > 0
+            {
+                assert!((sessionCount_storage as usize) <= sessionCount_in as usize);
+                let sessionInfo_out = unsafe {
+                    std::slice::from_raw_parts(
+                        sessionInfo_storage.as_ptr().cast::<nvmlFBCSessionInfo_t>(),
+                        sessionCount_storage as usize,
+                    )
+                };
+                send_slice(sessionInfo_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !sessionCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut sessionCount_out = 0u32;
+            sessionCount_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(sessionCount, sessionCount_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !sessionInfo_is_null && sessionCount_out > 0
+            {
+                assert!((sessionCount_out as usize) <= sessionCount_in as usize);
+                let sessionInfo_out = unsafe {
+                    std::slice::from_raw_parts_mut(sessionInfo, sessionCount_out as usize)
+                };
+                recv_slice_to(sessionInfo_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991200)]
+fn nvmlSystemGetConfComputeCapabilities(
+    capabilities: *mut nvmlConfComputeSystemCaps_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991201)]
+fn nvmlSystemGetConfComputeState(state: *mut nvmlConfComputeSystemState_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991202)]
+fn nvmlDeviceGetConfComputeMemSizeInfo(
+    device: nvmlDevice_t,
+    memInfo: *mut nvmlConfComputeMemSizeInfo_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991203)]
+fn nvmlSystemGetConfComputeGpusReadyState(isAcceptingWork: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991204)]
+fn nvmlDeviceGetConfComputeProtectedMemoryUsage(
+    device: nvmlDevice_t,
+    memory: *mut nvmlMemory_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991205)]
+fn nvmlDeviceGetConfComputeGpuCertificate(
+    device: nvmlDevice_t,
+    gpuCert: *mut nvmlConfComputeGpuCertificate_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991206)]
+fn nvmlDeviceGetConfComputeGpuAttestationReport(
+    device: nvmlDevice_t,
+    gpuAtstReport: *mut nvmlConfComputeGpuAttestationReport_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!gpuAtstReport.is_null());
+        unsafe { std::ptr::read_unaligned(gpuAtstReport) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut gpuAtstReport_in =
+            std::mem::MaybeUninit::<nvmlConfComputeGpuAttestationReport_t>::uninit();
+        gpuAtstReport_in.recv(channel_receiver).unwrap();
+        let gpuAtstReport_in = unsafe { gpuAtstReport_in.assume_init() };
+    }
+    'server_before_execution: {
+        gpuAtstReport.write(gpuAtstReport_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991207)]
+fn nvmlSystemGetConfComputeKeyRotationThresholdInfo(
+    pKeyRotationThrInfo: *mut nvmlConfComputeGetKeyRotationThresholdInfo_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!pKeyRotationThrInfo.is_null());
+        unsafe { std::ptr::read_unaligned(pKeyRotationThrInfo) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut pKeyRotationThrInfo_in =
+            std::mem::MaybeUninit::<nvmlConfComputeGetKeyRotationThresholdInfo_t>::uninit();
+        pKeyRotationThrInfo_in.recv(channel_receiver).unwrap();
+        let pKeyRotationThrInfo_in = unsafe { pKeyRotationThrInfo_in.assume_init() };
+    }
+    'server_before_execution: {
+        pKeyRotationThrInfo.write(pKeyRotationThrInfo_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991208)]
+fn nvmlSystemGetConfComputeSettings(
+    settings: *mut nvmlSystemConfComputeSettings_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!settings.is_null());
+        unsafe { std::ptr::read_unaligned(settings) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut settings_in = std::mem::MaybeUninit::<nvmlSystemConfComputeSettings_t>::uninit();
+        settings_in.recv(channel_receiver).unwrap();
+        let settings_in = unsafe { settings_in.assume_init() };
+    }
+    'server_before_execution: {
+        settings.write(settings_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991209)]
+fn nvmlDeviceGetProcessesUtilizationInfo(
+    device: nvmlDevice_t,
+    #[skip] procesesUtilInfo: *mut nvmlProcessesUtilizationInfo_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let procesesUtilInfo_is_null = procesesUtilInfo.is_null();
+        let (version_in, processSamplesCount_in, lastSeenTimeStamp_in, procUtilArray_is_null) =
+            if procesesUtilInfo_is_null {
+                (0u32, 0u32, 0u64, true)
+            } else {
+                let info = unsafe { std::ptr::read_unaligned(procesesUtilInfo) };
+                (
+                    info.version,
+                    info.processSamplesCount,
+                    info.lastSeenTimeStamp,
+                    info.procUtilArray.is_null(),
+                )
+            };
+    }
+    'client_extra_send: {
+        procesesUtilInfo_is_null.send(channel_sender).unwrap();
+        version_in.send(channel_sender).unwrap();
+        processSamplesCount_in.send(channel_sender).unwrap();
+        lastSeenTimeStamp_in.send(channel_sender).unwrap();
+        procUtilArray_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut procesesUtilInfo_is_null = false;
+        procesesUtilInfo_is_null.recv(channel_receiver).unwrap();
+        let mut version_in = 0u32;
+        version_in.recv(channel_receiver).unwrap();
+        let mut processSamplesCount_in = 0u32;
+        processSamplesCount_in.recv(channel_receiver).unwrap();
+        let mut lastSeenTimeStamp_in = 0u64;
+        lastSeenTimeStamp_in.recv(channel_receiver).unwrap();
+        let mut procUtilArray_is_null = false;
+        procUtilArray_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut procUtilArray_storage =
+            Vec::<std::mem::MaybeUninit<nvmlProcessUtilizationInfo_v1_t>>::with_capacity(
+                processSamplesCount_in as usize,
+            );
+        let procUtilArray_ptr = if procUtilArray_is_null {
+            std::ptr::null_mut()
+        } else {
+            procUtilArray_storage
+                .as_mut_ptr()
+                .cast::<nvmlProcessUtilizationInfo_v1_t>()
+        };
+        let mut info_storage = nvmlProcessesUtilizationInfo_t {
+            version: version_in,
+            processSamplesCount: processSamplesCount_in,
+            lastSeenTimeStamp: lastSeenTimeStamp_in,
+            procUtilArray: procUtilArray_ptr,
+        };
+        let info_ptr = if procesesUtilInfo_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut info_storage
+        };
+        let result = unsafe { nvmlDeviceGetProcessesUtilizationInfo(device, info_ptr) };
+    }
+    'server_after_send: {
+        if !procesesUtilInfo_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            info_storage.version.send(channel_sender).unwrap();
+            info_storage
+                .processSamplesCount
+                .send(channel_sender)
+                .unwrap();
+            info_storage.lastSeenTimeStamp.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !procUtilArray_is_null
+                && info_storage.processSamplesCount > 0
+            {
+                assert!(
+                    (info_storage.processSamplesCount as usize) <= processSamplesCount_in as usize
+                );
+                let procUtilArray_out = unsafe {
+                    std::slice::from_raw_parts(
+                        procUtilArray_storage
+                            .as_ptr()
+                            .cast::<nvmlProcessUtilizationInfo_v1_t>(),
+                        info_storage.processSamplesCount as usize,
+                    )
+                };
+                send_slice(procUtilArray_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !procesesUtilInfo_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut version_out = 0u32;
+            version_out.recv(channel_receiver).unwrap();
+            let mut processSamplesCount_out = 0u32;
+            processSamplesCount_out.recv(channel_receiver).unwrap();
+            let mut lastSeenTimeStamp_out = 0u64;
+            lastSeenTimeStamp_out.recv(channel_receiver).unwrap();
+            unsafe {
+                (*procesesUtilInfo).version = version_out;
+                (*procesesUtilInfo).processSamplesCount = processSamplesCount_out;
+                (*procesesUtilInfo).lastSeenTimeStamp = lastSeenTimeStamp_out;
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !procUtilArray_is_null
+                && processSamplesCount_out > 0
+            {
+                assert!((processSamplesCount_out as usize) <= processSamplesCount_in as usize);
+                let procUtilArray_out = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        (*procesesUtilInfo).procUtilArray,
+                        processSamplesCount_out as usize,
+                    )
+                };
+                recv_slice_to(procUtilArray_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991210)]
+fn nvmlDeviceGetRunningProcessDetailList(
+    device: nvmlDevice_t,
+    #[skip] plist: *mut nvmlProcessDetailList_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let plist_is_null = plist.is_null();
+        let (version_in, mode_in, numProcArrayEntries_in, procArray_is_null) = if plist_is_null {
+            (0u32, 0u32, 0u32, true)
+        } else {
+            let list = unsafe { std::ptr::read_unaligned(plist) };
+            (
+                list.version,
+                list.mode,
+                list.numProcArrayEntries,
+                list.procArray.is_null(),
+            )
+        };
+    }
+    'client_extra_send: {
+        plist_is_null.send(channel_sender).unwrap();
+        version_in.send(channel_sender).unwrap();
+        mode_in.send(channel_sender).unwrap();
+        numProcArrayEntries_in.send(channel_sender).unwrap();
+        procArray_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut plist_is_null = false;
+        plist_is_null.recv(channel_receiver).unwrap();
+        let mut version_in = 0u32;
+        version_in.recv(channel_receiver).unwrap();
+        let mut mode_in = 0u32;
+        mode_in.recv(channel_receiver).unwrap();
+        let mut numProcArrayEntries_in = 0u32;
+        numProcArrayEntries_in.recv(channel_receiver).unwrap();
+        let mut procArray_is_null = false;
+        procArray_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut procArray_storage =
+            Vec::<std::mem::MaybeUninit<nvmlProcessDetail_v1_t>>::with_capacity(
+                numProcArrayEntries_in as usize,
+            );
+        let procArray_ptr = if procArray_is_null {
+            std::ptr::null_mut()
+        } else {
+            procArray_storage
+                .as_mut_ptr()
+                .cast::<nvmlProcessDetail_v1_t>()
+        };
+        let mut list_storage = nvmlProcessDetailList_t {
+            version: version_in,
+            mode: mode_in,
+            numProcArrayEntries: numProcArrayEntries_in,
+            procArray: procArray_ptr,
+        };
+        let list_ptr = if plist_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut list_storage
+        };
+        let result = unsafe { nvmlDeviceGetRunningProcessDetailList(device, list_ptr) };
+    }
+    'server_after_send: {
+        if !plist_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            list_storage.version.send(channel_sender).unwrap();
+            list_storage.mode.send(channel_sender).unwrap();
+            list_storage
+                .numProcArrayEntries
+                .send(channel_sender)
+                .unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !procArray_is_null
+                && list_storage.numProcArrayEntries > 0
+            {
+                assert!(
+                    (list_storage.numProcArrayEntries as usize) <= numProcArrayEntries_in as usize
+                );
+                let procArray_out = unsafe {
+                    std::slice::from_raw_parts(
+                        procArray_storage.as_ptr().cast::<nvmlProcessDetail_v1_t>(),
+                        list_storage.numProcArrayEntries as usize,
+                    )
+                };
+                send_slice(procArray_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !plist_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut version_out = 0u32;
+            version_out.recv(channel_receiver).unwrap();
+            let mut mode_out = 0u32;
+            mode_out.recv(channel_receiver).unwrap();
+            let mut numProcArrayEntries_out = 0u32;
+            numProcArrayEntries_out.recv(channel_receiver).unwrap();
+            unsafe {
+                (*plist).version = version_out;
+                (*plist).mode = mode_out;
+                (*plist).numProcArrayEntries = numProcArrayEntries_out;
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !procArray_is_null
+                && numProcArrayEntries_out > 0
+            {
+                assert!((numProcArrayEntries_out as usize) <= numProcArrayEntries_in as usize);
+                let procArray_out = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        (*plist).procArray,
+                        numProcArrayEntries_out as usize,
+                    )
+                };
+                recv_slice_to(procArray_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991211)]
+fn nvmlDeviceGetGridLicensableFeatures_v4(
+    device: nvmlDevice_t,
+    pGridLicensableFeatures: *mut nvmlGridLicensableFeatures_t,
+) -> nvmlReturn_t;
