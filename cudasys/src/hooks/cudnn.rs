@@ -3439,6 +3439,30 @@ fn cudnnGetConvolutionForwardWorkspaceSize(
     sizeInBytes: *mut usize,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2510)]
+fn cudnnCreateFusedOpsConstParamPack(
+    constPack: *mut cudnnFusedOpsConstParamPack_t,
+    ops: cudnnFusedOps_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2511, async_api)]
+fn cudnnDestroyFusedOpsConstParamPack(constPack: cudnnFusedOpsConstParamPack_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2512)]
+fn cudnnCreateFusedOpsVariantParamPack(
+    varPack: *mut cudnnFusedOpsVariantParamPack_t,
+    ops: cudnnFusedOps_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2513, async_api)]
+fn cudnnDestroyFusedOpsVariantParamPack(varPack: cudnnFusedOpsVariantParamPack_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2514)]
+fn cudnnCreateFusedOpsPlan(plan: *mut cudnnFusedOpsPlan_t, ops: cudnnFusedOps_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2515, async_api)]
+fn cudnnDestroyFusedOpsPlan(plan: cudnnFusedOpsPlan_t) -> cudnnStatus_t;
+
 // TODO: shadow_desc
 #[cuda_hook(proc_id = 2500)]
 fn cudnnBackendCreateDescriptor(
