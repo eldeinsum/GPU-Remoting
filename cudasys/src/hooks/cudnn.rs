@@ -3463,6 +3463,123 @@ fn cudnnCreateFusedOpsPlan(plan: *mut cudnnFusedOpsPlan_t, ops: cudnnFusedOps_t)
 #[cuda_hook(proc_id = 2515, async_api)]
 fn cudnnDestroyFusedOpsPlan(plan: cudnnFusedOpsPlan_t) -> cudnnStatus_t;
 
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudnnSetFusedOpsConstParamPackAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    param: *const c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2530, parent = cudnnSetFusedOpsConstParamPackAttribute)]
+fn cudnnSetFusedOpsConstParamPackDescriptorAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    param: usize,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result = unsafe {
+            cudnnSetFusedOpsConstParamPackAttribute(constPack, paramLabel, param as *const c_void)
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2531, parent = cudnnSetFusedOpsConstParamPackAttribute)]
+fn cudnnSetFusedOpsConstParamPackHostAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    #[host(len = paramLabel.host_data_size())] param: *const c_void,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result = unsafe {
+            cudnnSetFusedOpsConstParamPackAttribute(constPack, paramLabel, param__ptr.cast())
+        };
+    }
+}
+
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudnnGetFusedOpsConstParamPackAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    param: *mut c_void,
+    isNULL: *mut c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2532, parent = cudnnGetFusedOpsConstParamPackAttribute)]
+fn cudnnGetFusedOpsConstParamPackDescriptorAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    param: usize,
+    isNULL: *mut c_int,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result = unsafe {
+            cudnnGetFusedOpsConstParamPackAttribute(
+                constPack,
+                paramLabel,
+                param as *mut c_void,
+                isNULL__ptr,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2533, parent = cudnnGetFusedOpsConstParamPackAttribute)]
+fn cudnnGetFusedOpsConstParamPackHostAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    #[host(output, len = paramLabel.host_data_size())] param: *mut c_void,
+    isNULL: *mut c_int,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result = unsafe {
+            cudnnGetFusedOpsConstParamPackAttribute(
+                constPack,
+                paramLabel,
+                param__ptr.cast(),
+                isNULL__ptr,
+            )
+        };
+    }
+}
+
+#[cuda_custom_hook] // calls one of the following internal APIs
+fn cudnnSetFusedOpsVariantParamPackAttribute(
+    varPack: cudnnFusedOpsVariantParamPack_t,
+    paramLabel: cudnnFusedOpsVariantParamLabel_t,
+    ptr: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2534, parent = cudnnSetFusedOpsVariantParamPackAttribute)]
+fn cudnnSetFusedOpsVariantParamPackDevicePointerAttribute(
+    varPack: cudnnFusedOpsVariantParamPack_t,
+    paramLabel: cudnnFusedOpsVariantParamLabel_t,
+    #[device] ptr: *mut c_void,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result = unsafe { cudnnSetFusedOpsVariantParamPackAttribute(varPack, paramLabel, ptr) };
+    }
+}
+
+#[cuda_hook(proc_id = 2535, parent = cudnnSetFusedOpsVariantParamPackAttribute)]
+fn cudnnSetFusedOpsVariantParamPackHostAttribute(
+    varPack: cudnnFusedOpsVariantParamPack_t,
+    paramLabel: cudnnFusedOpsVariantParamLabel_t,
+    #[host(input, len = paramLabel.host_data_size())] ptr: *mut c_void,
+) -> cudnnStatus_t {
+    'server_execution: {
+        let result = unsafe {
+            cudnnSetFusedOpsVariantParamPackAttribute(varPack, paramLabel, ptr__ptr.cast())
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2536)]
+fn cudnnGetFusedOpsVariantParamPackAttribute(
+    varPack: cudnnFusedOpsVariantParamPack_t,
+    paramLabel: cudnnFusedOpsVariantParamLabel_t,
+    #[host(output, len = paramLabel.host_data_size())] ptr: *mut c_void,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 2520)]
 fn cudnnCreateAttnDescriptor(attnDesc: *mut cudnnAttnDescriptor_t) -> cudnnStatus_t;
 

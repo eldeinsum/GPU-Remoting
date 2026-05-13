@@ -391,6 +391,55 @@ pub mod cudnn {
             result as i64
         }
     }
+
+    impl cudnnFusedOpsConstParamLabel_t {
+        pub fn is_descriptor(&self) -> bool {
+            matches!(
+                self,
+                Self::CUDNN_PARAM_XDESC
+                    | Self::CUDNN_PARAM_BN_EQSCALEBIAS_DESC
+                    | Self::CUDNN_PARAM_ACTIVATION_DESC
+                    | Self::CUDNN_PARAM_CONV_DESC
+                    | Self::CUDNN_PARAM_WDESC
+                    | Self::CUDNN_PARAM_DWDESC
+                    | Self::CUDNN_PARAM_YDESC
+                    | Self::CUDNN_PARAM_DYDESC
+                    | Self::CUDNN_PARAM_YSTATS_DESC
+                    | Self::CUDNN_PARAM_BN_SCALEBIAS_MEANVAR_DESC
+                    | Self::CUDNN_PARAM_ZDESC
+                    | Self::CUDNN_PARAM_BN_Z_EQSCALEBIAS_DESC
+                    | Self::CUDNN_PARAM_ACTIVATION_BITMASK_DESC
+                    | Self::CUDNN_PARAM_DXDESC
+                    | Self::CUDNN_PARAM_DZDESC
+            )
+        }
+
+        pub fn host_data_size(&self) -> usize {
+            match self {
+                Self::CUDNN_PARAM_BN_MODE => size_of::<cudnnBatchNormMode_t>(),
+                label if label.is_descriptor() => {
+                    panic!("descriptor label {label:?} is not a host data attribute")
+                }
+                _ => size_of::<cudnnFusedOpsPointerPlaceHolder_t>(),
+            }
+        }
+    }
+
+    impl cudnnFusedOpsVariantParamLabel_t {
+        pub fn is_device_pointer(&self) -> bool {
+            (*self as u32) < Self::CUDNN_SCALAR_SIZE_T_WORKSPACE_SIZE_IN_BYTES as u32
+        }
+
+        pub fn host_data_size(&self) -> usize {
+            match self {
+                Self::CUDNN_SCALAR_SIZE_T_WORKSPACE_SIZE_IN_BYTES => size_of::<usize>(),
+                Self::CUDNN_SCALAR_INT64_T_BN_ACCUMULATION_COUNT => size_of::<i64>(),
+                Self::CUDNN_SCALAR_DOUBLE_BN_EXP_AVG_FACTOR
+                | Self::CUDNN_SCALAR_DOUBLE_BN_EPSILON => size_of::<f64>(),
+                _ => size_of::<*mut std::ffi::c_void>(),
+            }
+        }
+    }
 }
 
 pub mod cublas {

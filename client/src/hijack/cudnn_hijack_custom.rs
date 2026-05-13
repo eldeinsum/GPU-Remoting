@@ -210,3 +210,67 @@ extern "C" fn cudnnBackendGetAttribute(
         )
     }
 }
+
+#[no_mangle]
+extern "C" fn cudnnSetFusedOpsConstParamPackAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    param: *const c_void,
+) -> cudnnStatus_t {
+    if paramLabel.is_descriptor() {
+        super::cudnn_hijack::cudnnSetFusedOpsConstParamPackDescriptorAttribute(
+            constPack,
+            paramLabel,
+            param as usize,
+        )
+    } else {
+        super::cudnn_hijack::cudnnSetFusedOpsConstParamPackHostAttribute(
+            constPack,
+            paramLabel,
+            param.cast::<u8>(),
+        )
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudnnGetFusedOpsConstParamPackAttribute(
+    constPack: cudnnFusedOpsConstParamPack_t,
+    paramLabel: cudnnFusedOpsConstParamLabel_t,
+    param: *mut c_void,
+    isNULL: *mut c_int,
+) -> cudnnStatus_t {
+    if paramLabel.is_descriptor() {
+        super::cudnn_hijack::cudnnGetFusedOpsConstParamPackDescriptorAttribute(
+            constPack,
+            paramLabel,
+            param as usize,
+            isNULL,
+        )
+    } else {
+        super::cudnn_hijack::cudnnGetFusedOpsConstParamPackHostAttribute(
+            constPack,
+            paramLabel,
+            param.cast::<u8>(),
+            isNULL,
+        )
+    }
+}
+
+#[no_mangle]
+extern "C" fn cudnnSetFusedOpsVariantParamPackAttribute(
+    varPack: cudnnFusedOpsVariantParamPack_t,
+    paramLabel: cudnnFusedOpsVariantParamLabel_t,
+    ptr: *mut c_void,
+) -> cudnnStatus_t {
+    if paramLabel.is_device_pointer() {
+        super::cudnn_hijack::cudnnSetFusedOpsVariantParamPackDevicePointerAttribute(
+            varPack, paramLabel, ptr,
+        )
+    } else {
+        super::cudnn_hijack::cudnnSetFusedOpsVariantParamPackHostAttribute(
+            varPack,
+            paramLabel,
+            ptr.cast::<u8>(),
+        )
+    }
+}
