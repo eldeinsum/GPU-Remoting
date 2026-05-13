@@ -74,6 +74,78 @@ fn cublasGetAtomicsMode(handle: cublasHandle_t, mode: *mut cublasAtomicsMode_t) 
 #[cuda_hook(proc_id = 1110)]
 fn cublasSetAtomicsMode(handle: cublasHandle_t, mode: cublasAtomicsMode_t) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1676)]
+fn cublasGetEmulationStrategy(
+    handle: cublasHandle_t,
+    emulationStrategy: *mut cublasEmulationStrategy_t,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1677)]
+fn cublasSetEmulationStrategy(
+    handle: cublasHandle_t,
+    emulationStrategy: cublasEmulationStrategy_t,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1678)]
+fn cublasGetEmulationSpecialValuesSupport(
+    handle: cublasHandle_t,
+    mask: *mut cudaEmulationSpecialValuesSupport,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1679)]
+fn cublasSetEmulationSpecialValuesSupport(
+    handle: cublasHandle_t,
+    mask: cudaEmulationSpecialValuesSupport,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1680)]
+fn cublasGetFixedPointEmulationMantissaControl(
+    handle: cublasHandle_t,
+    mantissaControl: *mut cudaEmulationMantissaControl,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1681)]
+fn cublasSetFixedPointEmulationMantissaControl(
+    handle: cublasHandle_t,
+    mantissaControl: cudaEmulationMantissaControl,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1682)]
+fn cublasGetFixedPointEmulationMaxMantissaBitCount(
+    handle: cublasHandle_t,
+    maxMantissaBitCount: *mut c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1683)]
+fn cublasSetFixedPointEmulationMaxMantissaBitCount(
+    handle: cublasHandle_t,
+    maxMantissaBitCount: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1684)]
+fn cublasGetFixedPointEmulationMantissaBitOffset(
+    handle: cublasHandle_t,
+    mantissaBitOffset: *mut c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1685)]
+fn cublasSetFixedPointEmulationMantissaBitOffset(
+    handle: cublasHandle_t,
+    mantissaBitOffset: c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1686)]
+fn cublasGetFixedPointEmulationMantissaBitCountPointer(
+    handle: cublasHandle_t,
+    mantissaBitCount: *mut *mut c_int,
+) -> cublasStatus_t;
+
+#[cuda_hook(proc_id = 1687)]
+fn cublasSetFixedPointEmulationMantissaBitCountPointer(
+    handle: cublasHandle_t,
+    #[device] mantissaBitCount: *mut c_int,
+) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1113)]
 fn cublasSetVector(
     n: c_int,

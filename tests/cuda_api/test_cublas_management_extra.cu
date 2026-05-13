@@ -107,11 +107,95 @@ static void test_stream_and_modes(cublasHandle_t handle) {
     CHECK_CUDA(cudaStreamDestroy(stream));
 }
 
+static void test_emulation_controls(cublasHandle_t handle) {
+    cublasEmulationStrategy_t strategy = CUBLAS_EMULATION_STRATEGY_DEFAULT;
+    cublasStatus_t status = cublasGetEmulationStrategy(handle, &strategy);
+    if (status == CUBLAS_STATUS_NOT_SUPPORTED) {
+        return;
+    }
+    CHECK_CUBLAS(status);
+    CHECK_CUBLAS(cublasSetEmulationStrategy(
+        handle, CUBLAS_EMULATION_STRATEGY_PERFORMANT));
+    cublasEmulationStrategy_t strategy_after = CUBLAS_EMULATION_STRATEGY_DEFAULT;
+    CHECK_CUBLAS(cublasGetEmulationStrategy(handle, &strategy_after));
+    expect_true(strategy_after == CUBLAS_EMULATION_STRATEGY_PERFORMANT,
+                "emulation strategy");
+    CHECK_CUBLAS(cublasSetEmulationStrategy(handle, strategy));
+
+    cudaEmulationSpecialValuesSupport special_values =
+        CUDA_EMULATION_SPECIAL_VALUES_SUPPORT_DEFAULT;
+    CHECK_CUBLAS(cublasGetEmulationSpecialValuesSupport(handle,
+                                                        &special_values));
+    CHECK_CUBLAS(cublasSetEmulationSpecialValuesSupport(
+        handle, CUDA_EMULATION_SPECIAL_VALUES_SUPPORT_NONE));
+    cudaEmulationSpecialValuesSupport special_values_after =
+        CUDA_EMULATION_SPECIAL_VALUES_SUPPORT_DEFAULT;
+    CHECK_CUBLAS(cublasGetEmulationSpecialValuesSupport(
+        handle, &special_values_after));
+    expect_true(special_values_after == CUDA_EMULATION_SPECIAL_VALUES_SUPPORT_NONE,
+                "emulation special values");
+    CHECK_CUBLAS(cublasSetEmulationSpecialValuesSupport(handle, special_values));
+
+    cudaEmulationMantissaControl mantissa_control =
+        CUDA_EMULATION_MANTISSA_CONTROL_DYNAMIC;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMantissaControl(
+        handle, &mantissa_control));
+    CHECK_CUBLAS(cublasSetFixedPointEmulationMantissaControl(
+        handle, CUDA_EMULATION_MANTISSA_CONTROL_FIXED));
+    cudaEmulationMantissaControl mantissa_control_after =
+        CUDA_EMULATION_MANTISSA_CONTROL_DYNAMIC;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMantissaControl(
+        handle, &mantissa_control_after));
+    expect_true(mantissa_control_after == CUDA_EMULATION_MANTISSA_CONTROL_FIXED,
+                "mantissa control");
+    CHECK_CUBLAS(cublasSetFixedPointEmulationMantissaControl(
+        handle, mantissa_control));
+
+    int max_mantissa_bits = 0;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMaxMantissaBitCount(
+        handle, &max_mantissa_bits));
+    CHECK_CUBLAS(cublasSetFixedPointEmulationMaxMantissaBitCount(
+        handle, max_mantissa_bits));
+    int max_mantissa_bits_after = -1;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMaxMantissaBitCount(
+        handle, &max_mantissa_bits_after));
+    expect_true(max_mantissa_bits_after == max_mantissa_bits,
+                "max mantissa bit count");
+
+    int mantissa_bit_offset = 0;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMantissaBitOffset(
+        handle, &mantissa_bit_offset));
+    CHECK_CUBLAS(cublasSetFixedPointEmulationMantissaBitOffset(
+        handle, mantissa_bit_offset));
+    int mantissa_bit_offset_after = -1;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMantissaBitOffset(
+        handle, &mantissa_bit_offset_after));
+    expect_true(mantissa_bit_offset_after == mantissa_bit_offset,
+                "mantissa bit offset");
+
+    int *initial_bit_count_ptr = nullptr;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMantissaBitCountPointer(
+        handle, &initial_bit_count_ptr));
+    int *device_bit_count = nullptr;
+    CHECK_CUDA(cudaMalloc(&device_bit_count, sizeof(int)));
+    CHECK_CUBLAS(cublasSetFixedPointEmulationMantissaBitCountPointer(
+        handle, device_bit_count));
+    int *queried_bit_count_ptr = nullptr;
+    CHECK_CUBLAS(cublasGetFixedPointEmulationMantissaBitCountPointer(
+        handle, &queried_bit_count_ptr));
+    expect_true(queried_bit_count_ptr == device_bit_count,
+                "mantissa bit count pointer");
+    CHECK_CUBLAS(cublasSetFixedPointEmulationMantissaBitCountPointer(
+        handle, initial_bit_count_ptr));
+    CHECK_CUDA(cudaFree(device_bit_count));
+}
+
 int main() {
     cublasHandle_t handle = nullptr;
     CHECK_CUBLAS(cublasCreate(&handle));
     test_version_and_status(handle);
     test_stream_and_modes(handle);
+    test_emulation_controls(handle);
     CHECK_CUBLAS(cublasDestroy(handle));
     std::puts("cuBLAS management API test passed");
     return 0;
