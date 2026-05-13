@@ -4,6 +4,8 @@
 #include <dlfcn.h>
 #include <iostream>
 #include <nvml.h>
+#include <unistd.h>
+#include <vector>
 
 template <typename T>
 static T lookup_nvml_symbol(const char *name, bool report_missing)
@@ -28,6 +30,7 @@ static int check_success(nvmlReturn_t result, const char *label)
         return 0;
     }
     std::cout << label << " failed: " << nvmlErrorString(result) << std::endl;
+    std::cout << label << " status code: " << static_cast<int>(result) << std::endl;
     return 1;
 }
 
@@ -41,6 +44,22 @@ static int check_optional(nvmlReturn_t result, const char *label)
     }
     std::cout << label << " returned unexpected status: "
               << nvmlErrorString(result) << std::endl;
+    std::cout << label << " status code: " << static_cast<int>(result) << std::endl;
+    return 1;
+}
+
+static int check_optional_list(nvmlReturn_t result, const char *label)
+{
+    if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE ||
+        result == NVML_ERROR_NOT_SUPPORTED || result == NVML_ERROR_FUNCTION_NOT_FOUND ||
+        result == NVML_ERROR_NO_PERMISSION || result == NVML_ERROR_NOT_READY ||
+        result == NVML_ERROR_NOT_FOUND)
+    {
+        return 0;
+    }
+    std::cout << label << " returned unexpected status: "
+              << nvmlErrorString(result) << std::endl;
+    std::cout << label << " status code: " << static_cast<int>(result) << std::endl;
     return 1;
 }
 
@@ -52,6 +71,50 @@ static int check_nonempty(const char *value, const char *label)
     }
     std::cout << label << " returned an empty string" << std::endl;
     return 1;
+}
+
+static int check_process_list(nvmlReturn_t (*get_processes)(nvmlDevice_t, unsigned int *,
+                                                            nvmlProcessInfo_t *),
+                              nvmlDevice_t device, const char *label)
+{
+    unsigned int required = 0;
+    nvmlProcessInfo_t dummy = {};
+    nvmlReturn_t result = get_processes(device, &required, &dummy);
+    if (check_optional_list(result, label))
+    {
+        return 1;
+    }
+
+    unsigned int capacity = required > 0 ? required : 64;
+    std::vector<nvmlProcessInfo_t> infos(capacity);
+    unsigned int count = capacity;
+    result = get_processes(device, &count, infos.data());
+    if (check_optional_list(result, label))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && count > capacity)
+    {
+        std::cout << label << " returned " << count
+                  << " entries for capacity " << capacity << std::endl;
+        return 1;
+    }
+
+    if (result == NVML_SUCCESS)
+    {
+        for (unsigned int i = 0; i < count; ++i)
+        {
+            char process_name[128] = {};
+            nvmlReturn_t name_result =
+                nvmlSystemGetProcessName(infos[i].pid, process_name,
+                                         sizeof(process_name));
+            if (check_optional(name_result, "nvmlSystemGetProcessName"))
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
 }
 
 int main()
@@ -187,6 +250,23 @@ int main()
     if (!legacy_available)
     {
         device = device_v2;
+    }
+
+    cudaError_t cuda_result = cudaFree(nullptr);
+    if (cuda_result != cudaSuccess)
+    {
+        std::cout << "Failed to initialize CUDA context: "
+                  << cudaGetErrorString(cuda_result) << std::endl;
+        return 1;
+    }
+
+    char current_process_name[128] = {};
+    result = nvmlSystemGetProcessName(getpid(), current_process_name,
+                                      sizeof(current_process_name));
+    if (check_success(result, "nvmlSystemGetProcessName") ||
+        check_nonempty(current_process_name, "nvmlSystemGetProcessName"))
+    {
+        return 1;
     }
 
     char device_name[128] = {};
@@ -432,6 +512,12 @@ int main()
     nvmlBusType_t bus_type = 0;
     nvmlGpuFabricInfo_t fabric_info = {};
     nvmlRowRemapperHistogramValues_t row_remapper = {};
+    unsigned int corrected_rows = 0;
+    unsigned int uncorrected_rows = 0;
+    unsigned int remap_pending = 0;
+    unsigned int remap_failure = 0;
+    nvmlRemappedRowsInfo_v2_t remapped_rows_v2 = {};
+    unsigned long long supported_event_types = 0;
     nvmlReturn_t more_optional_results[] = {
         nvmlDeviceGetModuleId(device, &value),
         nvmlDeviceGetNumaNodeId(device, &value),
@@ -504,6 +590,10 @@ int main()
         nvmlDeviceGetAccountingBufferSize(device, &value),
         nvmlDeviceGetRetiredPagesPendingStatus(device, &enable_state),
         nvmlDeviceGetRowRemapperHistogram(device, &row_remapper),
+        nvmlDeviceGetRemappedRows(device, &corrected_rows, &uncorrected_rows,
+                                  &remap_pending, &remap_failure),
+        nvmlDeviceGetRemappedRows_v2(device, &remapped_rows_v2),
+        nvmlDeviceGetSupportedEventTypes(device, &supported_event_types),
     };
     const char *more_optional_labels[] = {
         "nvmlDeviceGetModuleId",
@@ -567,6 +657,9 @@ int main()
         "nvmlDeviceGetAccountingBufferSize",
         "nvmlDeviceGetRetiredPagesPendingStatus",
         "nvmlDeviceGetRowRemapperHistogram",
+        "nvmlDeviceGetRemappedRows",
+        "nvmlDeviceGetRemappedRows_v2",
+        "nvmlDeviceGetSupportedEventTypes",
     };
     static_assert(sizeof(more_optional_results) / sizeof(more_optional_results[0]) ==
                   sizeof(more_optional_labels) / sizeof(more_optional_labels[0]));
@@ -765,6 +858,243 @@ int main()
     fabric_info_v.version = nvmlGpuFabricInfo_v3;
     result = nvmlDeviceGetGpuFabricInfoV(device, &fabric_info_v);
     if (check_optional(result, "nvmlDeviceGetGpuFabricInfoV"))
+    {
+        return 1;
+    }
+
+    if (check_process_list(nvmlDeviceGetComputeRunningProcesses_v3, device,
+                           "nvmlDeviceGetComputeRunningProcesses_v3") ||
+        check_process_list(nvmlDeviceGetGraphicsRunningProcesses_v3, device,
+                           "nvmlDeviceGetGraphicsRunningProcesses_v3") ||
+        check_process_list(nvmlDeviceGetMPSComputeRunningProcesses_v3, device,
+                           "nvmlDeviceGetMPSComputeRunningProcesses_v3"))
+    {
+        return 1;
+    }
+
+    unsigned int topology_capacity = device_count > 0 ? device_count : 1;
+    std::vector<nvmlDevice_t> nearest_devices(topology_capacity);
+    unsigned int topology_count = topology_capacity;
+    result = nvmlDeviceGetTopologyNearestGpus(device, NVML_TOPOLOGY_SYSTEM,
+                                              &topology_count,
+                                              nearest_devices.data());
+    if (result != NVML_ERROR_UNKNOWN &&
+        result != NVML_ERROR_LIB_RM_VERSION_MISMATCH &&
+        check_optional_list(result, "nvmlDeviceGetTopologyNearestGpus"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && topology_count > topology_capacity)
+    {
+        std::cout << "Topology query returned " << topology_count
+                  << " entries for capacity " << topology_capacity << std::endl;
+        return 1;
+    }
+
+    unsigned int memory_clock_count = 0;
+    unsigned int clock_dummy = 0;
+    result = nvmlDeviceGetSupportedMemoryClocks(device, &memory_clock_count,
+                                                &clock_dummy);
+    if (check_optional_list(result, "nvmlDeviceGetSupportedMemoryClocks"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE)
+    {
+        unsigned int memory_clock_capacity =
+            memory_clock_count > 0 ? memory_clock_count : 64;
+        std::vector<unsigned int> memory_clocks(memory_clock_capacity);
+        memory_clock_count = memory_clock_capacity;
+        result = nvmlDeviceGetSupportedMemoryClocks(device, &memory_clock_count,
+                                                    memory_clocks.data());
+        if (check_optional_list(result, "nvmlDeviceGetSupportedMemoryClocks"))
+        {
+            return 1;
+        }
+        if (result == NVML_SUCCESS && memory_clock_count > memory_clock_capacity)
+        {
+            std::cout << "Memory clock query returned " << memory_clock_count
+                      << " entries for capacity " << memory_clock_capacity
+                      << std::endl;
+            return 1;
+        }
+        if (result == NVML_SUCCESS && memory_clock_count > 0)
+        {
+            unsigned int graphics_clock_count = 0;
+            result = nvmlDeviceGetSupportedGraphicsClocks(
+                device, memory_clocks[0], &graphics_clock_count, &clock_dummy);
+            if (check_optional_list(result, "nvmlDeviceGetSupportedGraphicsClocks"))
+            {
+                return 1;
+            }
+            if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE)
+            {
+                unsigned int graphics_clock_capacity =
+                    graphics_clock_count > 0 ? graphics_clock_count : 128;
+                std::vector<unsigned int> graphics_clocks(graphics_clock_capacity);
+                graphics_clock_count = graphics_clock_capacity;
+                result = nvmlDeviceGetSupportedGraphicsClocks(
+                    device, memory_clocks[0], &graphics_clock_count,
+                    graphics_clocks.data());
+                if (check_optional_list(result, "nvmlDeviceGetSupportedGraphicsClocks"))
+                {
+                    return 1;
+                }
+                if (result == NVML_SUCCESS &&
+                    graphics_clock_count > graphics_clock_capacity)
+                {
+                    std::cout << "Graphics clock query returned "
+                              << graphics_clock_count << " entries for capacity "
+                              << graphics_clock_capacity << std::endl;
+                    return 1;
+                }
+            }
+        }
+    }
+
+    unsigned int accounting_pid_count = 0;
+    unsigned int pid_dummy = 0;
+    result = nvmlDeviceGetAccountingPids(device, &accounting_pid_count, &pid_dummy);
+    if (check_optional_list(result, "nvmlDeviceGetAccountingPids"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE)
+    {
+        unsigned int accounting_pid_capacity =
+            accounting_pid_count > 0 ? accounting_pid_count : 64;
+        std::vector<unsigned int> accounting_pids(accounting_pid_capacity);
+        accounting_pid_count = accounting_pid_capacity;
+        result = nvmlDeviceGetAccountingPids(device, &accounting_pid_count,
+                                             accounting_pids.data());
+        if (check_optional_list(result, "nvmlDeviceGetAccountingPids"))
+        {
+            return 1;
+        }
+        if (result == NVML_SUCCESS)
+        {
+            if (accounting_pid_count > accounting_pid_capacity)
+            {
+                std::cout << "Accounting PID query returned "
+                          << accounting_pid_count << " entries for capacity "
+                          << accounting_pid_capacity << std::endl;
+                return 1;
+            }
+            for (unsigned int i = 0; i < accounting_pid_count; ++i)
+            {
+                nvmlAccountingStats_t accounting_stats = {};
+                result = nvmlDeviceGetAccountingStats(device, accounting_pids[i],
+                                                      &accounting_stats);
+                if (check_optional(result, "nvmlDeviceGetAccountingStats"))
+                {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    unsigned int retired_page_count = 0;
+    unsigned long long retired_address_dummy = 0;
+    result = nvmlDeviceGetRetiredPages(
+        device, NVML_PAGE_RETIREMENT_CAUSE_MULTIPLE_SINGLE_BIT_ECC_ERRORS,
+        &retired_page_count, &retired_address_dummy);
+    if (check_optional_list(result, "nvmlDeviceGetRetiredPages"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE)
+    {
+        unsigned int retired_page_capacity =
+            retired_page_count > 0 ? retired_page_count : 16;
+        std::vector<unsigned long long> retired_addresses(retired_page_capacity);
+        retired_page_count = retired_page_capacity;
+        result = nvmlDeviceGetRetiredPages(
+            device, NVML_PAGE_RETIREMENT_CAUSE_MULTIPLE_SINGLE_BIT_ECC_ERRORS,
+            &retired_page_count, retired_addresses.data());
+        if (check_optional_list(result, "nvmlDeviceGetRetiredPages"))
+        {
+            return 1;
+        }
+        if (result == NVML_SUCCESS && retired_page_count > retired_page_capacity)
+        {
+            std::cout << "Retired page query returned " << retired_page_count
+                      << " entries for capacity " << retired_page_capacity
+                      << std::endl;
+            return 1;
+        }
+    }
+
+    retired_page_count = 0;
+    unsigned long long retired_timestamp_dummy = 0;
+    result = nvmlDeviceGetRetiredPages_v2(
+        device, NVML_PAGE_RETIREMENT_CAUSE_MULTIPLE_SINGLE_BIT_ECC_ERRORS,
+        &retired_page_count, &retired_address_dummy, &retired_timestamp_dummy);
+    if (check_optional_list(result, "nvmlDeviceGetRetiredPages_v2"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE)
+    {
+        unsigned int retired_page_capacity =
+            retired_page_count > 0 ? retired_page_count : 16;
+        std::vector<unsigned long long> retired_addresses(retired_page_capacity);
+        std::vector<unsigned long long> retired_timestamps(retired_page_capacity);
+        retired_page_count = retired_page_capacity;
+        result = nvmlDeviceGetRetiredPages_v2(
+            device, NVML_PAGE_RETIREMENT_CAUSE_MULTIPLE_SINGLE_BIT_ECC_ERRORS,
+            &retired_page_count, retired_addresses.data(),
+            retired_timestamps.data());
+        if (check_optional_list(result, "nvmlDeviceGetRetiredPages_v2"))
+        {
+            return 1;
+        }
+        if (result == NVML_SUCCESS && retired_page_count > retired_page_capacity)
+        {
+            std::cout << "Retired page v2 query returned " << retired_page_count
+                      << " entries for capacity " << retired_page_capacity
+                      << std::endl;
+            return 1;
+        }
+    }
+
+    std::vector<nvmlProcessUtilizationSample_t> process_utilization(64);
+    unsigned int process_sample_count = process_utilization.size();
+    result = nvmlDeviceGetProcessUtilization(device, process_utilization.data(),
+                                             &process_sample_count, 0);
+    if (check_optional_list(result, "nvmlDeviceGetProcessUtilization"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && process_sample_count > process_utilization.size())
+    {
+        std::cout << "Process utilization query returned " << process_sample_count
+                  << " entries for capacity " << process_utilization.size()
+                  << std::endl;
+        return 1;
+    }
+
+    nvmlValueType_t sample_value_type;
+    std::vector<nvmlSample_t> samples(64);
+    unsigned int sample_count = samples.size();
+    result = nvmlDeviceGetSamples(device, NVML_GPU_UTILIZATION_SAMPLES, 0,
+                                  &sample_value_type, &sample_count,
+                                  samples.data());
+    if (check_optional_list(result, "nvmlDeviceGetSamples"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && sample_count > samples.size())
+    {
+        std::cout << "Samples query returned " << sample_count
+                  << " entries for capacity " << samples.size() << std::endl;
+        return 1;
+    }
+
+    nvmlFieldValue_t field_values[2] = {};
+    field_values[0].fieldId = NVML_FI_DEV_MEMORY_TEMP;
+    field_values[1].fieldId = NVML_FI_DEV_TOTAL_ENERGY_CONSUMPTION;
+    result = nvmlDeviceGetFieldValues(device, 2, field_values);
+    if (check_optional(result, "nvmlDeviceGetFieldValues"))
     {
         return 1;
     }
