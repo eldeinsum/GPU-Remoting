@@ -140,6 +140,30 @@ legacy_void!(cublasCgeru, 1754, (m: c_int, n: c_int, alpha: cuComplex, x: *const
 legacy_void!(cublasCgerc, 1755, (m: c_int, n: c_int, alpha: cuComplex, x: *const cuComplex, incx: c_int, y: *const cuComplex, incy: c_int, A: *mut cuComplex, lda: c_int));
 legacy_void!(cublasZgeru, 1756, (m: c_int, n: c_int, alpha: cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, y: *const cuDoubleComplex, incy: c_int, A: *mut cuDoubleComplex, lda: c_int));
 legacy_void!(cublasZgerc, 1757, (m: c_int, n: c_int, alpha: cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, y: *const cuDoubleComplex, incy: c_int, A: *mut cuDoubleComplex, lda: c_int));
+legacy_void!(cublasStrmv, 1758, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const f32, lda: c_int, x: *mut f32, incx: c_int));
+legacy_void!(cublasDtrmv, 1759, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const f64, lda: c_int, x: *mut f64, incx: c_int));
+legacy_void!(cublasCtrmv, 1760, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const cuComplex, lda: c_int, x: *mut cuComplex, incx: c_int));
+legacy_void!(cublasZtrmv, 1761, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const cuDoubleComplex, lda: c_int, x: *mut cuDoubleComplex, incx: c_int));
+legacy_void!(cublasStbmv, 1762, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const f32, lda: c_int, x: *mut f32, incx: c_int));
+legacy_void!(cublasDtbmv, 1763, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const f64, lda: c_int, x: *mut f64, incx: c_int));
+legacy_void!(cublasCtbmv, 1764, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const cuComplex, lda: c_int, x: *mut cuComplex, incx: c_int));
+legacy_void!(cublasZtbmv, 1765, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const cuDoubleComplex, lda: c_int, x: *mut cuDoubleComplex, incx: c_int));
+legacy_void!(cublasStpmv, 1766, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const f32, x: *mut f32, incx: c_int));
+legacy_void!(cublasDtpmv, 1767, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const f64, x: *mut f64, incx: c_int));
+legacy_void!(cublasCtpmv, 1768, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const cuComplex, x: *mut cuComplex, incx: c_int));
+legacy_void!(cublasZtpmv, 1769, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const cuDoubleComplex, x: *mut cuDoubleComplex, incx: c_int));
+legacy_void!(cublasStrsv, 1770, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const f32, lda: c_int, x: *mut f32, incx: c_int));
+legacy_void!(cublasDtrsv, 1771, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const f64, lda: c_int, x: *mut f64, incx: c_int));
+legacy_void!(cublasCtrsv, 1772, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const cuComplex, lda: c_int, x: *mut cuComplex, incx: c_int));
+legacy_void!(cublasZtrsv, 1773, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, A: *const cuDoubleComplex, lda: c_int, x: *mut cuDoubleComplex, incx: c_int));
+legacy_void!(cublasStbsv, 1774, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const f32, lda: c_int, x: *mut f32, incx: c_int));
+legacy_void!(cublasDtbsv, 1775, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const f64, lda: c_int, x: *mut f64, incx: c_int));
+legacy_void!(cublasCtbsv, 1776, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const cuComplex, lda: c_int, x: *mut cuComplex, incx: c_int));
+legacy_void!(cublasZtbsv, 1777, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, k: c_int, A: *const cuDoubleComplex, lda: c_int, x: *mut cuDoubleComplex, incx: c_int));
+legacy_void!(cublasStpsv, 1778, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const f32, x: *mut f32, incx: c_int));
+legacy_void!(cublasDtpsv, 1779, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const f64, x: *mut f64, incx: c_int));
+legacy_void!(cublasCtpsv, 1780, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const cuComplex, x: *mut cuComplex, incx: c_int));
+legacy_void!(cublasZtpsv, 1781, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const cuDoubleComplex, x: *mut cuDoubleComplex, incx: c_int));
 
 #[no_mangle]
 pub extern "C" fn cublasLoggerConfigure(
