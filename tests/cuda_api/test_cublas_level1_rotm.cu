@@ -1,4 +1,6 @@
 #include <cublas_v2.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 #include <array>
@@ -36,6 +38,14 @@ static bool close_value(double got, double want) {
     return std::fabs(got - want) <= 1e-10;
 }
 
+static bool close_value(__half got, __half want) {
+    return std::fabs(__half2float(got) - __half2float(want)) <= 2e-2f;
+}
+
+static bool close_value(__nv_bfloat16 got, __nv_bfloat16 want) {
+    return std::fabs(__bfloat162float(got) - __bfloat162float(want)) <= 3e-2f;
+}
+
 static bool close_value(cuComplex got, cuComplex want) {
     return close_value(got.x, want.x) && close_value(got.y, want.y);
 }
@@ -50,6 +60,62 @@ static void expect_close(T got, T want, const char *label) {
         std::fprintf(stderr, "%s mismatch\n", label);
         std::exit(1);
     }
+}
+
+template <typename T>
+static T make_value(double value);
+
+template <>
+float make_value<float>(double value) {
+    return static_cast<float>(value);
+}
+
+template <>
+double make_value<double>(double value) {
+    return value;
+}
+
+template <>
+__half make_value<__half>(double value) {
+    return __float2half(static_cast<float>(value));
+}
+
+template <>
+__nv_bfloat16 make_value<__nv_bfloat16>(double value) {
+    return __float2bfloat16(static_cast<float>(value));
+}
+
+static double scalar_value(float value) { return value; }
+
+static double scalar_value(double value) { return value; }
+
+static double scalar_value(__half value) { return __half2float(value); }
+
+static double scalar_value(__nv_bfloat16 value) {
+    return __bfloat162float(value);
+}
+
+template <typename T>
+static cudaDataType_t cuda_type();
+
+template <>
+cudaDataType_t cuda_type<float>() {
+    return CUDA_R_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<double>() {
+    return CUDA_R_64F;
+}
+
+template <>
+cudaDataType_t cuda_type<__half>() {
+    return CUDA_R_16F;
+}
+
+template <>
+cudaDataType_t cuda_type<__nv_bfloat16>() {
+    return CUDA_R_16BF;
 }
 
 template <typename T>
@@ -172,33 +238,35 @@ static void rotm_expected(const std::vector<T> &x, const std::vector<T> &y,
     out_y->clear();
     out_x->reserve(x.size());
     out_y->reserve(y.size());
-    const T flag = param[0];
+    const double flag = scalar_value(param[0]);
     for (size_t i = 0; i < x.size(); ++i) {
-        T h11 = 0;
-        T h12 = 0;
-        T h21 = 0;
-        T h22 = 0;
-        if (flag == static_cast<T>(-2)) {
+        double h11 = 0;
+        double h12 = 0;
+        double h21 = 0;
+        double h22 = 0;
+        if (flag == -2.0) {
             h11 = 1;
             h22 = 1;
-        } else if (flag == static_cast<T>(-1)) {
-            h11 = param[1];
-            h21 = param[2];
-            h12 = param[3];
-            h22 = param[4];
-        } else if (flag == static_cast<T>(0)) {
+        } else if (flag == -1.0) {
+            h11 = scalar_value(param[1]);
+            h21 = scalar_value(param[2]);
+            h12 = scalar_value(param[3]);
+            h22 = scalar_value(param[4]);
+        } else if (flag == 0.0) {
             h11 = 1;
-            h21 = param[2];
-            h12 = param[3];
+            h21 = scalar_value(param[2]);
+            h12 = scalar_value(param[3]);
             h22 = 1;
-        } else if (flag == static_cast<T>(1)) {
-            h11 = param[1];
+        } else if (flag == 1.0) {
+            h11 = scalar_value(param[1]);
             h21 = -1;
             h12 = 1;
-            h22 = param[4];
+            h22 = scalar_value(param[4]);
         }
-        out_x->push_back(h11 * x[i] + h12 * y[i]);
-        out_y->push_back(h21 * x[i] + h22 * y[i]);
+        out_x->push_back(
+            make_value<T>(h11 * scalar_value(x[i]) + h12 * scalar_value(y[i])));
+        out_y->push_back(
+            make_value<T>(h21 * scalar_value(x[i]) + h22 * scalar_value(y[i])));
     }
 }
 
@@ -278,27 +346,134 @@ static void run_rotm64_once(cublasHandle_t handle, const std::vector<T> &x,
 template <typename T, typename Fn, typename Fn64>
 static void run_rotm_case(cublasHandle_t handle, Fn fn, Fn64 fn64,
                           const char *label) {
-    std::vector<T> x{static_cast<T>(1), static_cast<T>(-2),
-                     static_cast<T>(3)};
-    std::vector<T> y{static_cast<T>(4), static_cast<T>(5),
-                     static_cast<T>(-6)};
+    std::vector<T> x{make_value<T>(1), make_value<T>(-2), make_value<T>(3)};
+    std::vector<T> y{make_value<T>(4), make_value<T>(5), make_value<T>(-6)};
     std::vector<std::array<T, 5>> params{
-        std::array<T, 5>{static_cast<T>(-1), static_cast<T>(1.25),
-                         static_cast<T>(-0.5), static_cast<T>(0.75),
-                         static_cast<T>(0.5)},
-        std::array<T, 5>{static_cast<T>(0), static_cast<T>(0),
-                         static_cast<T>(0.25), static_cast<T>(-0.5),
-                         static_cast<T>(0)},
-        std::array<T, 5>{static_cast<T>(1), static_cast<T>(1.5),
-                         static_cast<T>(0), static_cast<T>(0),
-                         static_cast<T>(0.25)},
-        std::array<T, 5>{static_cast<T>(-2), static_cast<T>(0),
-                         static_cast<T>(0), static_cast<T>(0),
-                         static_cast<T>(0)}};
+        std::array<T, 5>{make_value<T>(-1), make_value<T>(1.25),
+                         make_value<T>(-0.5), make_value<T>(0.75),
+                         make_value<T>(0.5)},
+        std::array<T, 5>{make_value<T>(0), make_value<T>(0),
+                         make_value<T>(0.25), make_value<T>(-0.5),
+                         make_value<T>(0)},
+        std::array<T, 5>{make_value<T>(1), make_value<T>(1.5),
+                         make_value<T>(0), make_value<T>(0),
+                         make_value<T>(0.25)},
+        std::array<T, 5>{make_value<T>(-2), make_value<T>(0),
+                         make_value<T>(0), make_value<T>(0),
+                         make_value<T>(0)}};
 
     for (size_t i = 0; i < params.size(); ++i) {
         run_rotm_once(handle, x, y, params[i], fn, label);
         run_rotm64_once(handle, x, y, params[i], fn64, label);
+    }
+}
+
+template <typename T>
+static void run_rotm_ex_once(cublasHandle_t handle, const std::vector<T> &x,
+                             const std::vector<T> &y,
+                             const std::array<T, 5> &param,
+                             cudaDataType_t execution_type,
+                             const char *label) {
+    const int n = static_cast<int>(x.size());
+    const cudaDataType_t value_type = cuda_type<T>();
+    T *host_x = to_device_vector(x);
+    T *host_y = to_device_vector(y);
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUBLAS(cublasRotmEx(handle, n, host_x, value_type, 1, host_y,
+                              value_type, 1, param.data(), value_type,
+                              execution_type));
+    std::vector<T> got_host_x = from_device_vector(host_x, x.size());
+    std::vector<T> got_host_y = from_device_vector(host_y, y.size());
+
+    T *device_x = to_device_vector(x);
+    T *device_y = to_device_vector(y);
+    std::vector<T> param_vec(param.begin(), param.end());
+    T *device_param = to_device_vector(param_vec);
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+    CHECK_CUBLAS(cublasRotmEx(handle, n, device_x, value_type, 1, device_y,
+                              value_type, 1, device_param, value_type,
+                              execution_type));
+    std::vector<T> got_device_x = from_device_vector(device_x, x.size());
+    std::vector<T> got_device_y = from_device_vector(device_y, y.size());
+
+    std::vector<T> expected_x;
+    std::vector<T> expected_y;
+    rotm_expected(x, y, param, &expected_x, &expected_y);
+    expect_vector(got_host_x, expected_x, label);
+    expect_vector(got_host_y, expected_y, label);
+    expect_vector(got_device_x, got_host_x, label);
+    expect_vector(got_device_y, got_host_y, label);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_param));
+    CHECK_CUDA(cudaFree(device_y));
+    CHECK_CUDA(cudaFree(device_x));
+    CHECK_CUDA(cudaFree(host_y));
+    CHECK_CUDA(cudaFree(host_x));
+}
+
+template <typename T>
+static void run_rotm_ex64_once(cublasHandle_t handle, const std::vector<T> &x,
+                               const std::vector<T> &y,
+                               const std::array<T, 5> &param,
+                               cudaDataType_t execution_type,
+                               const char *label) {
+    const int64_t n = static_cast<int64_t>(x.size());
+    const cudaDataType_t value_type = cuda_type<T>();
+    T *host_x = to_device_vector(x);
+    T *host_y = to_device_vector(y);
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUBLAS(cublasRotmEx_64(handle, n, host_x, value_type, int64_t{1},
+                                 host_y, value_type, int64_t{1}, param.data(),
+                                 value_type, execution_type));
+    std::vector<T> got_host_x = from_device_vector(host_x, x.size());
+    std::vector<T> got_host_y = from_device_vector(host_y, y.size());
+
+    T *device_x = to_device_vector(x);
+    T *device_y = to_device_vector(y);
+    std::vector<T> param_vec(param.begin(), param.end());
+    T *device_param = to_device_vector(param_vec);
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+    CHECK_CUBLAS(cublasRotmEx_64(handle, n, device_x, value_type, int64_t{1},
+                                 device_y, value_type, int64_t{1},
+                                 device_param, value_type, execution_type));
+    std::vector<T> got_device_x = from_device_vector(device_x, x.size());
+    std::vector<T> got_device_y = from_device_vector(device_y, y.size());
+
+    expect_vector(got_device_x, got_host_x, label);
+    expect_vector(got_device_y, got_host_y, label);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_param));
+    CHECK_CUDA(cudaFree(device_y));
+    CHECK_CUDA(cudaFree(device_x));
+    CHECK_CUDA(cudaFree(host_y));
+    CHECK_CUDA(cudaFree(host_x));
+}
+
+template <typename T>
+static void run_rotm_ex_case(cublasHandle_t handle,
+                             cudaDataType_t execution_type,
+                             const char *label) {
+    std::vector<T> x{make_value<T>(1), make_value<T>(-2), make_value<T>(3)};
+    std::vector<T> y{make_value<T>(4), make_value<T>(5), make_value<T>(-6)};
+    std::vector<std::array<T, 5>> params{
+        std::array<T, 5>{make_value<T>(-1), make_value<T>(1.25),
+                         make_value<T>(-0.5), make_value<T>(0.75),
+                         make_value<T>(0.5)},
+        std::array<T, 5>{make_value<T>(0), make_value<T>(0),
+                         make_value<T>(0.25), make_value<T>(-0.5),
+                         make_value<T>(0)},
+        std::array<T, 5>{make_value<T>(1), make_value<T>(1.5),
+                         make_value<T>(0), make_value<T>(0),
+                         make_value<T>(0.25)},
+        std::array<T, 5>{make_value<T>(-2), make_value<T>(0),
+                         make_value<T>(0), make_value<T>(0),
+                         make_value<T>(0)}};
+
+    for (size_t i = 0; i < params.size(); ++i) {
+        run_rotm_ex_once(handle, x, y, params[i], execution_type, label);
+        run_rotm_ex64_once(handle, x, y, params[i], execution_type, label);
     }
 }
 
@@ -359,6 +534,11 @@ int main() {
                          "cublasSrotm_v2");
     run_rotm_case<double>(handle, cublasDrotm_v2, cublasDrotm_v2_64,
                           "cublasDrotm_v2");
+    run_rotm_ex_case<float>(handle, CUDA_R_32F, "cublasRotmEx float");
+    run_rotm_ex_case<double>(handle, CUDA_R_64F, "cublasRotmEx double");
+    run_rotm_ex_case<__half>(handle, CUDA_R_32F, "cublasRotmEx half");
+    run_rotm_ex_case<__nv_bfloat16>(handle, CUDA_R_32F,
+                                    "cublasRotmEx bfloat16");
 
     run_rotmg_case<float>(handle, 2.0f, 3.0f, 4.0f, -1.5f, cublasSrotmg_v2,
                           "cublasSrotmg_v2");
