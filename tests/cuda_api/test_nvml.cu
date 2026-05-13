@@ -691,6 +691,14 @@ int main()
     nvmlSystemConfComputeSettings_t cc_settings = {};
     cc_settings.version = nvmlSystemConfComputeSettings_v1;
     nvmlGridLicensableFeatures_t grid_features = {};
+    unsigned int vgpu_capability = 0;
+    nvmlVgpuHeterogeneousMode_t vgpu_heterogeneous = {};
+    vgpu_heterogeneous.version = nvmlVgpuHeterogeneousMode_v1;
+    nvmlVgpuSchedulerCapabilities_t vgpu_scheduler_caps = {};
+    nvmlVgpuSchedulerStateInfo_v2_t vgpu_scheduler_state_v2 = {};
+    nvmlVgpuSchedulerLogInfo_v2_t vgpu_scheduler_log_v2 = {};
+    nvmlVgpuVersion_t supported_vgpu_version = {};
+    nvmlVgpuVersion_t current_vgpu_version = {};
     nvmlReturn_t more_optional_results[] = {
         nvmlDeviceGetModuleId(device, &value),
         nvmlDeviceGetNumaNodeId(device, &value),
@@ -775,6 +783,15 @@ int main()
         nvmlSystemGetConfComputeKeyRotationThresholdInfo(&cc_key_rotation),
         nvmlSystemGetConfComputeSettings(&cc_settings),
         nvmlDeviceGetGridLicensableFeatures_v4(device, &grid_features),
+        nvmlGetVgpuDriverCapabilities(NVML_VGPU_DRIVER_CAP_HETEROGENEOUS_MULTI_VGPU,
+                                      &vgpu_capability),
+        nvmlDeviceGetVgpuCapabilities(device, NVML_DEVICE_VGPU_CAP_FRACTIONAL_MULTI_VGPU,
+                                      &vgpu_capability),
+        nvmlDeviceGetVgpuHeterogeneousMode(device, &vgpu_heterogeneous),
+        nvmlDeviceGetVgpuSchedulerCapabilities(device, &vgpu_scheduler_caps),
+        nvmlDeviceGetVgpuSchedulerState_v2(device, &vgpu_scheduler_state_v2),
+        nvmlDeviceGetVgpuSchedulerLog_v2(device, &vgpu_scheduler_log_v2),
+        nvmlGetVgpuVersion(&supported_vgpu_version, &current_vgpu_version),
     };
     const char *more_optional_labels[] = {
         "nvmlDeviceGetModuleId",
@@ -849,6 +866,13 @@ int main()
         "nvmlSystemGetConfComputeKeyRotationThresholdInfo",
         "nvmlSystemGetConfComputeSettings",
         "nvmlDeviceGetGridLicensableFeatures_v4",
+        "nvmlGetVgpuDriverCapabilities",
+        "nvmlDeviceGetVgpuCapabilities",
+        "nvmlDeviceGetVgpuHeterogeneousMode",
+        "nvmlDeviceGetVgpuSchedulerCapabilities",
+        "nvmlDeviceGetVgpuSchedulerState_v2",
+        "nvmlDeviceGetVgpuSchedulerLog_v2",
+        "nvmlGetVgpuVersion",
     };
     static_assert(sizeof(more_optional_results) / sizeof(more_optional_results[0]) ==
                   sizeof(more_optional_labels) / sizeof(more_optional_labels[0]));
@@ -1078,6 +1102,16 @@ int main()
                            "nvmlDeviceGetEncoderSessions") ||
         check_counted_list(nvmlDeviceGetFBCSessions, device,
                            "nvmlDeviceGetFBCSessions"))
+    {
+        return 1;
+    }
+
+    if (check_counted_list(nvmlDeviceGetSupportedVgpus, device,
+                           "nvmlDeviceGetSupportedVgpus") ||
+        check_counted_list(nvmlDeviceGetCreatableVgpus, device,
+                           "nvmlDeviceGetCreatableVgpus") ||
+        check_counted_list(nvmlDeviceGetActiveVgpus, device,
+                           "nvmlDeviceGetActiveVgpus"))
     {
         return 1;
     }
@@ -1411,6 +1445,33 @@ int main()
         std::cout << "Unexpected power limit range: " << min_limit
                   << " > " << max_limit << std::endl;
         return 1;
+    }
+
+    unsigned int pgpu_metadata_size = 0;
+    result = nvmlDeviceGetPgpuMetadataString(device, nullptr, &pgpu_metadata_size);
+    if (check_optional_list(result, "nvmlDeviceGetPgpuMetadataString"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE)
+    {
+        unsigned int pgpu_metadata_capacity =
+            pgpu_metadata_size > 0 ? pgpu_metadata_size : 4096;
+        std::vector<char> pgpu_metadata(pgpu_metadata_capacity);
+        pgpu_metadata_size = pgpu_metadata_capacity;
+        result = nvmlDeviceGetPgpuMetadataString(device, pgpu_metadata.data(),
+                                                 &pgpu_metadata_size);
+        if (check_optional_list(result, "nvmlDeviceGetPgpuMetadataString"))
+        {
+            return 1;
+        }
+        if (result == NVML_SUCCESS && pgpu_metadata_size > pgpu_metadata_capacity)
+        {
+            std::cout << "pGPU metadata string query returned "
+                      << pgpu_metadata_size << " bytes for capacity "
+                      << pgpu_metadata_capacity << std::endl;
+            return 1;
+        }
     }
 
     char vbios_version[128] = {};
