@@ -20,6 +20,16 @@ fn cudnnGetErrorString(status: cudnnStatus_t) -> *const c_char;
 #[cuda_custom_hook] // local: writes a client-owned diagnostic string
 fn cudnnGetLastErrorString(message: *mut c_char, max_size: usize);
 
+#[cuda_custom_hook] // local: callback pointers are valid only in the client process
+fn cudnnSetCallback(mask: c_uint, udata: *mut c_void, fptr: cudnnCallback_t) -> cudnnStatus_t;
+
+#[cuda_custom_hook] // local: callback pointers are valid only in the client process
+fn cudnnGetCallback(
+    mask: *mut c_uint,
+    udata: *mut *mut c_void,
+    fptr: *mut cudnnCallback_t,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 1803)]
 fn cudnnGraphVersionCheck() -> cudnnStatus_t;
 

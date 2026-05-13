@@ -21,6 +21,68 @@ fn cached_status_text(status: cudnnStatus_t) -> *const c_char {
     text.as_ptr()
 }
 
+#[derive(Copy, Clone)]
+struct CudnnCallbackState {
+    mask: c_uint,
+    udata: usize,
+    fptr: cudnnCallback_t,
+}
+
+fn cudnn_callback_state() -> &'static Mutex<CudnnCallbackState> {
+    static STATE: OnceLock<Mutex<CudnnCallbackState>> = OnceLock::new();
+    STATE.get_or_init(|| {
+        Mutex::new(CudnnCallbackState {
+            mask: 0,
+            udata: 0,
+            fptr: None,
+        })
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudnnSetCallback(
+    mask: c_uint,
+    udata: *mut c_void,
+    fptr: cudnnCallback_t,
+) -> cudnnStatus_t {
+    log::debug!(target: "cudnnSetCallback", "mask = {mask}");
+    let default_mask = 1u32 << (cudnnSeverity_t::CUDNN_SEV_ERROR as u32)
+        | 1u32 << (cudnnSeverity_t::CUDNN_SEV_WARNING as u32);
+    let mask = if fptr.is_none() && mask != 0 {
+        mask | default_mask
+    } else if fptr.is_none() && udata.is_null() {
+        1u32 << (cudnnSeverity_t::CUDNN_SEV_ERROR as u32)
+    } else {
+        mask
+    };
+    *cudnn_callback_state().lock().unwrap() = CudnnCallbackState {
+        mask,
+        udata: udata as usize,
+        fptr,
+    };
+    cudnnStatus_t::CUDNN_STATUS_SUCCESS
+}
+
+#[no_mangle]
+pub extern "C" fn cudnnGetCallback(
+    mask: *mut c_uint,
+    udata: *mut *mut c_void,
+    fptr: *mut cudnnCallback_t,
+) -> cudnnStatus_t {
+    log::debug!(target: "cudnnGetCallback", "");
+    if mask.is_null() || udata.is_null() || fptr.is_null() {
+        return cudnnStatus_t::CUDNN_STATUS_BAD_PARAM;
+    }
+
+    let state = *cudnn_callback_state().lock().unwrap();
+    unsafe {
+        *mask = state.mask;
+        *udata = state.udata as *mut c_void;
+        *fptr = state.fptr;
+    }
+    cudnnStatus_t::CUDNN_STATUS_SUCCESS
+}
+
 #[no_mangle]
 pub extern "C" fn cudnnGetVersion() -> usize {
     let mut major = 0;
