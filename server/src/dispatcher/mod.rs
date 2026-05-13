@@ -58,8 +58,20 @@ pub fn dispatch<C: CommChannel>(proc_id: i32, server: &mut ServerWorker<C>) -> b
 struct CudnnScalarArg([u8; 16]);
 
 impl CudnnScalarArg {
+    fn zeroed() -> Self {
+        Self([0; 16])
+    }
+
     fn as_ptr(&self) -> *const std::ffi::c_void {
         self.0.as_ptr().cast()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut std::ffi::c_void {
+        self.0.as_mut_ptr().cast()
+    }
+
+    fn as_bytes(&self) -> &[u8; 16] {
+        &self.0
     }
 }
 
@@ -69,6 +81,33 @@ fn cudnn_recv_scalar_arg<C: CommChannel>(channel_receiver: &C) -> CudnnScalarArg
     let mut arg = CudnnScalarArg([0; 16]);
     arg.0[..bytes.len()].copy_from_slice(&bytes);
     arg
+}
+
+fn cudnn_data_type_scalar_size(data_type: cudasys::types::cudnn::cudnnDataType_t) -> Option<usize> {
+    use cudasys::types::cudnn::cudnnDataType_t;
+
+    Some(match data_type {
+        cudnnDataType_t::CUDNN_DATA_DOUBLE | cudnnDataType_t::CUDNN_DATA_INT64 => 8,
+        cudnnDataType_t::CUDNN_DATA_FLOAT
+        | cudnnDataType_t::CUDNN_DATA_INT32
+        | cudnnDataType_t::CUDNN_DATA_UINT32
+        | cudnnDataType_t::CUDNN_DATA_FAST_FLOAT_FOR_FP8 => 4,
+        cudnnDataType_t::CUDNN_DATA_HALF | cudnnDataType_t::CUDNN_DATA_BFLOAT16 => 2,
+        cudnnDataType_t::CUDNN_DATA_INT8
+        | cudnnDataType_t::CUDNN_DATA_UINT8
+        | cudnnDataType_t::CUDNN_DATA_BOOLEAN
+        | cudnnDataType_t::CUDNN_DATA_FP8_E4M3
+        | cudnnDataType_t::CUDNN_DATA_FP8_E5M2
+        | cudnnDataType_t::CUDNN_DATA_FP8_E8M0 => 1,
+        cudnnDataType_t::CUDNN_DATA_COMPLEX_FP32 => 8,
+        cudnnDataType_t::CUDNN_DATA_COMPLEX_FP64 => 16,
+        cudnnDataType_t::CUDNN_DATA_INT8x4
+        | cudnnDataType_t::CUDNN_DATA_UINT8x4
+        | cudnnDataType_t::CUDNN_DATA_INT8x32
+        | cudnnDataType_t::CUDNN_DATA_FP4_E2M1
+        | cudnnDataType_t::CUDNN_DATA_INT4
+        | cudnnDataType_t::CUDNN_DATA_UINT4 => return None,
+    })
 }
 
 #[cfg(test)]

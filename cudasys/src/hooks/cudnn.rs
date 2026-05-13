@@ -710,6 +710,361 @@ fn cudnnGetRNNWeightSpaceSize(
     weightSpaceSize: *mut usize,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2370)]
+fn cudnnCreateRNNDataDescriptor(rnnDataDesc: *mut cudnnRNNDataDescriptor_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2371, async_api)]
+fn cudnnDestroyRNNDataDescriptor(rnnDataDesc: cudnnRNNDataDescriptor_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2372)]
+fn cudnnSetRNNDataDescriptor(
+    rnnDataDesc: cudnnRNNDataDescriptor_t,
+    dataType: cudnnDataType_t,
+    layout: cudnnRNNDataLayout_t,
+    maxSeqLength: c_int,
+    batchSize: c_int,
+    vectorSize: c_int,
+    #[host(len = batchSize)] seqLengthArray: *const c_int,
+    #[skip] paddingFill: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let padding_fill_bytes = if paddingFill.is_null() {
+            None
+        } else if let Some(padding_fill_len) = cudnn_data_type_scalar_size(dataType) {
+            Some(unsafe { std::slice::from_raw_parts(paddingFill.cast::<u8>(), padding_fill_len) })
+        } else {
+            return cudnnStatus_t::CUDNN_STATUS_BAD_PARAM;
+        };
+        let has_padding_fill = padding_fill_bytes.is_some();
+    }
+    'client_extra_send: {
+        has_padding_fill.send(channel_sender).unwrap();
+        if let Some(padding_fill_bytes) = padding_fill_bytes {
+            send_slice(padding_fill_bytes, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut has_padding_fill = false;
+        has_padding_fill.recv(channel_receiver).unwrap();
+        let mut padding_fill_arg = if has_padding_fill {
+            Some(cudnn_recv_scalar_arg(channel_receiver))
+        } else {
+            None
+        };
+    }
+    'server_execution: {
+        let padding_fill_ptr = padding_fill_arg
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |arg| arg.as_mut_ptr());
+        let result = unsafe {
+            cudnnSetRNNDataDescriptor(
+                rnnDataDesc,
+                dataType,
+                layout,
+                maxSeqLength,
+                batchSize,
+                vectorSize,
+                seqLengthArray__ptr,
+                padding_fill_ptr,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2373)]
+fn cudnnGetRNNDataDescriptor(
+    rnnDataDesc: cudnnRNNDataDescriptor_t,
+    dataType: *mut cudnnDataType_t,
+    layout: *mut cudnnRNNDataLayout_t,
+    maxSeqLength: *mut c_int,
+    batchSize: *mut c_int,
+    vectorSize: *mut c_int,
+    arrayLengthRequested: c_int,
+    #[host(output, len = arrayLengthRequested)] seqLengthArray: *mut c_int,
+    #[skip] paddingFill: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let has_padding_fill = !paddingFill.is_null();
+    }
+    'client_extra_send: {
+        has_padding_fill.send(channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS && has_padding_fill {
+            let padding_fill_bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    padding_fill_bytes.as_ptr(),
+                    paddingFill.cast::<u8>(),
+                    padding_fill_bytes.len(),
+                );
+            }
+        }
+    }
+    'server_extra_recv: {
+        let mut has_padding_fill = false;
+        has_padding_fill.recv(channel_receiver).unwrap();
+        let mut padding_fill_arg = CudnnScalarArg::zeroed();
+    }
+    'server_execution: {
+        let padding_fill_ptr = if has_padding_fill {
+            padding_fill_arg.as_mut_ptr()
+        } else {
+            std::ptr::null_mut()
+        };
+        let result = unsafe {
+            cudnnGetRNNDataDescriptor(
+                rnnDataDesc,
+                dataType__ptr,
+                layout__ptr,
+                maxSeqLength__ptr,
+                batchSize__ptr,
+                vectorSize__ptr,
+                arrayLengthRequested,
+                seqLengthArray__ptr,
+                padding_fill_ptr,
+            )
+        };
+    }
+    'server_after_send: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS && has_padding_fill {
+            let padding_fill_len = cudnn_data_type_scalar_size(dataType).unwrap_or_default();
+            send_slice(
+                &padding_fill_arg.as_bytes()[..padding_fill_len],
+                channel_sender,
+            )
+            .unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 2374)]
+fn cudnnGetRNNTempSpaceSizes(
+    handle: cudnnHandle_t,
+    rnnDesc: cudnnRNNDescriptor_t,
+    fwdMode: cudnnForwardMode_t,
+    xDesc: cudnnRNNDataDescriptor_t,
+    workSpaceSize: *mut usize,
+    reserveSpaceSize: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2375)]
+fn cudnnGetRNNWeightParams(
+    handle: cudnnHandle_t,
+    rnnDesc: cudnnRNNDescriptor_t,
+    pseudoLayer: i32,
+    weightSpaceSize: usize,
+    #[device] weightSpace: *const c_void,
+    linLayerID: i32,
+    mDesc: cudnnTensorDescriptor_t,
+    mAddr: *mut *mut c_void,
+    bDesc: cudnnTensorDescriptor_t,
+    bAddr: *mut *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2376, async_api)]
+fn cudnnRNNForward(
+    handle: cudnnHandle_t,
+    rnnDesc: cudnnRNNDescriptor_t,
+    fwdMode: cudnnForwardMode_t,
+    #[device] devSeqLengths: *const i32,
+    xDesc: cudnnRNNDataDescriptor_t,
+    #[device] x: *const c_void,
+    yDesc: cudnnRNNDataDescriptor_t,
+    #[device] y: *mut c_void,
+    hDesc: cudnnTensorDescriptor_t,
+    #[device] hx: *const c_void,
+    #[device] hy: *mut c_void,
+    cDesc: cudnnTensorDescriptor_t,
+    #[device] cx: *const c_void,
+    #[device] cy: *mut c_void,
+    weightSpaceSize: usize,
+    #[device] weightSpace: *const c_void,
+    workSpaceSize: usize,
+    #[device] workSpace: *mut c_void,
+    reserveSpaceSize: usize,
+    #[device] reserveSpace: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2377, async_api)]
+fn cudnnRNNBackwardData_v8(
+    handle: cudnnHandle_t,
+    rnnDesc: cudnnRNNDescriptor_t,
+    #[device] devSeqLengths: *const i32,
+    yDesc: cudnnRNNDataDescriptor_t,
+    #[device] y: *const c_void,
+    #[device] dy: *const c_void,
+    xDesc: cudnnRNNDataDescriptor_t,
+    #[device] dx: *mut c_void,
+    hDesc: cudnnTensorDescriptor_t,
+    #[device] hx: *const c_void,
+    #[device] dhy: *const c_void,
+    #[device] dhx: *mut c_void,
+    cDesc: cudnnTensorDescriptor_t,
+    #[device] cx: *const c_void,
+    #[device] dcy: *const c_void,
+    #[device] dcx: *mut c_void,
+    weightSpaceSize: usize,
+    #[device] weightSpace: *const c_void,
+    workSpaceSize: usize,
+    #[device] workSpace: *mut c_void,
+    reserveSpaceSize: usize,
+    #[device] reserveSpace: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2378, async_api)]
+fn cudnnRNNBackwardWeights_v8(
+    handle: cudnnHandle_t,
+    rnnDesc: cudnnRNNDescriptor_t,
+    addGrad: cudnnWgradMode_t,
+    #[device] devSeqLengths: *const i32,
+    xDesc: cudnnRNNDataDescriptor_t,
+    #[device] x: *const c_void,
+    hDesc: cudnnTensorDescriptor_t,
+    #[device] hx: *const c_void,
+    yDesc: cudnnRNNDataDescriptor_t,
+    #[device] y: *const c_void,
+    weightSpaceSize: usize,
+    #[device] dweightSpace: *mut c_void,
+    workSpaceSize: usize,
+    #[device] workSpace: *mut c_void,
+    reserveSpaceSize: usize,
+    #[device] reserveSpace: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2379)]
+fn cudnnCreateSeqDataDescriptor(seqDataDesc: *mut cudnnSeqDataDescriptor_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2380, async_api)]
+fn cudnnDestroySeqDataDescriptor(seqDataDesc: cudnnSeqDataDescriptor_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2381)]
+fn cudnnSetSeqDataDescriptor(
+    seqDataDesc: cudnnSeqDataDescriptor_t,
+    dataType: cudnnDataType_t,
+    nbDims: c_int,
+    #[host(len = nbDims)] dimA: *const c_int,
+    #[host(len = nbDims)] axes: *const cudnnSeqDataAxis_t,
+    seqLengthArraySize: usize,
+    #[host(len = seqLengthArraySize)] seqLengthArray: *const c_int,
+    #[skip] paddingFill: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let padding_fill_bytes = if paddingFill.is_null() {
+            None
+        } else if let Some(padding_fill_len) = cudnn_data_type_scalar_size(dataType) {
+            Some(unsafe { std::slice::from_raw_parts(paddingFill.cast::<u8>(), padding_fill_len) })
+        } else {
+            return cudnnStatus_t::CUDNN_STATUS_BAD_PARAM;
+        };
+        let has_padding_fill = padding_fill_bytes.is_some();
+    }
+    'client_extra_send: {
+        has_padding_fill.send(channel_sender).unwrap();
+        if let Some(padding_fill_bytes) = padding_fill_bytes {
+            send_slice(padding_fill_bytes, channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut has_padding_fill = false;
+        has_padding_fill.recv(channel_receiver).unwrap();
+        let mut padding_fill_arg = if has_padding_fill {
+            Some(cudnn_recv_scalar_arg(channel_receiver))
+        } else {
+            None
+        };
+    }
+    'server_execution: {
+        let padding_fill_ptr = padding_fill_arg
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |arg| arg.as_mut_ptr());
+        let result = unsafe {
+            cudnnSetSeqDataDescriptor(
+                seqDataDesc,
+                dataType,
+                nbDims,
+                dimA__ptr,
+                axes__ptr,
+                seqLengthArraySize,
+                seqLengthArray__ptr,
+                padding_fill_ptr,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2382)]
+fn cudnnGetSeqDataDescriptor(
+    seqDataDesc: cudnnSeqDataDescriptor_t,
+    dataType: *mut cudnnDataType_t,
+    nbDims: *mut c_int,
+    nbDimsRequested: c_int,
+    #[host(output, len = nbDims, cap = nbDimsRequested)] dimA: *mut c_int,
+    #[host(output, len = nbDims, cap = nbDimsRequested)] axes: *mut cudnnSeqDataAxis_t,
+    seqLengthArraySize: *mut usize,
+    seqLengthSizeRequested: usize,
+    #[host(output, len = seqLengthArraySize, cap = seqLengthSizeRequested)]
+    seqLengthArray: *mut c_int,
+    #[skip] paddingFill: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let has_padding_fill = !paddingFill.is_null();
+    }
+    'client_extra_send: {
+        has_padding_fill.send(channel_sender).unwrap();
+    }
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS && has_padding_fill {
+            let padding_fill_bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    padding_fill_bytes.as_ptr(),
+                    paddingFill.cast::<u8>(),
+                    padding_fill_bytes.len(),
+                );
+            }
+        }
+    }
+    'server_extra_recv: {
+        let mut has_padding_fill = false;
+        has_padding_fill.recv(channel_receiver).unwrap();
+        let mut padding_fill_arg = CudnnScalarArg::zeroed();
+    }
+    'server_execution: {
+        let padding_fill_ptr = if has_padding_fill {
+            padding_fill_arg.as_mut_ptr()
+        } else {
+            std::ptr::null_mut()
+        };
+        let result = unsafe {
+            cudnnGetSeqDataDescriptor(
+                seqDataDesc,
+                dataType__ptr,
+                nbDims__ptr,
+                nbDimsRequested,
+                dimA__ptr,
+                axes__ptr,
+                seqLengthArraySize__ptr,
+                seqLengthSizeRequested,
+                seqLengthArray__ptr,
+                padding_fill_ptr,
+            )
+        };
+    }
+    'server_after_send: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS && has_padding_fill {
+            let padding_fill_len = cudnn_data_type_scalar_size(dataType).unwrap_or_default();
+            send_slice(
+                &padding_fill_arg.as_bytes()[..padding_fill_len],
+                channel_sender,
+            )
+            .unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+}
+
 #[cuda_hook(proc_id = 2320, async_api)]
 fn cudnnTransformTensor(
     handle: cudnnHandle_t,
@@ -781,6 +1136,49 @@ fn cudnnTransformTensorEx(
     'server_execution: {
         let result = unsafe {
             cudnnTransformTensorEx(
+                handle,
+                transDesc,
+                alpha_arg.as_ptr(),
+                srcDesc,
+                srcData,
+                beta_arg.as_ptr(),
+                destDesc,
+                destData,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2400, async_api)]
+fn cudnnTransformFilter(
+    handle: cudnnHandle_t,
+    transDesc: cudnnTensorTransformDescriptor_t,
+    #[skip] alpha: *const c_void,
+    srcDesc: cudnnFilterDescriptor_t,
+    #[device] srcData: *const c_void,
+    #[skip] beta: *const c_void,
+    destDesc: cudnnFilterDescriptor_t,
+    #[device] destData: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_filter_desc_scalar_size(srcDesc);
+        let beta_len = cudnn_filter_desc_scalar_size(destDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnTransformFilter(
                 handle,
                 transDesc,
                 alpha_arg.as_ptr(),
@@ -1479,6 +1877,59 @@ fn cudnnGetConvolutionForwardAlgorithm_v7(
     perfResults: *mut cudnnConvolutionFwdAlgoPerf_t,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2396)]
+fn cudnnFindConvolutionForwardAlgorithm(
+    handle: cudnnHandle_t,
+    xDesc: cudnnTensorDescriptor_t,
+    wDesc: cudnnFilterDescriptor_t,
+    convDesc: cudnnConvolutionDescriptor_t,
+    yDesc: cudnnTensorDescriptor_t,
+    requestedAlgoCount: c_int,
+    returnedAlgoCount: *mut c_int,
+    #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
+    perfResults: *mut cudnnConvolutionFwdAlgoPerf_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2397)]
+fn cudnnFindConvolutionForwardAlgorithmEx(
+    handle: cudnnHandle_t,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    wDesc: cudnnFilterDescriptor_t,
+    #[device] w: *const c_void,
+    convDesc: cudnnConvolutionDescriptor_t,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+    requestedAlgoCount: c_int,
+    returnedAlgoCount: *mut c_int,
+    #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
+    perfResults: *mut cudnnConvolutionFwdAlgoPerf_t,
+    #[device] workSpace: *mut c_void,
+    workSpaceSizeInBytes: usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2398, async_api)]
+fn cudnnIm2Col(
+    handle: cudnnHandle_t,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    wDesc: cudnnFilterDescriptor_t,
+    convDesc: cudnnConvolutionDescriptor_t,
+    #[device] colBuffer: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2399, async_api)]
+fn cudnnReorderFilterAndBias(
+    handle: cudnnHandle_t,
+    filterDesc: cudnnFilterDescriptor_t,
+    reorderType: cudnnReorderType_t,
+    #[device] filterData: *const c_void,
+    #[device] reorderedFilterData: *mut c_void,
+    reorderBias: c_int,
+    #[device] biasData: *const c_void,
+    #[device] reorderedBiasData: *mut c_void,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 2103, async_api)]
 fn cudnnConvolutionForward(
     handle: cudnnHandle_t,
@@ -1664,6 +2115,459 @@ fn cudnnDeriveNormTensorDescriptor(
     mode: cudnnNormMode_t,
     groupCnt: c_int,
 ) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2383, async_api)]
+fn cudnnNormalizationForwardInference(
+    handle: cudnnHandle_t,
+    mode: cudnnNormMode_t,
+    normOps: cudnnNormOps_t,
+    algo: cudnnNormAlgo_t,
+    #[skip] alpha: *const c_void,
+    #[skip] beta: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    normScaleBiasDesc: cudnnTensorDescriptor_t,
+    #[device] normScale: *const c_void,
+    #[device] normBias: *const c_void,
+    normMeanVarDesc: cudnnTensorDescriptor_t,
+    #[device] estimatedMean: *const c_void,
+    #[device] estimatedVariance: *const c_void,
+    zDesc: cudnnTensorDescriptor_t,
+    #[device] z: *const c_void,
+    activationDesc: cudnnActivationDescriptor_t,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+    epsilon: f64,
+    groupCnt: c_int,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnNormalizationForwardInference(
+                handle,
+                mode,
+                normOps,
+                algo,
+                alpha_arg.as_ptr(),
+                beta_arg.as_ptr(),
+                xDesc,
+                x,
+                normScaleBiasDesc,
+                normScale,
+                normBias,
+                normMeanVarDesc,
+                estimatedMean,
+                estimatedVariance,
+                zDesc,
+                z,
+                activationDesc,
+                yDesc,
+                y,
+                epsilon,
+                groupCnt,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2384)]
+fn cudnnGetNormalizationForwardTrainingWorkspaceSize(
+    handle: cudnnHandle_t,
+    mode: cudnnNormMode_t,
+    normOps: cudnnNormOps_t,
+    algo: cudnnNormAlgo_t,
+    xDesc: cudnnTensorDescriptor_t,
+    zDesc: cudnnTensorDescriptor_t,
+    yDesc: cudnnTensorDescriptor_t,
+    normScaleBiasDesc: cudnnTensorDescriptor_t,
+    activationDesc: cudnnActivationDescriptor_t,
+    normMeanVarDesc: cudnnTensorDescriptor_t,
+    sizeInBytes: *mut usize,
+    groupCnt: c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2385)]
+fn cudnnGetNormalizationBackwardWorkspaceSize(
+    handle: cudnnHandle_t,
+    mode: cudnnNormMode_t,
+    normOps: cudnnNormOps_t,
+    algo: cudnnNormAlgo_t,
+    xDesc: cudnnTensorDescriptor_t,
+    yDesc: cudnnTensorDescriptor_t,
+    dyDesc: cudnnTensorDescriptor_t,
+    dzDesc: cudnnTensorDescriptor_t,
+    dxDesc: cudnnTensorDescriptor_t,
+    dNormScaleBiasDesc: cudnnTensorDescriptor_t,
+    activationDesc: cudnnActivationDescriptor_t,
+    normMeanVarDesc: cudnnTensorDescriptor_t,
+    sizeInBytes: *mut usize,
+    groupCnt: c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2386)]
+fn cudnnGetNormalizationTrainingReserveSpaceSize(
+    handle: cudnnHandle_t,
+    mode: cudnnNormMode_t,
+    normOps: cudnnNormOps_t,
+    algo: cudnnNormAlgo_t,
+    activationDesc: cudnnActivationDescriptor_t,
+    xDesc: cudnnTensorDescriptor_t,
+    sizeInBytes: *mut usize,
+    groupCnt: c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2387, async_api)]
+fn cudnnNormalizationForwardTraining(
+    handle: cudnnHandle_t,
+    mode: cudnnNormMode_t,
+    normOps: cudnnNormOps_t,
+    algo: cudnnNormAlgo_t,
+    #[skip] alpha: *const c_void,
+    #[skip] beta: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] xData: *const c_void,
+    normScaleBiasDesc: cudnnTensorDescriptor_t,
+    #[device] normScale: *const c_void,
+    #[device] normBias: *const c_void,
+    exponentialAverageFactor: f64,
+    normMeanVarDesc: cudnnTensorDescriptor_t,
+    #[device] resultRunningMean: *mut c_void,
+    #[device] resultRunningVariance: *mut c_void,
+    epsilon: f64,
+    #[device] resultSaveMean: *mut c_void,
+    #[device] resultSaveInvVariance: *mut c_void,
+    activationDesc: cudnnActivationDescriptor_t,
+    zDesc: cudnnTensorDescriptor_t,
+    #[device] zData: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] yData: *mut c_void,
+    #[device] workspace: *mut c_void,
+    workSpaceSizeInBytes: usize,
+    #[device] reserveSpace: *mut c_void,
+    reserveSpaceSizeInBytes: usize,
+    groupCnt: c_int,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnNormalizationForwardTraining(
+                handle,
+                mode,
+                normOps,
+                algo,
+                alpha_arg.as_ptr(),
+                beta_arg.as_ptr(),
+                xDesc,
+                xData,
+                normScaleBiasDesc,
+                normScale,
+                normBias,
+                exponentialAverageFactor,
+                normMeanVarDesc,
+                resultRunningMean,
+                resultRunningVariance,
+                epsilon,
+                resultSaveMean,
+                resultSaveInvVariance,
+                activationDesc,
+                zDesc,
+                zData,
+                yDesc,
+                yData,
+                workspace,
+                workSpaceSizeInBytes,
+                reserveSpace,
+                reserveSpaceSizeInBytes,
+                groupCnt,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2388, async_api)]
+fn cudnnNormalizationBackward(
+    handle: cudnnHandle_t,
+    mode: cudnnNormMode_t,
+    normOps: cudnnNormOps_t,
+    algo: cudnnNormAlgo_t,
+    #[skip] alphaDataDiff: *const c_void,
+    #[skip] betaDataDiff: *const c_void,
+    #[skip] alphaParamDiff: *const c_void,
+    #[skip] betaParamDiff: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] xData: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] yData: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dyData: *const c_void,
+    dzDesc: cudnnTensorDescriptor_t,
+    #[device] dzData: *mut c_void,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dxData: *mut c_void,
+    dNormScaleBiasDesc: cudnnTensorDescriptor_t,
+    #[device] normScaleData: *const c_void,
+    #[device] normBiasData: *const c_void,
+    #[device] dNormScaleData: *mut c_void,
+    #[device] dNormBiasData: *mut c_void,
+    epsilon: f64,
+    normMeanVarDesc: cudnnTensorDescriptor_t,
+    #[device] savedMean: *const c_void,
+    #[device] savedInvVariance: *const c_void,
+    activationDesc: cudnnActivationDescriptor_t,
+    #[device] workSpace: *mut c_void,
+    workSpaceSizeInBytes: usize,
+    #[device] reserveSpace: *mut c_void,
+    reserveSpaceSizeInBytes: usize,
+    groupCnt: c_int,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_data_diff_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_data_diff_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        let alpha_param_diff_len = cudnn_tensor_desc_scalar_size(dNormScaleBiasDesc);
+        let beta_param_diff_len = cudnn_tensor_desc_scalar_size(dNormScaleBiasDesc);
+        assert!(!alphaDataDiff.is_null());
+        assert!(!betaDataDiff.is_null());
+        assert!(!alphaParamDiff.is_null());
+        assert!(!betaParamDiff.is_null());
+        let alpha_data_diff_bytes =
+            unsafe { std::slice::from_raw_parts(alphaDataDiff.cast::<u8>(), alpha_data_diff_len) };
+        let beta_data_diff_bytes =
+            unsafe { std::slice::from_raw_parts(betaDataDiff.cast::<u8>(), beta_data_diff_len) };
+        let alpha_param_diff_bytes = unsafe {
+            std::slice::from_raw_parts(alphaParamDiff.cast::<u8>(), alpha_param_diff_len)
+        };
+        let beta_param_diff_bytes =
+            unsafe { std::slice::from_raw_parts(betaParamDiff.cast::<u8>(), beta_param_diff_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_data_diff_bytes, channel_sender).unwrap();
+        send_slice(beta_data_diff_bytes, channel_sender).unwrap();
+        send_slice(alpha_param_diff_bytes, channel_sender).unwrap();
+        send_slice(beta_param_diff_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_data_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_data_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let alpha_param_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_param_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnNormalizationBackward(
+                handle,
+                mode,
+                normOps,
+                algo,
+                alpha_data_diff_arg.as_ptr(),
+                beta_data_diff_arg.as_ptr(),
+                alpha_param_diff_arg.as_ptr(),
+                beta_param_diff_arg.as_ptr(),
+                xDesc,
+                xData,
+                yDesc,
+                yData,
+                dyDesc,
+                dyData,
+                dzDesc,
+                dzData,
+                dxDesc,
+                dxData,
+                dNormScaleBiasDesc,
+                normScaleData,
+                normBiasData,
+                dNormScaleData,
+                dNormBiasData,
+                epsilon,
+                normMeanVarDesc,
+                savedMean,
+                savedInvVariance,
+                activationDesc,
+                workSpace,
+                workSpaceSizeInBytes,
+                reserveSpace,
+                reserveSpaceSizeInBytes,
+                groupCnt,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2389)]
+fn cudnnCreateSpatialTransformerDescriptor(
+    stDesc: *mut cudnnSpatialTransformerDescriptor_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2390)]
+fn cudnnSetSpatialTransformerNdDescriptor(
+    stDesc: cudnnSpatialTransformerDescriptor_t,
+    samplerType: cudnnSamplerType_t,
+    dataType: cudnnDataType_t,
+    nbDims: c_int,
+    #[host(len = nbDims)] dimA: *const c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2391, async_api)]
+fn cudnnDestroySpatialTransformerDescriptor(
+    stDesc: cudnnSpatialTransformerDescriptor_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2392, async_api)]
+fn cudnnSpatialTfGridGeneratorForward(
+    handle: cudnnHandle_t,
+    stDesc: cudnnSpatialTransformerDescriptor_t,
+    #[device] theta: *const c_void,
+    #[device] grid: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2393, async_api)]
+fn cudnnSpatialTfSamplerForward(
+    handle: cudnnHandle_t,
+    stDesc: cudnnSpatialTransformerDescriptor_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[device] grid: *const c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnSpatialTfSamplerForward(
+                handle,
+                stDesc,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                grid,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2394, async_api)]
+fn cudnnSpatialTfGridGeneratorBackward(
+    handle: cudnnHandle_t,
+    stDesc: cudnnSpatialTransformerDescriptor_t,
+    #[device] dgrid: *const c_void,
+    #[device] dtheta: *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2395, async_api)]
+fn cudnnSpatialTfSamplerBackward(
+    handle: cudnnHandle_t,
+    stDesc: cudnnSpatialTransformerDescriptor_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+    #[skip] alphaDgrid: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    #[device] grid: *const c_void,
+    #[skip] betaDgrid: *const c_void,
+    #[device] dgrid: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        let alpha_dgrid_len = cudnn_tensor_desc_scalar_size(dyDesc);
+        let beta_dgrid_len = cudnn_tensor_desc_scalar_size(dyDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        assert!(!alphaDgrid.is_null());
+        assert!(!betaDgrid.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+        let alpha_dgrid_bytes =
+            unsafe { std::slice::from_raw_parts(alphaDgrid.cast::<u8>(), alpha_dgrid_len) };
+        let beta_dgrid_bytes =
+            unsafe { std::slice::from_raw_parts(betaDgrid.cast::<u8>(), beta_dgrid_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+        send_slice(alpha_dgrid_bytes, channel_sender).unwrap();
+        send_slice(beta_dgrid_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let alpha_dgrid_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_dgrid_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnSpatialTfSamplerBackward(
+                handle,
+                stDesc,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                dxDesc,
+                dx,
+                alpha_dgrid_arg.as_ptr(),
+                dyDesc,
+                dy,
+                grid,
+                beta_dgrid_arg.as_ptr(),
+                dgrid,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 2009)]
 fn cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
@@ -2023,6 +2927,37 @@ fn cudnnGetConvolutionBackwardDataAlgorithm_v7(
     perfResults: *mut cudnnConvolutionBwdDataAlgoPerf_t,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2401)]
+fn cudnnFindConvolutionBackwardDataAlgorithm(
+    handle: cudnnHandle_t,
+    wDesc: cudnnFilterDescriptor_t,
+    dyDesc: cudnnTensorDescriptor_t,
+    convDesc: cudnnConvolutionDescriptor_t,
+    dxDesc: cudnnTensorDescriptor_t,
+    requestedAlgoCount: c_int,
+    returnedAlgoCount: *mut c_int,
+    #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
+    perfResults: *mut cudnnConvolutionBwdDataAlgoPerf_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2402)]
+fn cudnnFindConvolutionBackwardDataAlgorithmEx(
+    handle: cudnnHandle_t,
+    wDesc: cudnnFilterDescriptor_t,
+    #[device] w: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    convDesc: cudnnConvolutionDescriptor_t,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+    requestedAlgoCount: c_int,
+    returnedAlgoCount: *mut c_int,
+    #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
+    perfResults: *mut cudnnConvolutionBwdDataAlgoPerf_t,
+    #[device] workSpace: *mut c_void,
+    workSpaceSizeInBytes: usize,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 2114)]
 fn cudnnGetConvolutionBackwardDataAlgorithmMaxCount(
     handle: cudnnHandle_t,
@@ -2104,6 +3039,37 @@ fn cudnnGetConvolutionBackwardFilterAlgorithm_v7(
     returnedAlgoCount: *mut c_int,
     #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
     perfResults: *mut cudnnConvolutionBwdFilterAlgoPerf_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2403)]
+fn cudnnFindConvolutionBackwardFilterAlgorithm(
+    handle: cudnnHandle_t,
+    xDesc: cudnnTensorDescriptor_t,
+    dyDesc: cudnnTensorDescriptor_t,
+    convDesc: cudnnConvolutionDescriptor_t,
+    dwDesc: cudnnFilterDescriptor_t,
+    requestedAlgoCount: c_int,
+    returnedAlgoCount: *mut c_int,
+    #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
+    perfResults: *mut cudnnConvolutionBwdFilterAlgoPerf_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2404)]
+fn cudnnFindConvolutionBackwardFilterAlgorithmEx(
+    handle: cudnnHandle_t,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] y: *const c_void,
+    convDesc: cudnnConvolutionDescriptor_t,
+    dwDesc: cudnnFilterDescriptor_t,
+    #[device] dw: *mut c_void,
+    requestedAlgoCount: c_int,
+    returnedAlgoCount: *mut c_int,
+    #[host(output, len = returnedAlgoCount, cap = requestedAlgoCount)]
+    perfResults: *mut cudnnConvolutionBwdFilterAlgoPerf_t,
+    #[device] workSpace: *mut c_void,
+    workSpaceSizeInBytes: usize,
 ) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 2214)]
