@@ -642,6 +642,40 @@ fn cudnnCTCLoss_v8(
     #[device] workspace: *mut c_void,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2408, async_api)]
+fn cudnnCausalConv1dForward(
+    stream: cudaStream_t,
+    #[device] x: *const c_void,
+    #[device] weight: *const c_void,
+    #[device] bias: *const c_void,
+    #[device] y: *mut c_void,
+    batch: c_int,
+    dim: c_int,
+    seqLen: c_int,
+    kernelSize: c_int,
+    dataType: cudnnDataType_t,
+    activation: cudnnCausalConv1dActivation_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2409, async_api)]
+fn cudnnCausalConv1dBackward(
+    stream: cudaStream_t,
+    #[device] x: *const c_void,
+    #[device] weight: *const c_void,
+    #[device] bias: *const c_void,
+    #[device] dy: *const c_void,
+    #[device] dx: *mut c_void,
+    #[device] dweight: *mut c_void,
+    #[device] dbias: *mut c_void,
+    batch: c_int,
+    dim: c_int,
+    seqLen: c_int,
+    kernelSize: c_int,
+    dataType: cudnnDataType_t,
+    dwDataType: cudnnDataType_t,
+    activation: cudnnCausalConv1dActivation_t,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 2361)]
 fn cudnnCreateRNNDescriptor(rnnDesc: *mut cudnnRNNDescriptor_t) -> cudnnStatus_t;
 
