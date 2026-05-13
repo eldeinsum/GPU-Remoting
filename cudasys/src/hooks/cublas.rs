@@ -2260,6 +2260,35 @@ fn cublasZtrsm(
     ldb: c_int,
 );
 
+#[cuda_custom_hook(proc_id = 1906)]
+fn cublasSrotg(sa: *mut f32, sb: *mut f32, sc: *mut f32, ss: *mut f32);
+
+#[cuda_custom_hook(proc_id = 1907)]
+fn cublasDrotg(sa: *mut f64, sb: *mut f64, sc: *mut f64, ss: *mut f64);
+
+#[cuda_custom_hook(proc_id = 1908)]
+fn cublasCrotg(ca: *mut cuComplex, cb: cuComplex, sc: *mut f32, cs: *mut cuComplex);
+
+#[cuda_custom_hook(proc_id = 1909)]
+fn cublasZrotg(
+    ca: *mut cuDoubleComplex,
+    cb: cuDoubleComplex,
+    sc: *mut f64,
+    cs: *mut cuDoubleComplex,
+);
+
+#[cuda_custom_hook(proc_id = 1910)]
+fn cublasSrotm(n: c_int, x: *mut f32, incx: c_int, y: *mut f32, incy: c_int, sparam: *const f32);
+
+#[cuda_custom_hook(proc_id = 1911)]
+fn cublasDrotm(n: c_int, x: *mut f64, incx: c_int, y: *mut f64, incy: c_int, sparam: *const f64);
+
+#[cuda_custom_hook(proc_id = 1912)]
+fn cublasSrotmg(sd1: *mut f32, sd2: *mut f32, sx1: *mut f32, sy1: *const f32, sparam: *mut f32);
+
+#[cuda_custom_hook(proc_id = 1913)]
+fn cublasDrotmg(sd1: *mut f64, sd2: *mut f64, sx1: *mut f64, sy1: *const f64, sparam: *mut f64);
+
 #[cuda_custom_hook] // local: returns a client-owned C string
 fn cublasGetStatusName(status: cublasStatus_t) -> *const c_char;
 

@@ -59,6 +59,28 @@ where
     });
 }
 
+fn send_host_array5<T>(ptr: *const T, channel: &Channel)
+where
+    T: Copy + Transportable,
+{
+    for i in 0..5 {
+        unsafe { *ptr.add(i) }.send(channel).unwrap();
+    }
+}
+
+fn recv_host_array5<T>(channel: &Channel, ptr: *mut T)
+where
+    T: Copy,
+    MaybeUninit<T>: Transportable,
+{
+    for i in 0..5 {
+        let value = recv_value::<T, _>(channel);
+        unsafe {
+            *ptr.add(i) = value;
+        }
+    }
+}
+
 macro_rules! legacy_ret {
     ($name:ident, $proc_id:expr, ($($arg:ident: $ty:ty),* $(,)?) -> $ret:ty) => {
         #[no_mangle]
@@ -130,6 +152,256 @@ legacy_void!(cublasCrot, 1744, (n: c_int, x: *mut cuComplex, incx: c_int, y: *mu
 legacy_void!(cublasZrot, 1745, (n: c_int, x: *mut cuDoubleComplex, incx: c_int, y: *mut cuDoubleComplex, incy: c_int, sc: f64, cs: cuDoubleComplex));
 legacy_void!(cublasCsrot, 1746, (n: c_int, x: *mut cuComplex, incx: c_int, y: *mut cuComplex, incy: c_int, c: f32, s: f32));
 legacy_void!(cublasZdrot, 1747, (n: c_int, x: *mut cuDoubleComplex, incx: c_int, y: *mut cuDoubleComplex, incy: c_int, c: f64, s: f64));
+
+#[no_mangle]
+pub extern "C" fn cublasSrotg(sa: *mut f32, sb: *mut f32, sc: *mut f32, ss: *mut f32) {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1906.send(channel_sender).unwrap();
+        unsafe {
+            (*sa).send(channel_sender).unwrap();
+            (*sb).send(channel_sender).unwrap();
+            (*sc).send(channel_sender).unwrap();
+            (*ss).send(channel_sender).unwrap();
+        }
+        channel_sender.flush_out().unwrap();
+
+        let new_sa = recv_value::<f32, _>(channel_receiver);
+        let new_sb = recv_value::<f32, _>(channel_receiver);
+        let new_sc = recv_value::<f32, _>(channel_receiver);
+        let new_ss = recv_value::<f32, _>(channel_receiver);
+        channel_receiver.recv_ts().unwrap();
+        unsafe {
+            *sa = new_sa;
+            *sb = new_sb;
+            *sc = new_sc;
+            *ss = new_ss;
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasDrotg(sa: *mut f64, sb: *mut f64, sc: *mut f64, ss: *mut f64) {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1907.send(channel_sender).unwrap();
+        unsafe {
+            (*sa).send(channel_sender).unwrap();
+            (*sb).send(channel_sender).unwrap();
+            (*sc).send(channel_sender).unwrap();
+            (*ss).send(channel_sender).unwrap();
+        }
+        channel_sender.flush_out().unwrap();
+
+        let new_sa = recv_value::<f64, _>(channel_receiver);
+        let new_sb = recv_value::<f64, _>(channel_receiver);
+        let new_sc = recv_value::<f64, _>(channel_receiver);
+        let new_ss = recv_value::<f64, _>(channel_receiver);
+        channel_receiver.recv_ts().unwrap();
+        unsafe {
+            *sa = new_sa;
+            *sb = new_sb;
+            *sc = new_sc;
+            *ss = new_ss;
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasCrotg(ca: *mut cuComplex, cb: cuComplex, sc: *mut f32, cs: *mut cuComplex) {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1908.send(channel_sender).unwrap();
+        unsafe {
+            (*ca).send(channel_sender).unwrap();
+            cb.send(channel_sender).unwrap();
+            (*sc).send(channel_sender).unwrap();
+            (*cs).send(channel_sender).unwrap();
+        }
+        channel_sender.flush_out().unwrap();
+
+        let new_ca = recv_value::<cuComplex, _>(channel_receiver);
+        let new_sc = recv_value::<f32, _>(channel_receiver);
+        let new_cs = recv_value::<cuComplex, _>(channel_receiver);
+        channel_receiver.recv_ts().unwrap();
+        unsafe {
+            *ca = new_ca;
+            *sc = new_sc;
+            *cs = new_cs;
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasZrotg(
+    ca: *mut cuDoubleComplex,
+    cb: cuDoubleComplex,
+    sc: *mut f64,
+    cs: *mut cuDoubleComplex,
+) {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1909.send(channel_sender).unwrap();
+        unsafe {
+            (*ca).send(channel_sender).unwrap();
+            cb.send(channel_sender).unwrap();
+            (*sc).send(channel_sender).unwrap();
+            (*cs).send(channel_sender).unwrap();
+        }
+        channel_sender.flush_out().unwrap();
+
+        let new_ca = recv_value::<cuDoubleComplex, _>(channel_receiver);
+        let new_sc = recv_value::<f64, _>(channel_receiver);
+        let new_cs = recv_value::<cuDoubleComplex, _>(channel_receiver);
+        channel_receiver.recv_ts().unwrap();
+        unsafe {
+            *ca = new_ca;
+            *sc = new_sc;
+            *cs = new_cs;
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasSrotm(
+    n: c_int,
+    x: *mut f32,
+    incx: c_int,
+    y: *mut f32,
+    incy: c_int,
+    sparam: *const f32,
+) {
+    legacy_void_call(1910, |channel| {
+        n.send(channel).unwrap();
+        x.send(channel).unwrap();
+        incx.send(channel).unwrap();
+        y.send(channel).unwrap();
+        incy.send(channel).unwrap();
+        send_host_array5(sparam, channel);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasDrotm(
+    n: c_int,
+    x: *mut f64,
+    incx: c_int,
+    y: *mut f64,
+    incy: c_int,
+    sparam: *const f64,
+) {
+    legacy_void_call(1911, |channel| {
+        n.send(channel).unwrap();
+        x.send(channel).unwrap();
+        incx.send(channel).unwrap();
+        y.send(channel).unwrap();
+        incy.send(channel).unwrap();
+        send_host_array5(sparam, channel);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasSrotmg(
+    sd1: *mut f32,
+    sd2: *mut f32,
+    sx1: *mut f32,
+    sy1: *const f32,
+    sparam: *mut f32,
+) {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1912.send(channel_sender).unwrap();
+        unsafe {
+            (*sd1).send(channel_sender).unwrap();
+            (*sd2).send(channel_sender).unwrap();
+            (*sx1).send(channel_sender).unwrap();
+            (*sy1).send(channel_sender).unwrap();
+        }
+        send_host_array5(sparam, channel_sender);
+        channel_sender.flush_out().unwrap();
+
+        let new_sd1 = recv_value::<f32, _>(channel_receiver);
+        let new_sd2 = recv_value::<f32, _>(channel_receiver);
+        let new_sx1 = recv_value::<f32, _>(channel_receiver);
+        recv_host_array5(channel_receiver, sparam);
+        channel_receiver.recv_ts().unwrap();
+        unsafe {
+            *sd1 = new_sd1;
+            *sd2 = new_sd2;
+            *sx1 = new_sx1;
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn cublasDrotmg(
+    sd1: *mut f64,
+    sd2: *mut f64,
+    sx1: *mut f64,
+    sy1: *const f64,
+    sparam: *mut f64,
+) {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1913.send(channel_sender).unwrap();
+        unsafe {
+            (*sd1).send(channel_sender).unwrap();
+            (*sd2).send(channel_sender).unwrap();
+            (*sx1).send(channel_sender).unwrap();
+            (*sy1).send(channel_sender).unwrap();
+        }
+        send_host_array5(sparam, channel_sender);
+        channel_sender.flush_out().unwrap();
+
+        let new_sd1 = recv_value::<f64, _>(channel_receiver);
+        let new_sd2 = recv_value::<f64, _>(channel_receiver);
+        let new_sx1 = recv_value::<f64, _>(channel_receiver);
+        recv_host_array5(channel_receiver, sparam);
+        channel_receiver.recv_ts().unwrap();
+        unsafe {
+            *sd1 = new_sd1;
+            *sd2 = new_sd2;
+            *sx1 = new_sx1;
+        }
+    });
+}
+
 legacy_void!(cublasSgemv, 1748, (trans: c_char, m: c_int, n: c_int, alpha: f32, A: *const f32, lda: c_int, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
 legacy_void!(cublasDgemv, 1749, (trans: c_char, m: c_int, n: c_int, alpha: f64, A: *const f64, lda: c_int, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
 legacy_void!(cublasCgemv, 1750, (trans: c_char, m: c_int, n: c_int, alpha: cuComplex, A: *const cuComplex, lda: c_int, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));

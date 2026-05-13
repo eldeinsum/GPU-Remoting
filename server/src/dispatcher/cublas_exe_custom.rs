@@ -37,6 +37,31 @@ macro_rules! legacy_void_exe {
     };
 }
 
+fn recv_array5<T, C>(channel: &C) -> [T; 5]
+where
+    T: Copy,
+    MaybeUninit<T>: Transportable,
+    C: CommChannel,
+{
+    [
+        recv_value(channel),
+        recv_value(channel),
+        recv_value(channel),
+        recv_value(channel),
+        recv_value(channel),
+    ]
+}
+
+fn send_array5<T, C>(values: &[T; 5], channel: &C)
+where
+    T: Copy + Transportable,
+    C: CommChannel,
+{
+    for value in values {
+        value.send(channel).unwrap();
+    }
+}
+
 pub fn cublasLoggerConfigureExe<C: CommChannel>(server: &mut ServerWorker<C>) {
     let logIsOn: c_int = recv_value(&server.channel_receiver);
     let logToStdOut: c_int = recv_value(&server.channel_receiver);
@@ -107,6 +132,115 @@ legacy_void_exe!(cublasCrotExe, cublasCrot, (n: c_int, x: *mut cuComplex, incx: 
 legacy_void_exe!(cublasZrotExe, cublasZrot, (n: c_int, x: *mut cuDoubleComplex, incx: c_int, y: *mut cuDoubleComplex, incy: c_int, sc: f64, cs: cuDoubleComplex));
 legacy_void_exe!(cublasCsrotExe, cublasCsrot, (n: c_int, x: *mut cuComplex, incx: c_int, y: *mut cuComplex, incy: c_int, c: f32, s: f32));
 legacy_void_exe!(cublasZdrotExe, cublasZdrot, (n: c_int, x: *mut cuDoubleComplex, incx: c_int, y: *mut cuDoubleComplex, incy: c_int, c: f64, s: f64));
+
+pub fn cublasSrotgExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let mut sa: f32 = recv_value(&server.channel_receiver);
+    let mut sb: f32 = recv_value(&server.channel_receiver);
+    let mut sc: f32 = recv_value(&server.channel_receiver);
+    let mut ss: f32 = recv_value(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasSrotg(&mut sa, &mut sb, &mut sc, &mut ss) };
+    sa.send(&server.channel_sender).unwrap();
+    sb.send(&server.channel_sender).unwrap();
+    sc.send(&server.channel_sender).unwrap();
+    ss.send(&server.channel_sender).unwrap();
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasDrotgExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let mut sa: f64 = recv_value(&server.channel_receiver);
+    let mut sb: f64 = recv_value(&server.channel_receiver);
+    let mut sc: f64 = recv_value(&server.channel_receiver);
+    let mut ss: f64 = recv_value(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasDrotg(&mut sa, &mut sb, &mut sc, &mut ss) };
+    sa.send(&server.channel_sender).unwrap();
+    sb.send(&server.channel_sender).unwrap();
+    sc.send(&server.channel_sender).unwrap();
+    ss.send(&server.channel_sender).unwrap();
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasCrotgExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let mut ca: cuComplex = recv_value(&server.channel_receiver);
+    let cb: cuComplex = recv_value(&server.channel_receiver);
+    let mut sc: f32 = recv_value(&server.channel_receiver);
+    let mut cs: cuComplex = recv_value(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasCrotg(&mut ca, cb, &mut sc, &mut cs) };
+    ca.send(&server.channel_sender).unwrap();
+    sc.send(&server.channel_sender).unwrap();
+    cs.send(&server.channel_sender).unwrap();
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasZrotgExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let mut ca: cuDoubleComplex = recv_value(&server.channel_receiver);
+    let cb: cuDoubleComplex = recv_value(&server.channel_receiver);
+    let mut sc: f64 = recv_value(&server.channel_receiver);
+    let mut cs: cuDoubleComplex = recv_value(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasZrotg(&mut ca, cb, &mut sc, &mut cs) };
+    ca.send(&server.channel_sender).unwrap();
+    sc.send(&server.channel_sender).unwrap();
+    cs.send(&server.channel_sender).unwrap();
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasSrotmExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let n: c_int = recv_value(&server.channel_receiver);
+    let x: *mut f32 = recv_value(&server.channel_receiver);
+    let incx: c_int = recv_value(&server.channel_receiver);
+    let y: *mut f32 = recv_value(&server.channel_receiver);
+    let incy: c_int = recv_value(&server.channel_receiver);
+    let sparam = recv_array5::<f32, _>(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasSrotm(n, x, incx, y, incy, sparam.as_ptr()) };
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasDrotmExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let n: c_int = recv_value(&server.channel_receiver);
+    let x: *mut f64 = recv_value(&server.channel_receiver);
+    let incx: c_int = recv_value(&server.channel_receiver);
+    let y: *mut f64 = recv_value(&server.channel_receiver);
+    let incy: c_int = recv_value(&server.channel_receiver);
+    let sparam = recv_array5::<f64, _>(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasDrotm(n, x, incx, y, incy, sparam.as_ptr()) };
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasSrotmgExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let mut sd1: f32 = recv_value(&server.channel_receiver);
+    let mut sd2: f32 = recv_value(&server.channel_receiver);
+    let mut sx1: f32 = recv_value(&server.channel_receiver);
+    let sy1: f32 = recv_value(&server.channel_receiver);
+    let mut sparam = recv_array5::<f32, _>(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasSrotmg(&mut sd1, &mut sd2, &mut sx1, &sy1, sparam.as_mut_ptr()) };
+    sd1.send(&server.channel_sender).unwrap();
+    sd2.send(&server.channel_sender).unwrap();
+    sx1.send(&server.channel_sender).unwrap();
+    send_array5(&sparam, &server.channel_sender);
+    server.channel_sender.flush_out().unwrap();
+}
+
+pub fn cublasDrotmgExe<C: CommChannel>(server: &mut ServerWorker<C>) {
+    let mut sd1: f64 = recv_value(&server.channel_receiver);
+    let mut sd2: f64 = recv_value(&server.channel_receiver);
+    let mut sx1: f64 = recv_value(&server.channel_receiver);
+    let sy1: f64 = recv_value(&server.channel_receiver);
+    let mut sparam = recv_array5::<f64, _>(&server.channel_receiver);
+    server.channel_receiver.recv_ts().unwrap();
+    unsafe { cublasDrotmg(&mut sd1, &mut sd2, &mut sx1, &sy1, sparam.as_mut_ptr()) };
+    sd1.send(&server.channel_sender).unwrap();
+    sd2.send(&server.channel_sender).unwrap();
+    sx1.send(&server.channel_sender).unwrap();
+    send_array5(&sparam, &server.channel_sender);
+    server.channel_sender.flush_out().unwrap();
+}
+
 legacy_void_exe!(cublasSgemvExe, cublasSgemv, (trans: c_char, m: c_int, n: c_int, alpha: f32, A: *const f32, lda: c_int, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
 legacy_void_exe!(cublasDgemvExe, cublasDgemv, (trans: c_char, m: c_int, n: c_int, alpha: f64, A: *const f64, lda: c_int, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
 legacy_void_exe!(cublasCgemvExe, cublasCgemv, (trans: c_char, m: c_int, n: c_int, alpha: cuComplex, A: *const cuComplex, lda: c_int, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));
