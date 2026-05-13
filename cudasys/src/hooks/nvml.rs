@@ -2067,3 +2067,314 @@ fn nvmlDeviceGetSupportedEventTypes(
     device: nvmlDevice_t,
     eventTypes: *mut c_ulonglong,
 ) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991150)]
+fn nvmlDeviceGetMemoryAffinity(
+    device: nvmlDevice_t,
+    nodeSetSize: c_uint,
+    #[host(output, len = nodeSetSize)] nodeSet: *mut c_ulong,
+    scope: nvmlAffinityScope_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991151)]
+fn nvmlDeviceGetCpuAffinityWithinScope(
+    device: nvmlDevice_t,
+    cpuSetSize: c_uint,
+    #[host(output, len = cpuSetSize)] cpuSet: *mut c_ulong,
+    scope: nvmlAffinityScope_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991152)]
+fn nvmlDeviceGetCpuAffinity(
+    device: nvmlDevice_t,
+    cpuSetSize: c_uint,
+    #[host(output, len = cpuSetSize)] cpuSet: *mut c_ulong,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991153)]
+fn nvmlDeviceGetThermalSettings(
+    device: nvmlDevice_t,
+    sensorIndex: c_uint,
+    pThermalSettings: *mut nvmlGpuThermalSettings_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991154)]
+fn nvmlDeviceGetDramEncryptionMode(
+    device: nvmlDevice_t,
+    current: *mut nvmlDramEncryptionInfo_t,
+    pending: *mut nvmlDramEncryptionInfo_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!current.is_null());
+        assert!(!pending.is_null());
+        unsafe { std::ptr::read_unaligned(current) }
+            .send(channel_sender)
+            .unwrap();
+        unsafe { std::ptr::read_unaligned(pending) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut current_in = std::mem::MaybeUninit::<nvmlDramEncryptionInfo_t>::uninit();
+        current_in.recv(channel_receiver).unwrap();
+        let current_in = unsafe { current_in.assume_init() };
+        let mut pending_in = std::mem::MaybeUninit::<nvmlDramEncryptionInfo_t>::uninit();
+        pending_in.recv(channel_receiver).unwrap();
+        let pending_in = unsafe { pending_in.assume_init() };
+    }
+    'server_before_execution: {
+        current.write(current_in);
+        pending.write(pending_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991155)]
+fn nvmlDeviceGetSramEccErrorStatus(
+    device: nvmlDevice_t,
+    status: *mut nvmlEccSramErrorStatus_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!status.is_null());
+        unsafe { std::ptr::read_unaligned(status) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut status_in = std::mem::MaybeUninit::<nvmlEccSramErrorStatus_t>::uninit();
+        status_in.recv(channel_receiver).unwrap();
+        let status_in = unsafe { status_in.assume_init() };
+    }
+    'server_before_execution: {
+        status.write(status_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991156)]
+fn nvmlDeviceGetClkMonStatus(device: nvmlDevice_t, status: *mut nvmlClkMonStatus_t)
+    -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991157)]
+fn nvmlDeviceGetPlatformInfo(
+    device: nvmlDevice_t,
+    platformInfo: *mut nvmlPlatformInfo_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!platformInfo.is_null());
+        unsafe { std::ptr::read_unaligned(platformInfo) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut platformInfo_in = std::mem::MaybeUninit::<nvmlPlatformInfo_t>::uninit();
+        platformInfo_in.recv(channel_receiver).unwrap();
+        let platformInfo_in = unsafe { platformInfo_in.assume_init() };
+    }
+    'server_before_execution: {
+        platformInfo.write(platformInfo_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991158)]
+fn nvmlDeviceGetPdi(device: nvmlDevice_t, pdi: *mut nvmlPdi_t) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!pdi.is_null());
+        unsafe { std::ptr::read_unaligned(pdi) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut pdi_in = std::mem::MaybeUninit::<nvmlPdi_t>::uninit();
+        pdi_in.recv(channel_receiver).unwrap();
+        let pdi_in = unsafe { pdi_in.assume_init() };
+    }
+    'server_before_execution: {
+        pdi.write(pdi_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991159)]
+fn nvmlDeviceGetHostname_v1(device: nvmlDevice_t, hostname: *mut nvmlHostname_v1_t)
+    -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991160)]
+fn nvmlDeviceGetNvLinkState(
+    device: nvmlDevice_t,
+    link: c_uint,
+    isActive: *mut nvmlEnableState_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991161)]
+fn nvmlDeviceGetNvLinkVersion(
+    device: nvmlDevice_t,
+    link: c_uint,
+    version: *mut c_uint,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991162)]
+fn nvmlDeviceGetNvLinkCapability(
+    device: nvmlDevice_t,
+    link: c_uint,
+    capability: nvmlNvLinkCapability_t,
+    capResult: *mut c_uint,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991163)]
+fn nvmlDeviceGetNvLinkRemotePciInfo_v2(
+    device: nvmlDevice_t,
+    link: c_uint,
+    pci: *mut nvmlPciInfo_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991164)]
+fn nvmlDeviceGetNvLinkErrorCounter(
+    device: nvmlDevice_t,
+    link: c_uint,
+    counter: nvmlNvLinkErrorCounter_t,
+    counterValue: *mut c_ulonglong,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991165)]
+fn nvmlDeviceGetNvLinkUtilizationControl(
+    device: nvmlDevice_t,
+    link: c_uint,
+    counter: c_uint,
+    control: *mut nvmlNvLinkUtilizationControl_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991166)]
+fn nvmlDeviceGetNvLinkUtilizationCounter(
+    device: nvmlDevice_t,
+    link: c_uint,
+    counter: c_uint,
+    rxcounter: *mut c_ulonglong,
+    txcounter: *mut c_ulonglong,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991167)]
+fn nvmlDeviceGetNvLinkRemoteDeviceType(
+    device: nvmlDevice_t,
+    link: c_uint,
+    pNvLinkDeviceType: *mut nvmlIntNvLinkDeviceType_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991168)]
+fn nvmlSystemGetNvlinkBwMode(nvlinkBwMode: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991169)]
+fn nvmlDeviceGetNvlinkSupportedBwModes(
+    device: nvmlDevice_t,
+    supportedBwMode: *mut nvmlNvlinkSupportedBwModes_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!supportedBwMode.is_null());
+        unsafe { std::ptr::read_unaligned(supportedBwMode) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut supportedBwMode_in =
+            std::mem::MaybeUninit::<nvmlNvlinkSupportedBwModes_t>::uninit();
+        supportedBwMode_in.recv(channel_receiver).unwrap();
+        let supportedBwMode_in = unsafe { supportedBwMode_in.assume_init() };
+    }
+    'server_before_execution: {
+        supportedBwMode.write(supportedBwMode_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991170)]
+fn nvmlDeviceGetNvlinkBwMode(
+    device: nvmlDevice_t,
+    getBwMode: *mut nvmlNvlinkGetBwMode_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!getBwMode.is_null());
+        unsafe { std::ptr::read_unaligned(getBwMode) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut getBwMode_in = std::mem::MaybeUninit::<nvmlNvlinkGetBwMode_t>::uninit();
+        getBwMode_in.recv(channel_receiver).unwrap();
+        let getBwMode_in = unsafe { getBwMode_in.assume_init() };
+    }
+    'server_before_execution: {
+        getBwMode.write(getBwMode_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991171)]
+fn nvmlDeviceGetNvLinkInfo(device: nvmlDevice_t, info: *mut nvmlNvLinkInfo_t) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!info.is_null());
+        unsafe { std::ptr::read_unaligned(info) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut info_in = std::mem::MaybeUninit::<nvmlNvLinkInfo_t>::uninit();
+        info_in.recv(channel_receiver).unwrap();
+        let info_in = unsafe { info_in.assume_init() };
+    }
+    'server_before_execution: {
+        info.write(info_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991172)]
+fn nvmlDeviceGetVirtualizationMode(
+    device: nvmlDevice_t,
+    pVirtualMode: *mut nvmlGpuVirtualizationMode_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991173)]
+fn nvmlDeviceGetHostVgpuMode(
+    device: nvmlDevice_t,
+    pHostVgpuMode: *mut nvmlHostVgpuMode_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991174)]
+fn nvmlDeviceIsMigDeviceHandle(device: nvmlDevice_t, isMigDevice: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991175)]
+fn nvmlDeviceGetGpuInstanceId(device: nvmlDevice_t, id: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991176)]
+fn nvmlDeviceGetComputeInstanceId(device: nvmlDevice_t, id: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991177)]
+fn nvmlDeviceGetMaxMigDeviceCount(device: nvmlDevice_t, count: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991178)]
+fn nvmlDeviceGetMigDeviceHandleByIndex(
+    device: nvmlDevice_t,
+    index: c_uint,
+    migDevice: *mut nvmlDevice_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991179)]
+fn nvmlDeviceGetDeviceHandleFromMigDeviceHandle(
+    migDevice: nvmlDevice_t,
+    device: *mut nvmlDevice_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991180)]
+fn nvmlDeviceGetCapabilities(
+    device: nvmlDevice_t,
+    caps: *mut nvmlDeviceCapabilities_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!caps.is_null());
+        unsafe { std::ptr::read_unaligned(caps) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut caps_in = std::mem::MaybeUninit::<nvmlDeviceCapabilities_t>::uninit();
+        caps_in.recv(channel_receiver).unwrap();
+        let caps_in = unsafe { caps_in.assume_init() };
+    }
+    'server_before_execution: {
+        caps.write(caps_in);
+    }
+}

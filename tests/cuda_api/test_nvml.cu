@@ -48,6 +48,15 @@ static int check_optional(nvmlReturn_t result, const char *label)
     return 1;
 }
 
+static int check_optional_indexed(nvmlReturn_t result, const char *label)
+{
+    if (result == NVML_ERROR_INVALID_ARGUMENT)
+    {
+        return 0;
+    }
+    return check_optional(result, label);
+}
+
 static int check_optional_list(nvmlReturn_t result, const char *label)
 {
     if (result == NVML_SUCCESS || result == NVML_ERROR_INSUFFICIENT_SIZE ||
@@ -1163,6 +1172,254 @@ int main()
     unsigned int pending_mig_mode = 0;
     result = nvmlDeviceGetMigMode(device, &current_mig_mode, &pending_mig_mode);
     if (check_optional(result, "nvmlDeviceGetMigMode"))
+    {
+        return 1;
+    }
+
+    unsigned long memory_affinity[16] = {};
+    result = nvmlDeviceGetMemoryAffinity(device, 16, memory_affinity,
+                                         NVML_AFFINITY_SCOPE_NODE);
+    if (check_optional(result, "nvmlDeviceGetMemoryAffinity"))
+    {
+        return 1;
+    }
+
+    unsigned long cpu_affinity[16] = {};
+    result = nvmlDeviceGetCpuAffinityWithinScope(device, 16, cpu_affinity,
+                                                 NVML_AFFINITY_SCOPE_NODE);
+    if (check_optional(result, "nvmlDeviceGetCpuAffinityWithinScope"))
+    {
+        return 1;
+    }
+    result = nvmlDeviceGetCpuAffinity(device, 16, cpu_affinity);
+    if (check_optional(result, "nvmlDeviceGetCpuAffinity"))
+    {
+        return 1;
+    }
+
+    nvmlGpuThermalSettings_t thermal_settings = {};
+    result = nvmlDeviceGetThermalSettings(device, 0, &thermal_settings);
+    if (check_optional_indexed(result, "nvmlDeviceGetThermalSettings"))
+    {
+        return 1;
+    }
+
+    nvmlDramEncryptionInfo_t dram_current = {};
+    nvmlDramEncryptionInfo_t dram_pending = {};
+    dram_current.version = nvmlDramEncryptionInfo_v1;
+    dram_pending.version = nvmlDramEncryptionInfo_v1;
+    result = nvmlDeviceGetDramEncryptionMode(device, &dram_current, &dram_pending);
+    if (check_optional(result, "nvmlDeviceGetDramEncryptionMode"))
+    {
+        return 1;
+    }
+
+    nvmlEccSramErrorStatus_t sram_status = {};
+    sram_status.version = nvmlEccSramErrorStatus_v1;
+    result = nvmlDeviceGetSramEccErrorStatus(device, &sram_status);
+    if (check_optional(result, "nvmlDeviceGetSramEccErrorStatus"))
+    {
+        return 1;
+    }
+
+    nvmlClkMonStatus_t clk_mon = {};
+    result = nvmlDeviceGetClkMonStatus(device, &clk_mon);
+    if (check_optional(result, "nvmlDeviceGetClkMonStatus"))
+    {
+        return 1;
+    }
+
+    nvmlPlatformInfo_t platform_info = {};
+    platform_info.version = nvmlPlatformInfo_v2;
+    result = nvmlDeviceGetPlatformInfo(device, &platform_info);
+    if (check_optional(result, "nvmlDeviceGetPlatformInfo"))
+    {
+        return 1;
+    }
+
+    nvmlPdi_t pdi = {};
+    pdi.version = nvmlPdi_v1;
+    result = nvmlDeviceGetPdi(device, &pdi);
+    if (check_optional(result, "nvmlDeviceGetPdi"))
+    {
+        return 1;
+    }
+
+    nvmlHostname_v1_t hostname = {};
+    result = nvmlDeviceGetHostname_v1(device, &hostname);
+    if (check_optional(result, "nvmlDeviceGetHostname_v1"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(hostname.value, "nvmlDeviceGetHostname_v1"))
+    {
+        return 1;
+    }
+
+    nvmlGpuVirtualizationMode_t virtualization_mode =
+        NVML_GPU_VIRTUALIZATION_MODE_NONE;
+    result = nvmlDeviceGetVirtualizationMode(device, &virtualization_mode);
+    if (check_optional(result, "nvmlDeviceGetVirtualizationMode"))
+    {
+        return 1;
+    }
+
+    nvmlHostVgpuMode_t host_vgpu_mode = NVML_HOST_VGPU_MODE_NON_SRIOV;
+    result = nvmlDeviceGetHostVgpuMode(device, &host_vgpu_mode);
+    if (check_optional(result, "nvmlDeviceGetHostVgpuMode"))
+    {
+        return 1;
+    }
+
+    unsigned int is_mig_device = 0;
+    result = nvmlDeviceIsMigDeviceHandle(device, &is_mig_device);
+    if (check_optional(result, "nvmlDeviceIsMigDeviceHandle"))
+    {
+        return 1;
+    }
+
+    unsigned int gpu_instance_id = 0;
+    result = nvmlDeviceGetGpuInstanceId(device, &gpu_instance_id);
+    if (check_optional_indexed(result, "nvmlDeviceGetGpuInstanceId"))
+    {
+        return 1;
+    }
+
+    unsigned int compute_instance_id = 0;
+    result = nvmlDeviceGetComputeInstanceId(device, &compute_instance_id);
+    if (check_optional_indexed(result, "nvmlDeviceGetComputeInstanceId"))
+    {
+        return 1;
+    }
+
+    unsigned int max_mig_devices = 0;
+    result = nvmlDeviceGetMaxMigDeviceCount(device, &max_mig_devices);
+    if (check_optional(result, "nvmlDeviceGetMaxMigDeviceCount"))
+    {
+        return 1;
+    }
+
+    nvmlDevice_t mig_device = nullptr;
+    result = nvmlDeviceGetMigDeviceHandleByIndex(device, 0, &mig_device);
+    if (check_optional_list(result, "nvmlDeviceGetMigDeviceHandleByIndex"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS)
+    {
+        nvmlDevice_t parent_device = nullptr;
+        result = nvmlDeviceGetDeviceHandleFromMigDeviceHandle(mig_device,
+                                                              &parent_device);
+        if (check_optional(result,
+                           "nvmlDeviceGetDeviceHandleFromMigDeviceHandle"))
+        {
+            return 1;
+        }
+    }
+
+    nvmlDeviceCapabilities_t caps = {};
+    caps.version = nvmlDeviceCapabilities_v1;
+    result = nvmlDeviceGetCapabilities(device, &caps);
+    if (check_optional(result, "nvmlDeviceGetCapabilities"))
+    {
+        return 1;
+    }
+
+    nvmlEnableState_t nvlink_active = NVML_FEATURE_DISABLED;
+    result = nvmlDeviceGetNvLinkState(device, 0, &nvlink_active);
+    if (check_optional_indexed(result, "nvmlDeviceGetNvLinkState"))
+    {
+        return 1;
+    }
+
+    unsigned int nvlink_version = 0;
+    result = nvmlDeviceGetNvLinkVersion(device, 0, &nvlink_version);
+    if (check_optional_indexed(result, "nvmlDeviceGetNvLinkVersion"))
+    {
+        return 1;
+    }
+
+    unsigned int nvlink_capability = 0;
+    result = nvmlDeviceGetNvLinkCapability(device, 0, NVML_NVLINK_CAP_VALID,
+                                           &nvlink_capability);
+    if (check_optional_indexed(result, "nvmlDeviceGetNvLinkCapability"))
+    {
+        return 1;
+    }
+
+    nvmlPciInfo_t nvlink_pci = {};
+    result = nvmlDeviceGetNvLinkRemotePciInfo_v2(device, 0, &nvlink_pci);
+    if (check_optional_indexed(result, "nvmlDeviceGetNvLinkRemotePciInfo_v2"))
+    {
+        return 1;
+    }
+
+    unsigned long long nvlink_counter = 0;
+    result = nvmlDeviceGetNvLinkErrorCounter(device, 0,
+                                             NVML_NVLINK_ERROR_DL_REPLAY,
+                                             &nvlink_counter);
+    if (check_optional_indexed(result, "nvmlDeviceGetNvLinkErrorCounter"))
+    {
+        return 1;
+    }
+
+    nvmlNvLinkUtilizationControl_t nvlink_control = {};
+    result = nvmlDeviceGetNvLinkUtilizationControl(device, 0, 0,
+                                                   &nvlink_control);
+    if (check_optional_indexed(result,
+                               "nvmlDeviceGetNvLinkUtilizationControl"))
+    {
+        return 1;
+    }
+
+    unsigned long long rx_counter = 0;
+    unsigned long long tx_counter = 0;
+    result = nvmlDeviceGetNvLinkUtilizationCounter(device, 0, 0,
+                                                   &rx_counter, &tx_counter);
+    if (check_optional_indexed(result,
+                               "nvmlDeviceGetNvLinkUtilizationCounter"))
+    {
+        return 1;
+    }
+
+    nvmlIntNvLinkDeviceType_t nvlink_device_type =
+        NVML_NVLINK_DEVICE_TYPE_UNKNOWN;
+    result = nvmlDeviceGetNvLinkRemoteDeviceType(device, 0,
+                                                 &nvlink_device_type);
+    if (check_optional_indexed(result,
+                               "nvmlDeviceGetNvLinkRemoteDeviceType"))
+    {
+        return 1;
+    }
+
+    unsigned int system_nvlink_bw_mode = 0;
+    result = nvmlSystemGetNvlinkBwMode(&system_nvlink_bw_mode);
+    if (check_optional(result, "nvmlSystemGetNvlinkBwMode"))
+    {
+        return 1;
+    }
+
+    nvmlNvlinkSupportedBwModes_t supported_bw_modes = {};
+    supported_bw_modes.version = nvmlNvlinkSupportedBwModes_v1;
+    result = nvmlDeviceGetNvlinkSupportedBwModes(device, &supported_bw_modes);
+    if (check_optional(result, "nvmlDeviceGetNvlinkSupportedBwModes"))
+    {
+        return 1;
+    }
+
+    nvmlNvlinkGetBwMode_t nvlink_bw_mode = {};
+    nvlink_bw_mode.version = nvmlNvlinkGetBwMode_v1;
+    result = nvmlDeviceGetNvlinkBwMode(device, &nvlink_bw_mode);
+    if (check_optional(result, "nvmlDeviceGetNvlinkBwMode"))
+    {
+        return 1;
+    }
+
+    nvmlNvLinkInfo_t nvlink_info = {};
+    nvlink_info.version = nvmlNvLinkInfo_v2;
+    result = nvmlDeviceGetNvLinkInfo(device, &nvlink_info);
+    if (check_optional(result, "nvmlDeviceGetNvLinkInfo"))
     {
         return 1;
     }
