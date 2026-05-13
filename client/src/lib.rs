@@ -26,7 +26,8 @@ use std::sync::{Mutex, OnceLock, RwLock};
 
 use cudasys::types::cublas::{cublasHandle_t, cublasPointerMode_t};
 use cudasys::types::cublasLt::{
-    cublasLtMatmulDesc_t, cublasLtMatrixTransformDesc_t, cublasLtPointerMode_t,
+    cublasLtEmulationDesc_t, cublasLtMatmulDesc_t, cublasLtMatmulPreference_t,
+    cublasLtMatrixLayout_t, cublasLtMatrixTransformDesc_t, cublasLtPointerMode_t,
     cudaDataType_t as CublasLtCudaDataType,
 };
 use cudasys::types::cuda::{
@@ -453,7 +454,13 @@ impl RuntimeGraphKernelNodeCache {
 struct CublasCache {
     pointer_modes: BTreeMap<cublasHandle_t, cublasPointerMode_t>,
     lt_matmul_descs: BTreeMap<cublasLtMatmulDesc_t, CublasLtMatmulDescState>,
+    lt_matmul_desc_handles: BTreeMap<cublasLtMatmulDesc_t, cublasLtMatmulDesc_t>,
+    lt_matmul_preference_handles: BTreeMap<cublasLtMatmulPreference_t, cublasLtMatmulPreference_t>,
+    lt_matrix_layout_handles: BTreeMap<cublasLtMatrixLayout_t, cublasLtMatrixLayout_t>,
+    lt_emulation_desc_handles: BTreeMap<cublasLtEmulationDesc_t, cublasLtEmulationDesc_t>,
     lt_transform_descs: BTreeMap<cublasLtMatrixTransformDesc_t, CublasLtTransformDescState>,
+    lt_transform_desc_handles:
+        BTreeMap<cublasLtMatrixTransformDesc_t, cublasLtMatrixTransformDesc_t>,
 }
 
 // The handles are server-side.
@@ -465,14 +472,24 @@ impl CublasCache {
         Self {
             pointer_modes: BTreeMap::new(),
             lt_matmul_descs: BTreeMap::new(),
+            lt_matmul_desc_handles: BTreeMap::new(),
+            lt_matmul_preference_handles: BTreeMap::new(),
+            lt_matrix_layout_handles: BTreeMap::new(),
+            lt_emulation_desc_handles: BTreeMap::new(),
             lt_transform_descs: BTreeMap::new(),
+            lt_transform_desc_handles: BTreeMap::new(),
         }
     }
 
     fn reset_after_fork(&mut self) {
         self.pointer_modes.clear();
         self.lt_matmul_descs.clear();
+        self.lt_matmul_desc_handles.clear();
+        self.lt_matmul_preference_handles.clear();
+        self.lt_matrix_layout_handles.clear();
+        self.lt_emulation_desc_handles.clear();
         self.lt_transform_descs.clear();
+        self.lt_transform_desc_handles.clear();
     }
 }
 
@@ -486,6 +503,142 @@ struct CublasLtMatmulDescState {
 struct CublasLtTransformDescState {
     pointer_mode: cublasLtPointerMode_t,
     scale_type_size: Option<usize>,
+}
+
+fn cublaslt_bind_matmul_desc(client: cublasLtMatmulDesc_t, server: cublasLtMatmulDesc_t) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_matmul_desc_handles
+        .insert(client, server);
+}
+
+fn cublaslt_resolve_matmul_desc(desc: cublasLtMatmulDesc_t) -> cublasLtMatmulDesc_t {
+    CUBLAS_CACHE
+        .read()
+        .unwrap()
+        .lt_matmul_desc_handles
+        .get(&desc)
+        .copied()
+        .unwrap_or(desc)
+}
+
+fn cublaslt_unbind_matmul_desc(desc: cublasLtMatmulDesc_t) {
+    let mut cache = CUBLAS_CACHE.write().unwrap();
+    cache.lt_matmul_desc_handles.remove(&desc);
+    cache.lt_matmul_descs.remove(&desc);
+}
+
+fn cublaslt_bind_matmul_preference(
+    client: cublasLtMatmulPreference_t,
+    server: cublasLtMatmulPreference_t,
+) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_matmul_preference_handles
+        .insert(client, server);
+}
+
+fn cublaslt_resolve_matmul_preference(
+    pref: cublasLtMatmulPreference_t,
+) -> cublasLtMatmulPreference_t {
+    CUBLAS_CACHE
+        .read()
+        .unwrap()
+        .lt_matmul_preference_handles
+        .get(&pref)
+        .copied()
+        .unwrap_or(pref)
+}
+
+fn cublaslt_unbind_matmul_preference(pref: cublasLtMatmulPreference_t) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_matmul_preference_handles
+        .remove(&pref);
+}
+
+fn cublaslt_bind_matrix_layout(client: cublasLtMatrixLayout_t, server: cublasLtMatrixLayout_t) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_matrix_layout_handles
+        .insert(client, server);
+}
+
+fn cublaslt_resolve_matrix_layout(layout: cublasLtMatrixLayout_t) -> cublasLtMatrixLayout_t {
+    CUBLAS_CACHE
+        .read()
+        .unwrap()
+        .lt_matrix_layout_handles
+        .get(&layout)
+        .copied()
+        .unwrap_or(layout)
+}
+
+fn cublaslt_unbind_matrix_layout(layout: cublasLtMatrixLayout_t) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_matrix_layout_handles
+        .remove(&layout);
+}
+
+fn cublaslt_bind_emulation_desc(client: cublasLtEmulationDesc_t, server: cublasLtEmulationDesc_t) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_emulation_desc_handles
+        .insert(client, server);
+}
+
+fn cublaslt_resolve_emulation_desc(desc: cublasLtEmulationDesc_t) -> cublasLtEmulationDesc_t {
+    CUBLAS_CACHE
+        .read()
+        .unwrap()
+        .lt_emulation_desc_handles
+        .get(&desc)
+        .copied()
+        .unwrap_or(desc)
+}
+
+fn cublaslt_unbind_emulation_desc(desc: cublasLtEmulationDesc_t) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_emulation_desc_handles
+        .remove(&desc);
+}
+
+fn cublaslt_bind_transform_desc(
+    client: cublasLtMatrixTransformDesc_t,
+    server: cublasLtMatrixTransformDesc_t,
+) {
+    CUBLAS_CACHE
+        .write()
+        .unwrap()
+        .lt_transform_desc_handles
+        .insert(client, server);
+}
+
+fn cublaslt_resolve_transform_desc(
+    desc: cublasLtMatrixTransformDesc_t,
+) -> cublasLtMatrixTransformDesc_t {
+    CUBLAS_CACHE
+        .read()
+        .unwrap()
+        .lt_transform_desc_handles
+        .get(&desc)
+        .copied()
+        .unwrap_or(desc)
+}
+
+fn cublaslt_unbind_transform_desc(desc: cublasLtMatrixTransformDesc_t) {
+    let mut cache = CUBLAS_CACHE.write().unwrap();
+    cache.lt_transform_desc_handles.remove(&desc);
+    cache.lt_transform_descs.remove(&desc);
 }
 
 fn cublaslt_pointer_mode_from_u32(value: u32) -> Option<cublasLtPointerMode_t> {

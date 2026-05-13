@@ -36,7 +36,11 @@ use network::{CommChannel, Transportable};
 
 use crate::elf::{FatBinaryHeader, FatBinaryWrapper};
 use crate::{
-    cublaslt_pointer_mode_from_u32, cublaslt_scale_type_from_u32, cublaslt_scale_type_size,
-    ClientThread, CublasLtMatmulDescState, CublasLtTransformDescState, FatBinaryHandle, HostPtr,
-    RuntimeCache, CLIENT_THREAD, CUBLAS_CACHE, DRIVER_CACHE, RUNTIME_CACHE,
+    cublaslt_pointer_mode_from_u32, cublaslt_resolve_emulation_desc, cublaslt_resolve_matmul_desc,
+    cublaslt_resolve_matmul_preference, cublaslt_resolve_matrix_layout,
+    cublaslt_resolve_transform_desc, cublaslt_scale_type_from_u32, cublaslt_scale_type_size,
+    cublaslt_unbind_emulation_desc, cublaslt_unbind_matmul_desc, cublaslt_unbind_matmul_preference,
+    cublaslt_unbind_matrix_layout, cublaslt_unbind_transform_desc, ClientThread,
+    CublasLtMatmulDescState, CublasLtTransformDescState, FatBinaryHandle, HostPtr, RuntimeCache,
+    CLIENT_THREAD, CUBLAS_CACHE, DRIVER_CACHE, RUNTIME_CACHE,
 };

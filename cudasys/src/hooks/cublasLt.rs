@@ -29,6 +29,63 @@ fn cublasLtHeuristicsCacheGetCapacity(capacity: *mut usize) -> cublasStatus_t;
 #[cuda_hook(proc_id = 1504)]
 fn cublasLtHeuristicsCacheSetCapacity(capacity: usize) -> cublasStatus_t;
 
+#[cuda_custom_hook] // local: process-local CPU dispatch mask, no GPU state
+fn cublasLtDisableCpuInstructionsSetMask(mask: c_uint) -> c_uint;
+
+#[cuda_custom_hook]
+fn cublasLtMatrixLayoutInit_internal(
+    matLayout: cublasLtMatrixLayout_t,
+    size: usize,
+    type_: cudaDataType,
+    rows: u64,
+    cols: u64,
+    ld: i64,
+) -> cublasStatus_t;
+
+#[cuda_custom_hook]
+fn cublasLtGroupedMatrixLayoutInit_internal(
+    matLayout: cublasLtMatrixLayout_t,
+    size: usize,
+    type_: cudaDataType,
+    groupCount: c_int,
+    rows_array: *const c_void,
+    cols_array: *const c_void,
+    ld_array: *const c_void,
+) -> cublasStatus_t;
+
+#[cuda_custom_hook]
+fn cublasLtMatmulDescInit_internal(
+    matmulDesc: cublasLtMatmulDesc_t,
+    size: usize,
+    computeType: cublasComputeType_t,
+    scaleType: cudaDataType_t,
+) -> cublasStatus_t;
+
+#[cuda_custom_hook]
+fn cublasLtMatrixTransformDescInit_internal(
+    transformDesc: cublasLtMatrixTransformDesc_t,
+    size: usize,
+    scaleType: cudaDataType,
+) -> cublasStatus_t;
+
+#[cuda_custom_hook]
+fn cublasLtEmulationDescInit_internal(
+    emulationDesc: cublasLtEmulationDesc_t,
+    size: usize,
+) -> cublasStatus_t;
+
+#[cuda_custom_hook]
+fn cublasLtMatmulPreferenceInit_internal(
+    pref: cublasLtMatmulPreference_t,
+    size: usize,
+) -> cublasStatus_t;
+
+#[cuda_custom_hook] // local: callback pointer is client-process-local
+fn cublasLtLoggerSetCallback(callback: cublasLtLoggerCallback_t) -> cublasStatus_t;
+
+#[cuda_custom_hook] // local: FILE* is client-process-local
+fn cublasLtLoggerSetFile(file: *mut FILE) -> cublasStatus_t;
+
 #[cuda_hook(proc_id = 1511)]
 fn cublasLtMatmul(
     lightHandle: cublasLtHandle_t,
@@ -49,11 +106,17 @@ fn cublasLtMatmul(
     stream: cudaStream_t,
 ) -> cublasStatus_t {
     'client_before_send: {
+        let client_computeDesc = computeDesc;
+        let computeDesc = cublaslt_resolve_matmul_desc(computeDesc);
+        let Adesc = cublaslt_resolve_matrix_layout(Adesc);
+        let Bdesc = cublaslt_resolve_matrix_layout(Bdesc);
+        let Cdesc = cublaslt_resolve_matrix_layout(Cdesc);
+        let Ddesc = cublaslt_resolve_matrix_layout(Ddesc);
         let desc_state = CUBLAS_CACHE
             .read()
             .unwrap()
             .lt_matmul_descs
-            .get(&computeDesc)
+            .get(&client_computeDesc)
             .copied()
             .unwrap_or(CublasLtMatmulDescState {
                 pointer_mode: cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_HOST,
@@ -169,7 +232,16 @@ fn cublasLtMatmulAlgoGetHeuristic(
     #[host(output, len = requestedAlgoCount)]
     heuristicResultsArray: *mut cublasLtMatmulHeuristicResult_t,
     returnAlgoCount: *mut c_int,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let operationDesc = cublaslt_resolve_matmul_desc(operationDesc);
+        let Adesc = cublaslt_resolve_matrix_layout(Adesc);
+        let Bdesc = cublaslt_resolve_matrix_layout(Bdesc);
+        let Cdesc = cublaslt_resolve_matrix_layout(Cdesc);
+        let Ddesc = cublaslt_resolve_matrix_layout(Ddesc);
+        let preference = cublaslt_resolve_matmul_preference(preference);
+    }
+}
 
 #[cuda_hook(proc_id = 1533)]
 fn cublasLtMatmulAlgoGetIds(
@@ -208,7 +280,15 @@ fn cublasLtMatmulAlgoCheck(
     Ddesc: cublasLtMatrixLayout_t,
     #[host] algo: *const cublasLtMatmulAlgo_t,
     heuristicResult: *mut cublasLtMatmulHeuristicResult_t,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let operationDesc = cublaslt_resolve_matmul_desc(operationDesc);
+        let Adesc = cublaslt_resolve_matrix_layout(Adesc);
+        let Bdesc = cublaslt_resolve_matrix_layout(Bdesc);
+        let Cdesc = cublaslt_resolve_matrix_layout(Cdesc);
+        let Ddesc = cublaslt_resolve_matrix_layout(Ddesc);
+    }
+}
 
 #[cuda_hook(proc_id = 1536)]
 fn cublasLtMatmulAlgoCapGetAttribute(
@@ -291,13 +371,13 @@ fn cublasLtMatmulDescCreate(
 
 #[cuda_hook(proc_id = 1521)]
 fn cublasLtMatmulDescDestroy(matmulDesc: cublasLtMatmulDesc_t) -> cublasStatus_t {
+    'client_before_send: {
+        let client_matmulDesc = matmulDesc;
+        let matmulDesc = cublaslt_resolve_matmul_desc(matmulDesc);
+    }
     'client_after_recv: {
         if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
-            CUBLAS_CACHE
-                .write()
-                .unwrap()
-                .lt_matmul_descs
-                .remove(&matmulDesc);
+            cublaslt_unbind_matmul_desc(client_matmulDesc);
         }
     }
 }
@@ -309,13 +389,17 @@ fn cublasLtMatmulDescSetAttribute(
     #[host(len = sizeInBytes)] buf: *const c_void,
     sizeInBytes: usize,
 ) -> cublasStatus_t {
+    'client_before_send: {
+        let client_matmulDesc = matmulDesc;
+        let matmulDesc = cublaslt_resolve_matmul_desc(matmulDesc);
+    }
     'client_after_recv: {
         if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
             let mut cache = CUBLAS_CACHE.write().unwrap();
             let state =
                 cache
                     .lt_matmul_descs
-                    .entry(matmulDesc)
+                    .entry(client_matmulDesc)
                     .or_insert(CublasLtMatmulDescState {
                         pointer_mode: cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_HOST,
                         scale_type_size: Some(std::mem::size_of::<f32>()),
@@ -350,13 +434,27 @@ fn cublasLtMatmulDescGetAttribute(
     #[host(output, len = sizeInBytes)] buf: *mut c_void,
     sizeInBytes: usize,
     sizeWritten: *mut usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let matmulDesc = cublaslt_resolve_matmul_desc(matmulDesc);
+    }
+}
 
 #[cuda_hook(proc_id = 1524)]
 fn cublasLtMatmulPreferenceCreate(pref: *mut cublasLtMatmulPreference_t) -> cublasStatus_t;
 
 #[cuda_hook(proc_id = 1526)]
-fn cublasLtMatmulPreferenceDestroy(pref: cublasLtMatmulPreference_t) -> cublasStatus_t;
+fn cublasLtMatmulPreferenceDestroy(pref: cublasLtMatmulPreference_t) -> cublasStatus_t {
+    'client_before_send: {
+        let client_pref = pref;
+        let pref = cublaslt_resolve_matmul_preference(pref);
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            cublaslt_unbind_matmul_preference(client_pref);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1528)]
 fn cublasLtMatmulPreferenceSetAttribute(
@@ -364,7 +462,11 @@ fn cublasLtMatmulPreferenceSetAttribute(
     attr: cublasLtMatmulPreferenceAttributes_t,
     #[host(len = sizeInBytes)] buf: *const c_void,
     sizeInBytes: usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pref = cublaslt_resolve_matmul_preference(pref);
+    }
+}
 
 #[cuda_hook(proc_id = 1527)]
 fn cublasLtMatmulPreferenceGetAttribute(
@@ -373,7 +475,11 @@ fn cublasLtMatmulPreferenceGetAttribute(
     #[host(output, len = sizeInBytes)] buf: *mut c_void,
     sizeInBytes: usize,
     sizeWritten: *mut usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pref = cublaslt_resolve_matmul_preference(pref);
+    }
+}
 
 #[cuda_hook(proc_id = 1529)]
 fn cublasLtMatrixLayoutCreate(
@@ -395,7 +501,17 @@ fn cublasLtGroupedMatrixLayoutCreate(
 ) -> cublasStatus_t;
 
 #[cuda_hook(proc_id = 1531)]
-fn cublasLtMatrixLayoutDestroy(matLayout: cublasLtMatrixLayout_t) -> cublasStatus_t;
+fn cublasLtMatrixLayoutDestroy(matLayout: cublasLtMatrixLayout_t) -> cublasStatus_t {
+    'client_before_send: {
+        let client_matLayout = matLayout;
+        let matLayout = cublaslt_resolve_matrix_layout(matLayout);
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            cublaslt_unbind_matrix_layout(client_matLayout);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1530)]
 fn cublasLtMatrixLayoutSetAttribute(
@@ -403,7 +519,11 @@ fn cublasLtMatrixLayoutSetAttribute(
     attr: cublasLtMatrixLayoutAttribute_t,
     #[host(len = sizeInBytes)] buf: *const c_void,
     sizeInBytes: usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let matLayout = cublaslt_resolve_matrix_layout(matLayout);
+    }
+}
 
 #[cuda_hook(proc_id = 1532)]
 fn cublasLtMatrixLayoutGetAttribute(
@@ -412,7 +532,11 @@ fn cublasLtMatrixLayoutGetAttribute(
     #[host(output, len = sizeInBytes)] buf: *mut c_void,
     sizeInBytes: usize,
     sizeWritten: *mut usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let matLayout = cublaslt_resolve_matrix_layout(matLayout);
+    }
+}
 
 #[cuda_hook(proc_id = 1542)]
 fn cublasLtMatrixTransform(
@@ -429,11 +553,16 @@ fn cublasLtMatrixTransform(
     stream: cudaStream_t,
 ) -> cublasStatus_t {
     'client_before_send: {
+        let client_transformDesc = transformDesc;
+        let transformDesc = cublaslt_resolve_transform_desc(transformDesc);
+        let Adesc = cublaslt_resolve_matrix_layout(Adesc);
+        let Bdesc = cublaslt_resolve_matrix_layout(Bdesc);
+        let Cdesc = cublaslt_resolve_matrix_layout(Cdesc);
         let desc_state = CUBLAS_CACHE
             .read()
             .unwrap()
             .lt_transform_descs
-            .get(&transformDesc)
+            .get(&client_transformDesc)
             .copied()
             .unwrap_or(CublasLtTransformDescState {
                 pointer_mode: cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_HOST,
@@ -553,13 +682,13 @@ fn cublasLtMatrixTransformDescCreate(
 fn cublasLtMatrixTransformDescDestroy(
     transformDesc: cublasLtMatrixTransformDesc_t,
 ) -> cublasStatus_t {
+    'client_before_send: {
+        let client_transformDesc = transformDesc;
+        let transformDesc = cublaslt_resolve_transform_desc(transformDesc);
+    }
     'client_after_recv: {
         if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
-            CUBLAS_CACHE
-                .write()
-                .unwrap()
-                .lt_transform_descs
-                .remove(&transformDesc);
+            cublaslt_unbind_transform_desc(client_transformDesc);
         }
     }
 }
@@ -571,15 +700,20 @@ fn cublasLtMatrixTransformDescSetAttribute(
     #[host(len = sizeInBytes)] buf: *const c_void,
     sizeInBytes: usize,
 ) -> cublasStatus_t {
+    'client_before_send: {
+        let client_transformDesc = transformDesc;
+        let transformDesc = cublaslt_resolve_transform_desc(transformDesc);
+    }
     'client_after_recv: {
         if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
             let mut cache = CUBLAS_CACHE.write().unwrap();
-            let state = cache.lt_transform_descs.entry(transformDesc).or_insert(
-                CublasLtTransformDescState {
+            let state = cache
+                .lt_transform_descs
+                .entry(client_transformDesc)
+                .or_insert(CublasLtTransformDescState {
                     pointer_mode: cublasLtPointerMode_t::CUBLASLT_POINTER_MODE_HOST,
                     scale_type_size: Some(std::mem::size_of::<f32>()),
-                },
-            );
+                });
             match attr {
                 cublasLtMatrixTransformDescAttributes_t::CUBLASLT_MATRIX_TRANSFORM_DESC_POINTER_MODE
                     if sizeInBytes >= std::mem::size_of::<u32>() =>
@@ -610,7 +744,11 @@ fn cublasLtMatrixTransformDescGetAttribute(
     #[host(output, len = sizeInBytes)] buf: *mut c_void,
     sizeInBytes: usize,
     sizeWritten: *mut usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let transformDesc = cublaslt_resolve_transform_desc(transformDesc);
+    }
+}
 
 #[cuda_hook(proc_id = 1543)]
 fn cublasLtLoggerOpenFile(logFile: *const c_char) -> cublasStatus_t;
@@ -628,7 +766,17 @@ fn cublasLtLoggerForceDisable() -> cublasStatus_t;
 fn cublasLtEmulationDescCreate(emulationDesc: *mut cublasLtEmulationDesc_t) -> cublasStatus_t;
 
 #[cuda_hook(proc_id = 1548)]
-fn cublasLtEmulationDescDestroy(emulationDesc: cublasLtEmulationDesc_t) -> cublasStatus_t;
+fn cublasLtEmulationDescDestroy(emulationDesc: cublasLtEmulationDesc_t) -> cublasStatus_t {
+    'client_before_send: {
+        let client_emulationDesc = emulationDesc;
+        let emulationDesc = cublaslt_resolve_emulation_desc(emulationDesc);
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            cublaslt_unbind_emulation_desc(client_emulationDesc);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1549)]
 fn cublasLtEmulationDescSetAttribute(
@@ -636,7 +784,11 @@ fn cublasLtEmulationDescSetAttribute(
     attr: cublasLtEmulationDescAttributes_t,
     #[host(len = sizeInBytes)] buf: *const c_void,
     sizeInBytes: usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let emulationDesc = cublaslt_resolve_emulation_desc(emulationDesc);
+    }
+}
 
 #[cuda_hook(proc_id = 1550)]
 fn cublasLtEmulationDescGetAttribute(
@@ -645,4 +797,8 @@ fn cublasLtEmulationDescGetAttribute(
     #[host(output, len = sizeInBytes)] buf: *mut c_void,
     sizeInBytes: usize,
     sizeWritten: *mut usize,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let emulationDesc = cublaslt_resolve_emulation_desc(emulationDesc);
+    }
+}
