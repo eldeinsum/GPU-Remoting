@@ -370,7 +370,7 @@ pub mod cudnn {
                 Self::CUDNN_TYPE_NUMERICAL_NOTE => size_of::<cudnnBackendNumericalNote_t>(),
                 // Self::CUDNN_TYPE_LAYOUT_TYPE => size_of::<cudnnBackendLayoutType_t>(),
                 // Self::CUDNN_TYPE_ATTRIB_NAME => size_of::<cudnnBackendAttributeName_t>(),
-                // Self::CUDNN_TYPE_POINTWISE_MODE => size_of::<cudnnPointwiseMode_t>(),
+                Self::CUDNN_TYPE_POINTWISE_MODE => size_of::<cudnnPointwiseMode_t>(),
                 Self::CUDNN_TYPE_BACKEND_DESCRIPTOR => size_of::<cudnnBackendDescriptor_t>(),
                 // Self::CUDNN_TYPE_GENSTATS_MODE => size_of::<cudnnGenStatsMode_t>(),
                 // Self::CUDNN_TYPE_BN_FINALIZE_STATS_MODE => size_of::<cudnnBnFinalizeStatsMode_t>(),

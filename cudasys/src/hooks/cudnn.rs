@@ -3726,6 +3726,22 @@ fn cudnnBackendExecute(
     variantPack: cudnnBackendDescriptor_t,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2505)]
+fn cudnnBackendPopulateCudaGraph(
+    handle: cudnnHandle_t,
+    executionPlan: cudnnBackendDescriptor_t,
+    variantPack: cudnnBackendDescriptor_t,
+    graph: cudaGraph_t,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2507)]
+fn cudnnBackendUpdateCudaGraph(
+    handle: cudnnHandle_t,
+    executionPlan: cudnnBackendDescriptor_t,
+    variantPack: cudnnBackendDescriptor_t,
+    graph: cudaGraph_t,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 2503)]
 fn cudnnBackendFinalize(descriptor: cudnnBackendDescriptor_t) -> cudnnStatus_t;
 
