@@ -31,18 +31,19 @@ mod user_object;
 
 #[expect(unused_imports)]
 use codegen::{cuda_hook_hijack, use_thread_local};
-use network::type_impl::{recv_slice, recv_slice_to, send_slice, MemPtr};
+use network::type_impl::{MemPtr, recv_slice, recv_slice_to, send_slice};
 use network::{CommChannel, Transportable};
 
 use crate::elf::{FatBinaryHeader, FatBinaryWrapper};
 use crate::{
+    CLIENT_THREAD, CUBLAS_CACHE, ClientThread, CublasLtMatmulDescState, CublasLtTransformDescState,
+    DRIVER_CACHE, FatBinaryHandle, HostPtr, RUNTIME_CACHE, RuntimeCache,
     cublaslt_pointer_mode_from_u32, cublaslt_resolve_emulation_desc, cublaslt_resolve_matmul_desc,
     cublaslt_resolve_matmul_preference, cublaslt_resolve_matrix_layout,
     cublaslt_resolve_transform_desc, cublaslt_scale_type_from_u32, cublaslt_scale_type_size,
     cublaslt_unbind_emulation_desc, cublaslt_unbind_matmul_desc, cublaslt_unbind_matmul_preference,
-    cublaslt_unbind_matrix_layout, cublaslt_unbind_transform_desc, cudnn_data_type_scalar_size,
-    cudnn_filter_desc_scalar_size, cudnn_record_filter_desc_type, cudnn_record_tensor_desc_type,
-    cudnn_remove_filter_desc, cudnn_remove_tensor_desc, cudnn_tensor_desc_scalar_size,
-    ClientThread, CublasLtMatmulDescState, CublasLtTransformDescState, FatBinaryHandle, HostPtr,
-    RuntimeCache, CLIENT_THREAD, CUBLAS_CACHE, DRIVER_CACHE, RUNTIME_CACHE,
+    cublaslt_unbind_matrix_layout, cublaslt_unbind_transform_desc, cudnn_ctc_batch_size,
+    cudnn_ctc_label_count, cudnn_data_type_scalar_size, cudnn_filter_desc_scalar_size,
+    cudnn_record_filter_desc_type, cudnn_record_tensor_desc, cudnn_remove_filter_desc,
+    cudnn_remove_tensor_desc, cudnn_tensor_desc_scalar_size,
 };

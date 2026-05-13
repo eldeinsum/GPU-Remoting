@@ -79,7 +79,7 @@ fn cudnnSetTensor4dDescriptor(
 ) -> cudnnStatus_t {
     'client_after_recv: {
         if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
-            cudnn_record_tensor_desc_type(tensorDesc, dataType);
+            cudnn_record_tensor_desc(tensorDesc, dataType, &[n, c, h, w]);
         }
     }
 }
@@ -99,7 +99,7 @@ fn cudnnSetTensor4dDescriptorEx(
 ) -> cudnnStatus_t {
     'client_after_recv: {
         if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
-            cudnn_record_tensor_desc_type(tensorDesc, dataType);
+            cudnn_record_tensor_desc(tensorDesc, dataType, &[n, c, h, w]);
         }
     }
 }
@@ -119,7 +119,7 @@ fn cudnnGetTensor4dDescriptor(
 ) -> cudnnStatus_t {
     'client_after_recv: {
         if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
-            cudnn_record_tensor_desc_type(tensorDesc, *dataType);
+            cudnn_record_tensor_desc(tensorDesc, *dataType, &[*n, *c, *h, *w]);
         }
     }
 }
@@ -201,7 +201,13 @@ fn cudnnSetTensorNdDescriptor(
     #[host(len = nbDims)] strideA: *const c_int,
 ) -> cudnnStatus_t {
     'client_before_send: {
-        cudnn_record_tensor_desc_type(tensorDesc, dataType);
+        let dim_count = usize::try_from(nbDims).unwrap_or(0);
+        let dims = if dim_count == 0 || dimA.is_null() {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(dimA, dim_count) }
+        };
+        cudnn_record_tensor_desc(tensorDesc, dataType, dims);
     }
 }
 
@@ -215,7 +221,9 @@ fn cudnnSetTensorNdDescriptorEx(
 ) -> cudnnStatus_t {
     'client_after_recv: {
         if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
-            cudnn_record_tensor_desc_type(tensorDesc, dataType);
+            let dim_count = usize::try_from(nbDims).unwrap_or(0);
+            let dims = &dimA[..dim_count.min(dimA.len())];
+            cudnn_record_tensor_desc(tensorDesc, dataType, dims);
         }
     }
 }
@@ -231,7 +239,9 @@ fn cudnnGetTensorNdDescriptor(
 ) -> cudnnStatus_t {
     'client_after_recv: {
         if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
-            cudnn_record_tensor_desc_type(tensorDesc, *dataType);
+            let dim_count = usize::try_from(*nbDims).unwrap_or(0);
+            let dims = &dimA[..dim_count.min(dimA.len())];
+            cudnn_record_tensor_desc(tensorDesc, *dataType, dims);
         }
     }
 }
@@ -646,6 +656,36 @@ fn cudnnGetCTCLossWorkspaceSize_v8(
     probsDesc: cudnnTensorDescriptor_t,
     gradientsDesc: cudnnTensorDescriptor_t,
     sizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2413)]
+fn cudnnGetCTCLossWorkspaceSize(
+    handle: cudnnHandle_t,
+    probsDesc: cudnnTensorDescriptor_t,
+    gradientsDesc: cudnnTensorDescriptor_t,
+    #[host(len = cudnn_ctc_label_count(probsDesc, labelLengths))] labels: *const c_int,
+    #[host(len = cudnn_ctc_batch_size(probsDesc))] labelLengths: *const c_int,
+    #[host(len = cudnn_ctc_batch_size(probsDesc))] inputLengths: *const c_int,
+    algo: cudnnCTCLossAlgo_t,
+    ctcLossDesc: cudnnCTCLossDescriptor_t,
+    sizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2414, async_api)]
+fn cudnnCTCLoss(
+    handle: cudnnHandle_t,
+    probsDesc: cudnnTensorDescriptor_t,
+    #[device] probs: *const c_void,
+    #[host(len = cudnn_ctc_label_count(probsDesc, hostLabelLengths))] hostLabels: *const c_int,
+    #[host(len = cudnn_ctc_batch_size(probsDesc))] hostLabelLengths: *const c_int,
+    #[host(len = cudnn_ctc_batch_size(probsDesc))] hostInputLengths: *const c_int,
+    #[device] costs: *mut c_void,
+    gradientsDesc: cudnnTensorDescriptor_t,
+    #[device] gradients: *mut c_void,
+    algo: cudnnCTCLossAlgo_t,
+    ctcLossDesc: cudnnCTCLossDescriptor_t,
+    #[device] workspace: *mut c_void,
+    workSpaceSizeInBytes: usize,
 ) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 2407, async_api)]

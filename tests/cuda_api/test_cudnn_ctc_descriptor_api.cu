@@ -144,6 +144,30 @@ int main() {
   expect_finite(costs, 1, "ctc cost");
   expect_finite(gradients, 12, "ctc gradients");
 
+  std::vector<int> host_labels{1, 2};
+  std::vector<int> host_label_lengths{2};
+  std::vector<int> host_input_lengths{3};
+  CUDNN_CALL(cudnnSetCTCLossDescriptorEx(
+      ctc_desc, CUDNN_DATA_FLOAT, CUDNN_LOSS_NORMALIZATION_SOFTMAX,
+      CUDNN_NOT_PROPAGATE_NAN));
+  size_t legacy_workspace_size = 0;
+  CUDNN_CALL(cudnnGetCTCLossWorkspaceSize(
+      handle, probs_desc, gradients_desc, host_labels.data(),
+      host_label_lengths.data(), host_input_lengths.data(),
+      CUDNN_CTC_LOSS_ALGO_DETERMINISTIC, ctc_desc, &legacy_workspace_size));
+  void *legacy_workspace = cuda_alloc_bytes(legacy_workspace_size);
+  CUDA_CALL(cudaMemset(costs, 0, sizeof(float)));
+  CUDA_CALL(cudaMemset(gradients, 0, 12 * sizeof(float)));
+  CUDNN_CALL(cudnnCTCLoss(
+      handle, probs_desc, probs, host_labels.data(), host_label_lengths.data(),
+      host_input_lengths.data(), costs, gradients_desc, gradients,
+      CUDNN_CTC_LOSS_ALGO_DETERMINISTIC, ctc_desc, legacy_workspace,
+      legacy_workspace_size));
+  CUDA_CALL(cudaDeviceSynchronize());
+  expect_finite(costs, 1, "legacy ctc cost");
+  expect_finite(gradients, 12, "legacy ctc gradients");
+
+  if (legacy_workspace) CUDA_CALL(cudaFree(legacy_workspace));
   if (workspace) CUDA_CALL(cudaFree(workspace));
   CUDA_CALL(cudaFree(gradients));
   CUDA_CALL(cudaFree(costs));

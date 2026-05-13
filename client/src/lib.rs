@@ -19,7 +19,7 @@ mod dl;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{c_char, c_int, c_void, CString};
 use std::io::{Read as _, Write as _};
 use std::net::Shutdown;
 use std::sync::{Mutex, OnceLock, RwLock};
@@ -508,8 +508,13 @@ struct CublasLtTransformDescState {
     scale_type_size: Option<usize>,
 }
 
+struct CudnnTensorDescState {
+    data_type: cudnnDataType_t,
+    dims: Vec<c_int>,
+}
+
 struct CudnnCache {
-    tensor_desc_types: BTreeMap<cudnnTensorDescriptor_t, cudnnDataType_t>,
+    tensor_descs: BTreeMap<cudnnTensorDescriptor_t, CudnnTensorDescState>,
     filter_desc_types: BTreeMap<cudnnFilterDescriptor_t, cudnnDataType_t>,
 }
 
@@ -519,13 +524,13 @@ unsafe impl Sync for CudnnCache {}
 impl CudnnCache {
     const fn new() -> Self {
         Self {
-            tensor_desc_types: BTreeMap::new(),
+            tensor_descs: BTreeMap::new(),
             filter_desc_types: BTreeMap::new(),
         }
     }
 
     fn reset_after_fork(&mut self) {
-        self.tensor_desc_types.clear();
+        self.tensor_descs.clear();
         self.filter_desc_types.clear();
     }
 }
@@ -555,26 +560,63 @@ fn cudnn_data_type_scalar_size(data_type: cudnnDataType_t) -> Option<usize> {
     })
 }
 
-fn cudnn_record_tensor_desc_type(desc: cudnnTensorDescriptor_t, data_type: cudnnDataType_t) {
-    CUDNN_CACHE
-        .write()
-        .unwrap()
-        .tensor_desc_types
-        .insert(desc, data_type);
+fn cudnn_record_tensor_desc(
+    desc: cudnnTensorDescriptor_t,
+    data_type: cudnnDataType_t,
+    dims: &[c_int],
+) {
+    CUDNN_CACHE.write().unwrap().tensor_descs.insert(
+        desc,
+        CudnnTensorDescState {
+            data_type,
+            dims: dims.to_vec(),
+        },
+    );
 }
 
 fn cudnn_remove_tensor_desc(desc: cudnnTensorDescriptor_t) {
-    CUDNN_CACHE.write().unwrap().tensor_desc_types.remove(&desc);
+    CUDNN_CACHE.write().unwrap().tensor_descs.remove(&desc);
 }
 
 fn cudnn_tensor_desc_scalar_size(desc: cudnnTensorDescriptor_t) -> usize {
     CUDNN_CACHE
         .read()
         .unwrap()
-        .tensor_desc_types
+        .tensor_descs
         .get(&desc)
-        .and_then(|data_type| cudnn_data_type_scalar_size(*data_type))
+        .and_then(|state| cudnn_data_type_scalar_size(state.data_type))
         .unwrap_or(std::mem::size_of::<f32>())
+}
+
+fn cudnn_tensor_desc_dim(desc: cudnnTensorDescriptor_t, index: usize) -> Option<c_int> {
+    CUDNN_CACHE
+        .read()
+        .unwrap()
+        .tensor_descs
+        .get(&desc)
+        .and_then(|state| state.dims.get(index).copied())
+}
+
+fn cudnn_ctc_batch_size(probs_desc: cudnnTensorDescriptor_t) -> usize {
+    cudnn_tensor_desc_dim(probs_desc, 1)
+        .and_then(|dim| usize::try_from(dim).ok())
+        .filter(|dim| *dim > 0)
+        .unwrap_or(0)
+}
+
+fn cudnn_ctc_label_count(
+    probs_desc: cudnnTensorDescriptor_t,
+    label_lengths: *const c_int,
+) -> usize {
+    let batch_size = cudnn_ctc_batch_size(probs_desc);
+    if batch_size == 0 || label_lengths.is_null() {
+        return 0;
+    }
+    let label_lengths = unsafe { std::slice::from_raw_parts(label_lengths, batch_size) };
+    label_lengths
+        .iter()
+        .filter_map(|len| usize::try_from(*len).ok())
+        .sum()
 }
 
 fn cudnn_record_filter_desc_type(desc: cudnnFilterDescriptor_t, data_type: cudnnDataType_t) {
