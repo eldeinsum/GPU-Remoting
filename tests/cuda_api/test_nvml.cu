@@ -426,6 +426,13 @@ int main()
         return 1;
     }
 
+    nvmlEnableState_t drain_state = NVML_FEATURE_DISABLED;
+    result = nvmlDeviceQueryDrainState(&pci, &drain_state);
+    if (check_optional(result, "nvmlDeviceQueryDrainState"))
+    {
+        return 1;
+    }
+
     nvmlBrandType_t brand;
     result = nvmlDeviceGetBrand(device, &brand);
     if (check_success(result, "nvmlDeviceGetBrand"))
@@ -710,6 +717,10 @@ int main()
     nvmlVgpuVersion_t current_vgpu_version = {};
     nvmlGpmSupport_t gpm_support = {};
     gpm_support.version = NVML_GPM_SUPPORT_VERSION;
+    nvmlWorkloadPowerProfileProfilesInfo_t workload_profiles = {};
+    workload_profiles.version = nvmlWorkloadPowerProfileProfilesInfo_v1;
+    nvmlWorkloadPowerProfileCurrentProfiles_t workload_current = {};
+    workload_current.version = nvmlWorkloadPowerProfileCurrentProfiles_v1;
     nvmlReturn_t more_optional_results[] = {
         nvmlDeviceGetModuleId(device, &value),
         nvmlDeviceGetNumaNodeId(device, &value),
@@ -804,6 +815,10 @@ int main()
         nvmlDeviceGetVgpuSchedulerLog_v2(device, &vgpu_scheduler_log_v2),
         nvmlGetVgpuVersion(&supported_vgpu_version, &current_vgpu_version),
         nvmlGpmQueryDeviceSupport(device, &gpm_support),
+        nvmlDeviceWorkloadPowerProfileGetProfilesInfo(device,
+                                                      &workload_profiles),
+        nvmlDeviceWorkloadPowerProfileGetCurrentProfiles(device,
+                                                         &workload_current),
     };
     const char *more_optional_labels[] = {
         "nvmlDeviceGetModuleId",
@@ -886,6 +901,8 @@ int main()
         "nvmlDeviceGetVgpuSchedulerLog_v2",
         "nvmlGetVgpuVersion",
         "nvmlGpmQueryDeviceSupport",
+        "nvmlDeviceWorkloadPowerProfileGetProfilesInfo",
+        "nvmlDeviceWorkloadPowerProfileGetCurrentProfiles",
     };
     static_assert(sizeof(more_optional_results) / sizeof(more_optional_results[0]) ==
                   sizeof(more_optional_labels) / sizeof(more_optional_labels[0]));
@@ -1027,6 +1044,11 @@ int main()
     }
     if (result == NVML_SUCCESS &&
         check_nonempty(inforom_image_version, "nvmlDeviceGetInforomImageVersion"))
+    {
+        return 1;
+    }
+    result = nvmlDeviceValidateInforom(device);
+    if (check_optional(result, "nvmlDeviceValidateInforom"))
     {
         return 1;
     }
@@ -1208,6 +1230,102 @@ int main()
         check_counted_list(nvmlDeviceGetActiveVgpus, device,
                            "nvmlDeviceGetActiveVgpus"))
     {
+        return 1;
+    }
+
+    nvmlVgpuPgpuMetadata_t pgpu_metadata = {};
+    unsigned int vgpu_metadata_size = sizeof(pgpu_metadata);
+    result = nvmlDeviceGetVgpuMetadata(device, &pgpu_metadata,
+                                       &vgpu_metadata_size);
+    if (check_optional_list(result, "nvmlDeviceGetVgpuMetadata"))
+    {
+        return 1;
+    }
+
+    nvmlValueType_t vgpu_sample_type = NVML_VALUE_TYPE_UNSIGNED_INT;
+    std::vector<nvmlVgpuInstanceUtilizationSample_t> vgpu_samples(16);
+    unsigned int vgpu_sample_count =
+        static_cast<unsigned int>(vgpu_samples.size());
+    result = nvmlDeviceGetVgpuUtilization(
+        device, 0, &vgpu_sample_type, &vgpu_sample_count,
+        vgpu_samples.data());
+    if (check_optional_list(result, "nvmlDeviceGetVgpuUtilization"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && vgpu_sample_count > vgpu_samples.size())
+    {
+        std::cout << "vGPU utilization query returned "
+                  << vgpu_sample_count << " entries for capacity "
+                  << vgpu_samples.size() << std::endl;
+        return 1;
+    }
+
+    std::vector<nvmlVgpuInstanceUtilizationInfo_v1_t> vgpu_util_info_entries(
+        16);
+    nvmlVgpuInstancesUtilizationInfo_t vgpu_util_info = {};
+    vgpu_util_info.version = nvmlVgpuInstancesUtilizationInfo_v1;
+    vgpu_util_info.vgpuInstanceCount =
+        static_cast<unsigned int>(vgpu_util_info_entries.size());
+    vgpu_util_info.vgpuUtilArray = vgpu_util_info_entries.data();
+    result = nvmlDeviceGetVgpuInstancesUtilizationInfo(device,
+                                                       &vgpu_util_info);
+    if (check_optional_list(result,
+                            "nvmlDeviceGetVgpuInstancesUtilizationInfo"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        vgpu_util_info.vgpuInstanceCount > vgpu_util_info_entries.size())
+    {
+        std::cout << "vGPU utilization info query returned "
+                  << vgpu_util_info.vgpuInstanceCount
+                  << " entries for capacity "
+                  << vgpu_util_info_entries.size() << std::endl;
+        return 1;
+    }
+
+    std::vector<nvmlVgpuProcessUtilizationSample_t> vgpu_process_samples(16);
+    unsigned int vgpu_process_sample_count =
+        static_cast<unsigned int>(vgpu_process_samples.size());
+    result = nvmlDeviceGetVgpuProcessUtilization(
+        device, 0, &vgpu_process_sample_count, vgpu_process_samples.data());
+    if (check_optional_list(result, "nvmlDeviceGetVgpuProcessUtilization"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        vgpu_process_sample_count > vgpu_process_samples.size())
+    {
+        std::cout << "vGPU process utilization query returned "
+                  << vgpu_process_sample_count << " entries for capacity "
+                  << vgpu_process_samples.size() << std::endl;
+        return 1;
+    }
+
+    std::vector<nvmlVgpuProcessUtilizationInfo_v1_t>
+        vgpu_process_info_entries(16);
+    nvmlVgpuProcessesUtilizationInfo_t vgpu_process_info = {};
+    vgpu_process_info.version = nvmlVgpuProcessesUtilizationInfo_v1;
+    vgpu_process_info.vgpuProcessCount =
+        static_cast<unsigned int>(vgpu_process_info_entries.size());
+    vgpu_process_info.vgpuProcUtilArray =
+        vgpu_process_info_entries.data();
+    result = nvmlDeviceGetVgpuProcessesUtilizationInfo(
+        device, &vgpu_process_info);
+    if (check_optional_list(result,
+                            "nvmlDeviceGetVgpuProcessesUtilizationInfo"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        vgpu_process_info.vgpuProcessCount >
+            vgpu_process_info_entries.size())
+    {
+        std::cout << "vGPU process utilization info query returned "
+                  << vgpu_process_info.vgpuProcessCount
+                  << " entries for capacity "
+                  << vgpu_process_info_entries.size() << std::endl;
         return 1;
     }
 
@@ -1667,6 +1785,41 @@ int main()
     sram_status.version = nvmlEccSramErrorStatus_v1;
     result = nvmlDeviceGetSramEccErrorStatus(device, &sram_status);
     if (check_optional(result, "nvmlDeviceGetSramEccErrorStatus"))
+    {
+        return 1;
+    }
+
+    std::vector<nvmlEccSramUniqueUncorrectedErrorEntry_v1_t>
+        sram_unique_entries(16);
+    nvmlEccSramUniqueUncorrectedErrorCounts_t sram_unique_counts = {};
+    sram_unique_counts.version =
+        nvmlEccSramUniqueUncorrectedErrorCounts_v1;
+    sram_unique_counts.entryCount =
+        static_cast<unsigned int>(sram_unique_entries.size());
+    sram_unique_counts.entries = sram_unique_entries.data();
+    result = nvmlDeviceGetSramUniqueUncorrectedEccErrorCounts(
+        device, &sram_unique_counts);
+    if (check_optional_list(
+            result, "nvmlDeviceGetSramUniqueUncorrectedEccErrorCounts"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        sram_unique_counts.entryCount > sram_unique_entries.size())
+    {
+        std::cout << "SRAM unique ECC query returned "
+                  << sram_unique_counts.entryCount << " entries for capacity "
+                  << sram_unique_entries.size() << std::endl;
+        return 1;
+    }
+
+    nvmlPRMCounter_v1_t prm_counter = {};
+    prm_counter.counterId = NVML_PRM_COUNTER_ID_NONE;
+    nvmlPRMCounterList_v1_t prm_counter_list = {};
+    prm_counter_list.numCounters = 1;
+    prm_counter_list.counters = &prm_counter;
+    result = nvmlDeviceReadPRMCounters_v1(device, &prm_counter_list);
+    if (check_optional(result, "nvmlDeviceReadPRMCounters_v1"))
     {
         return 1;
     }

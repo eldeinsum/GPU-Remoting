@@ -4507,3 +4507,932 @@ fn nvmlDeviceGetGpuInstanceById(
     id: c_uint,
     gpuInstance: *mut nvmlGpuInstance_t,
 ) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991243)]
+fn nvmlDeviceQueryDrainState(
+    #[skip] pciInfo: *mut nvmlPciInfo_t,
+    #[skip] currentState: *mut nvmlEnableState_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let pciInfo_is_null = pciInfo.is_null();
+        let currentState_is_null = currentState.is_null();
+        let pciInfo_in = if pciInfo_is_null {
+            unsafe { std::mem::zeroed::<nvmlPciInfo_t>() }
+        } else {
+            unsafe { std::ptr::read_unaligned(pciInfo) }
+        };
+    }
+    'client_extra_send: {
+        pciInfo_is_null.send(channel_sender).unwrap();
+        currentState_is_null.send(channel_sender).unwrap();
+        pciInfo_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut pciInfo_is_null = false;
+        pciInfo_is_null.recv(channel_receiver).unwrap();
+        let mut currentState_is_null = false;
+        currentState_is_null.recv(channel_receiver).unwrap();
+        let mut pciInfo_storage = std::mem::MaybeUninit::<nvmlPciInfo_t>::uninit();
+        pciInfo_storage.recv(channel_receiver).unwrap();
+        let mut pciInfo_storage = unsafe { pciInfo_storage.assume_init() };
+    }
+    'server_execution: {
+        let mut currentState_storage = nvmlEnableState_t::NVML_FEATURE_DISABLED;
+        let pciInfo_ptr = if pciInfo_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut pciInfo_storage
+        };
+        let currentState_ptr = if currentState_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut currentState_storage
+        };
+        let result = unsafe { nvmlDeviceQueryDrainState(pciInfo_ptr, currentState_ptr) };
+    }
+    'server_after_send: {
+        if !currentState_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            currentState_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !currentState_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            let mut currentState_out = nvmlEnableState_t::NVML_FEATURE_DISABLED;
+            currentState_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(currentState, currentState_out);
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991244)]
+fn nvmlDeviceGetSramUniqueUncorrectedEccErrorCounts(
+    device: nvmlDevice_t,
+    #[skip] errorCounts: *mut nvmlEccSramUniqueUncorrectedErrorCounts_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let errorCounts_is_null = errorCounts.is_null();
+        let (version_in, entry_count_in, entries_is_null) = if errorCounts_is_null {
+            (0u32, 0u32, true)
+        } else {
+            let error_counts_in = unsafe { std::ptr::read_unaligned(errorCounts) };
+            (
+                error_counts_in.version,
+                error_counts_in.entryCount,
+                error_counts_in.entries.is_null(),
+            )
+        };
+    }
+    'client_extra_send: {
+        errorCounts_is_null.send(channel_sender).unwrap();
+        version_in.send(channel_sender).unwrap();
+        entry_count_in.send(channel_sender).unwrap();
+        entries_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut errorCounts_is_null = false;
+        errorCounts_is_null.recv(channel_receiver).unwrap();
+        let mut version_in = 0u32;
+        version_in.recv(channel_receiver).unwrap();
+        let mut entry_count_in = 0u32;
+        entry_count_in.recv(channel_receiver).unwrap();
+        let mut entries_is_null = true;
+        entries_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut entries_storage = Vec::<
+            std::mem::MaybeUninit<nvmlEccSramUniqueUncorrectedErrorEntry_v1_t>,
+        >::with_capacity(entry_count_in as usize);
+        let mut error_counts_storage = nvmlEccSramUniqueUncorrectedErrorCounts_t {
+            version: version_in,
+            entryCount: entry_count_in,
+            entries: if entries_is_null {
+                std::ptr::null_mut()
+            } else {
+                entries_storage
+                    .as_mut_ptr()
+                    .cast::<nvmlEccSramUniqueUncorrectedErrorEntry_v1_t>()
+            },
+        };
+        let errorCounts_ptr = if errorCounts_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut error_counts_storage
+        };
+        let result =
+            unsafe { nvmlDeviceGetSramUniqueUncorrectedEccErrorCounts(device, errorCounts_ptr) };
+    }
+    'server_after_send: {
+        if !errorCounts_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            error_counts_storage.version.send(channel_sender).unwrap();
+            error_counts_storage
+                .entryCount
+                .send(channel_sender)
+                .unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !entries_is_null
+                && error_counts_storage.entryCount > 0
+            {
+                assert!((error_counts_storage.entryCount as usize) <= entry_count_in as usize);
+                let entries_out = unsafe {
+                    std::slice::from_raw_parts(
+                        entries_storage
+                            .as_ptr()
+                            .cast::<nvmlEccSramUniqueUncorrectedErrorEntry_v1_t>(),
+                        error_counts_storage.entryCount as usize,
+                    )
+                };
+                send_slice(entries_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !errorCounts_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let error_counts_out = unsafe { &mut *errorCounts };
+            error_counts_out.version.recv(channel_receiver).unwrap();
+            error_counts_out.entryCount.recv(channel_receiver).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !entries_is_null
+                && error_counts_out.entryCount > 0
+            {
+                assert!((error_counts_out.entryCount as usize) <= entry_count_in as usize);
+                let entries_out = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        error_counts_out.entries,
+                        error_counts_out.entryCount as usize,
+                    )
+                };
+                recv_slice_to(entries_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991245)]
+fn nvmlDeviceGetVgpuMetadata(
+    device: nvmlDevice_t,
+    #[skip] pgpuMetadata: *mut nvmlVgpuPgpuMetadata_t,
+    #[skip] bufferSize: *mut c_uint,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let pgpuMetadata_is_null = pgpuMetadata.is_null();
+        let bufferSize_is_null = bufferSize.is_null();
+        let bufferSize_in = if bufferSize_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(bufferSize) }
+        };
+    }
+    'client_extra_send: {
+        pgpuMetadata_is_null.send(channel_sender).unwrap();
+        bufferSize_is_null.send(channel_sender).unwrap();
+        bufferSize_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut pgpuMetadata_is_null = false;
+        pgpuMetadata_is_null.recv(channel_receiver).unwrap();
+        let mut bufferSize_is_null = false;
+        bufferSize_is_null.recv(channel_receiver).unwrap();
+        let mut bufferSize_in = 0u32;
+        bufferSize_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut bufferSize_storage = bufferSize_in;
+        let mut metadata_storage = vec![0u8; bufferSize_in as usize];
+        let pgpuMetadata_ptr = if pgpuMetadata_is_null {
+            std::ptr::null_mut()
+        } else {
+            metadata_storage
+                .as_mut_ptr()
+                .cast::<nvmlVgpuPgpuMetadata_t>()
+        };
+        let bufferSize_ptr = if bufferSize_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut bufferSize_storage
+        };
+        let result = unsafe { nvmlDeviceGetVgpuMetadata(device, pgpuMetadata_ptr, bufferSize_ptr) };
+    }
+    'server_after_send: {
+        if !bufferSize_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            bufferSize_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !pgpuMetadata_is_null && bufferSize_in > 0 {
+                send_slice(&metadata_storage, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !bufferSize_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut bufferSize_out = 0u32;
+            bufferSize_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(bufferSize, bufferSize_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !pgpuMetadata_is_null && bufferSize_in > 0 {
+                let metadata_out = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        pgpuMetadata.cast::<u8>(),
+                        bufferSize_in as usize,
+                    )
+                };
+                recv_slice_to(metadata_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991246)]
+fn nvmlDeviceGetVgpuUtilization(
+    device: nvmlDevice_t,
+    lastSeenTimeStamp: c_ulonglong,
+    #[skip] sampleValType: *mut nvmlValueType_t,
+    #[skip] vgpuInstanceSamplesCount: *mut c_uint,
+    #[skip] utilizationSamples: *mut nvmlVgpuInstanceUtilizationSample_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let sampleValType_is_null = sampleValType.is_null();
+        let samplesCount_is_null = vgpuInstanceSamplesCount.is_null();
+        let samples_is_null = utilizationSamples.is_null();
+        let samples_count_in = if samplesCount_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(vgpuInstanceSamplesCount) }
+        };
+    }
+    'client_extra_send: {
+        sampleValType_is_null.send(channel_sender).unwrap();
+        samplesCount_is_null.send(channel_sender).unwrap();
+        samples_is_null.send(channel_sender).unwrap();
+        samples_count_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut sampleValType_is_null = false;
+        sampleValType_is_null.recv(channel_receiver).unwrap();
+        let mut samplesCount_is_null = false;
+        samplesCount_is_null.recv(channel_receiver).unwrap();
+        let mut samples_is_null = false;
+        samples_is_null.recv(channel_receiver).unwrap();
+        let mut samples_count_in = 0u32;
+        samples_count_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut sample_type_storage = nvmlValueType_t::NVML_VALUE_TYPE_UNSIGNED_INT;
+        let mut samples_count_storage = samples_count_in;
+        let mut samples_storage =
+            Vec::<std::mem::MaybeUninit<nvmlVgpuInstanceUtilizationSample_t>>::with_capacity(
+                samples_count_in as usize,
+            );
+        let sampleValType_ptr = if sampleValType_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut sample_type_storage
+        };
+        let samplesCount_ptr = if samplesCount_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut samples_count_storage
+        };
+        let utilizationSamples_ptr = if samples_is_null {
+            std::ptr::null_mut()
+        } else {
+            samples_storage
+                .as_mut_ptr()
+                .cast::<nvmlVgpuInstanceUtilizationSample_t>()
+        };
+        let result = unsafe {
+            nvmlDeviceGetVgpuUtilization(
+                device,
+                lastSeenTimeStamp,
+                sampleValType_ptr,
+                samplesCount_ptr,
+                utilizationSamples_ptr,
+            )
+        };
+    }
+    'server_after_send: {
+        if !samplesCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            if !sampleValType_is_null {
+                sample_type_storage.send(channel_sender).unwrap();
+            }
+            samples_count_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !samples_is_null && samples_count_storage > 0
+            {
+                assert!((samples_count_storage as usize) <= samples_count_in as usize);
+                let samples_out = unsafe {
+                    std::slice::from_raw_parts(
+                        samples_storage
+                            .as_ptr()
+                            .cast::<nvmlVgpuInstanceUtilizationSample_t>(),
+                        samples_count_storage as usize,
+                    )
+                };
+                send_slice(samples_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !samplesCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            if !sampleValType_is_null {
+                let mut sample_type_out = nvmlValueType_t::NVML_VALUE_TYPE_UNSIGNED_INT;
+                sample_type_out.recv(channel_receiver).unwrap();
+                unsafe {
+                    std::ptr::write(sampleValType, sample_type_out);
+                }
+            }
+            let mut samples_count_out = 0u32;
+            samples_count_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(vgpuInstanceSamplesCount, samples_count_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !samples_is_null && samples_count_out > 0 {
+                assert!((samples_count_out as usize) <= samples_count_in as usize);
+                let samples_out = unsafe {
+                    std::slice::from_raw_parts_mut(utilizationSamples, samples_count_out as usize)
+                };
+                recv_slice_to(samples_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991247)]
+fn nvmlDeviceGetVgpuInstancesUtilizationInfo(
+    device: nvmlDevice_t,
+    #[skip] vgpuUtilInfo: *mut nvmlVgpuInstancesUtilizationInfo_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let vgpuUtilInfo_is_null = vgpuUtilInfo.is_null();
+        let (version_in, sample_type_in, count_in, timestamp_in, array_is_null) =
+            if vgpuUtilInfo_is_null {
+                (
+                    0u32,
+                    nvmlValueType_t::NVML_VALUE_TYPE_UNSIGNED_INT,
+                    0u32,
+                    0u64,
+                    true,
+                )
+            } else {
+                let info_in = unsafe { std::ptr::read_unaligned(vgpuUtilInfo) };
+                (
+                    info_in.version,
+                    info_in.sampleValType,
+                    info_in.vgpuInstanceCount,
+                    info_in.lastSeenTimeStamp,
+                    info_in.vgpuUtilArray.is_null(),
+                )
+            };
+    }
+    'client_extra_send: {
+        vgpuUtilInfo_is_null.send(channel_sender).unwrap();
+        version_in.send(channel_sender).unwrap();
+        sample_type_in.send(channel_sender).unwrap();
+        count_in.send(channel_sender).unwrap();
+        timestamp_in.send(channel_sender).unwrap();
+        array_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut vgpuUtilInfo_is_null = false;
+        vgpuUtilInfo_is_null.recv(channel_receiver).unwrap();
+        let mut version_in = 0u32;
+        version_in.recv(channel_receiver).unwrap();
+        let mut sample_type_in = nvmlValueType_t::NVML_VALUE_TYPE_UNSIGNED_INT;
+        sample_type_in.recv(channel_receiver).unwrap();
+        let mut count_in = 0u32;
+        count_in.recv(channel_receiver).unwrap();
+        let mut timestamp_in = 0u64;
+        timestamp_in.recv(channel_receiver).unwrap();
+        let mut array_is_null = true;
+        array_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut array_storage =
+            Vec::<std::mem::MaybeUninit<nvmlVgpuInstanceUtilizationInfo_v1_t>>::with_capacity(
+                count_in as usize,
+            );
+        let mut info_storage = nvmlVgpuInstancesUtilizationInfo_t {
+            version: version_in,
+            sampleValType: sample_type_in,
+            vgpuInstanceCount: count_in,
+            lastSeenTimeStamp: timestamp_in,
+            vgpuUtilArray: if array_is_null {
+                std::ptr::null_mut()
+            } else {
+                array_storage
+                    .as_mut_ptr()
+                    .cast::<nvmlVgpuInstanceUtilizationInfo_v1_t>()
+            },
+        };
+        let info_ptr = if vgpuUtilInfo_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut info_storage
+        };
+        let result = unsafe { nvmlDeviceGetVgpuInstancesUtilizationInfo(device, info_ptr) };
+    }
+    'server_after_send: {
+        if !vgpuUtilInfo_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            info_storage.version.send(channel_sender).unwrap();
+            info_storage.sampleValType.send(channel_sender).unwrap();
+            info_storage.vgpuInstanceCount.send(channel_sender).unwrap();
+            info_storage.lastSeenTimeStamp.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !array_is_null
+                && info_storage.vgpuInstanceCount > 0
+            {
+                assert!((info_storage.vgpuInstanceCount as usize) <= count_in as usize);
+                let array_out = unsafe {
+                    std::slice::from_raw_parts(
+                        array_storage
+                            .as_ptr()
+                            .cast::<nvmlVgpuInstanceUtilizationInfo_v1_t>(),
+                        info_storage.vgpuInstanceCount as usize,
+                    )
+                };
+                send_slice(array_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !vgpuUtilInfo_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let info_out = unsafe { &mut *vgpuUtilInfo };
+            info_out.version.recv(channel_receiver).unwrap();
+            info_out.sampleValType.recv(channel_receiver).unwrap();
+            info_out.vgpuInstanceCount.recv(channel_receiver).unwrap();
+            info_out.lastSeenTimeStamp.recv(channel_receiver).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !array_is_null
+                && info_out.vgpuInstanceCount > 0
+            {
+                assert!((info_out.vgpuInstanceCount as usize) <= count_in as usize);
+                let array_out = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        info_out.vgpuUtilArray,
+                        info_out.vgpuInstanceCount as usize,
+                    )
+                };
+                recv_slice_to(array_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991248)]
+fn nvmlDeviceGetVgpuProcessUtilization(
+    device: nvmlDevice_t,
+    lastSeenTimeStamp: c_ulonglong,
+    #[skip] vgpuProcessSamplesCount: *mut c_uint,
+    #[skip] utilizationSamples: *mut nvmlVgpuProcessUtilizationSample_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let samplesCount_is_null = vgpuProcessSamplesCount.is_null();
+        let samples_is_null = utilizationSamples.is_null();
+        let samples_count_in = if samplesCount_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(vgpuProcessSamplesCount) }
+        };
+    }
+    'client_extra_send: {
+        samplesCount_is_null.send(channel_sender).unwrap();
+        samples_is_null.send(channel_sender).unwrap();
+        samples_count_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut samplesCount_is_null = false;
+        samplesCount_is_null.recv(channel_receiver).unwrap();
+        let mut samples_is_null = false;
+        samples_is_null.recv(channel_receiver).unwrap();
+        let mut samples_count_in = 0u32;
+        samples_count_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut samples_count_storage = samples_count_in;
+        let mut samples_storage =
+            Vec::<std::mem::MaybeUninit<nvmlVgpuProcessUtilizationSample_t>>::with_capacity(
+                samples_count_in as usize,
+            );
+        let samplesCount_ptr = if samplesCount_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut samples_count_storage
+        };
+        let utilizationSamples_ptr = if samples_is_null {
+            std::ptr::null_mut()
+        } else {
+            samples_storage
+                .as_mut_ptr()
+                .cast::<nvmlVgpuProcessUtilizationSample_t>()
+        };
+        let result = unsafe {
+            nvmlDeviceGetVgpuProcessUtilization(
+                device,
+                lastSeenTimeStamp,
+                samplesCount_ptr,
+                utilizationSamples_ptr,
+            )
+        };
+    }
+    'server_after_send: {
+        if !samplesCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            samples_count_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !samples_is_null && samples_count_storage > 0
+            {
+                assert!((samples_count_storage as usize) <= samples_count_in as usize);
+                let samples_out = unsafe {
+                    std::slice::from_raw_parts(
+                        samples_storage
+                            .as_ptr()
+                            .cast::<nvmlVgpuProcessUtilizationSample_t>(),
+                        samples_count_storage as usize,
+                    )
+                };
+                send_slice(samples_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !samplesCount_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut samples_count_out = 0u32;
+            samples_count_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(vgpuProcessSamplesCount, samples_count_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !samples_is_null && samples_count_out > 0 {
+                assert!((samples_count_out as usize) <= samples_count_in as usize);
+                let samples_out = unsafe {
+                    std::slice::from_raw_parts_mut(utilizationSamples, samples_count_out as usize)
+                };
+                recv_slice_to(samples_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991249)]
+fn nvmlDeviceGetVgpuProcessesUtilizationInfo(
+    device: nvmlDevice_t,
+    #[skip] vgpuProcUtilInfo: *mut nvmlVgpuProcessesUtilizationInfo_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let vgpuProcUtilInfo_is_null = vgpuProcUtilInfo.is_null();
+        let (version_in, count_in, timestamp_in, array_is_null) = if vgpuProcUtilInfo_is_null {
+            (0u32, 0u32, 0u64, true)
+        } else {
+            let info_in = unsafe { std::ptr::read_unaligned(vgpuProcUtilInfo) };
+            (
+                info_in.version,
+                info_in.vgpuProcessCount,
+                info_in.lastSeenTimeStamp,
+                info_in.vgpuProcUtilArray.is_null(),
+            )
+        };
+    }
+    'client_extra_send: {
+        vgpuProcUtilInfo_is_null.send(channel_sender).unwrap();
+        version_in.send(channel_sender).unwrap();
+        count_in.send(channel_sender).unwrap();
+        timestamp_in.send(channel_sender).unwrap();
+        array_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut vgpuProcUtilInfo_is_null = false;
+        vgpuProcUtilInfo_is_null.recv(channel_receiver).unwrap();
+        let mut version_in = 0u32;
+        version_in.recv(channel_receiver).unwrap();
+        let mut count_in = 0u32;
+        count_in.recv(channel_receiver).unwrap();
+        let mut timestamp_in = 0u64;
+        timestamp_in.recv(channel_receiver).unwrap();
+        let mut array_is_null = true;
+        array_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut array_storage =
+            Vec::<std::mem::MaybeUninit<nvmlVgpuProcessUtilizationInfo_v1_t>>::with_capacity(
+                count_in as usize,
+            );
+        let mut info_storage = nvmlVgpuProcessesUtilizationInfo_t {
+            version: version_in,
+            vgpuProcessCount: count_in,
+            lastSeenTimeStamp: timestamp_in,
+            vgpuProcUtilArray: if array_is_null {
+                std::ptr::null_mut()
+            } else {
+                array_storage
+                    .as_mut_ptr()
+                    .cast::<nvmlVgpuProcessUtilizationInfo_v1_t>()
+            },
+        };
+        let info_ptr = if vgpuProcUtilInfo_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut info_storage
+        };
+        let result = unsafe { nvmlDeviceGetVgpuProcessesUtilizationInfo(device, info_ptr) };
+    }
+    'server_after_send: {
+        if !vgpuProcUtilInfo_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            info_storage.version.send(channel_sender).unwrap();
+            info_storage.vgpuProcessCount.send(channel_sender).unwrap();
+            info_storage.lastSeenTimeStamp.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !array_is_null
+                && info_storage.vgpuProcessCount > 0
+            {
+                assert!((info_storage.vgpuProcessCount as usize) <= count_in as usize);
+                let array_out = unsafe {
+                    std::slice::from_raw_parts(
+                        array_storage
+                            .as_ptr()
+                            .cast::<nvmlVgpuProcessUtilizationInfo_v1_t>(),
+                        info_storage.vgpuProcessCount as usize,
+                    )
+                };
+                send_slice(array_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !vgpuProcUtilInfo_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let info_out = unsafe { &mut *vgpuProcUtilInfo };
+            info_out.version.recv(channel_receiver).unwrap();
+            info_out.vgpuProcessCount.recv(channel_receiver).unwrap();
+            info_out.lastSeenTimeStamp.recv(channel_receiver).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !array_is_null
+                && info_out.vgpuProcessCount > 0
+            {
+                assert!((info_out.vgpuProcessCount as usize) <= count_in as usize);
+                let array_out = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        info_out.vgpuProcUtilArray,
+                        info_out.vgpuProcessCount as usize,
+                    )
+                };
+                recv_slice_to(array_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991250)]
+fn nvmlDeviceReadPRMCounters_v1(
+    device: nvmlDevice_t,
+    #[skip] counterList: *mut nvmlPRMCounterList_v1_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let counterList_is_null = counterList.is_null();
+        let (counter_count_in, counters_in) = if counterList_is_null {
+            (0u32, Vec::<nvmlPRMCounter_v1_t>::new())
+        } else {
+            let counter_list_in = unsafe { std::ptr::read_unaligned(counterList) };
+            let counters = if counter_list_in.counters.is_null() || counter_list_in.numCounters == 0
+            {
+                Vec::<nvmlPRMCounter_v1_t>::new()
+            } else {
+                unsafe {
+                    std::slice::from_raw_parts(
+                        counter_list_in.counters,
+                        counter_list_in.numCounters as usize,
+                    )
+                }
+                .to_vec()
+            };
+            (counter_list_in.numCounters, counters)
+        };
+    }
+    'client_extra_send: {
+        counterList_is_null.send(channel_sender).unwrap();
+        counter_count_in.send(channel_sender).unwrap();
+        send_slice(&counters_in, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut counterList_is_null = false;
+        counterList_is_null.recv(channel_receiver).unwrap();
+        let mut counter_count_in = 0u32;
+        counter_count_in.recv(channel_receiver).unwrap();
+        let counters_in = recv_slice::<nvmlPRMCounter_v1_t, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut counters_storage = counters_in.into_vec();
+        let mut counter_list_storage = nvmlPRMCounterList_v1_t {
+            numCounters: counter_count_in,
+            counters: if counters_storage.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                counters_storage.as_mut_ptr()
+            },
+        };
+        let counterList_ptr = if counterList_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut counter_list_storage
+        };
+        let result = unsafe { nvmlDeviceReadPRMCounters_v1(device, counterList_ptr) };
+    }
+    'server_after_send: {
+        if !counterList_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            counter_list_storage
+                .numCounters
+                .send(channel_sender)
+                .unwrap();
+            send_slice(&counters_storage, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !counterList_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            let counter_list_out = unsafe { &mut *counterList };
+            let mut counter_count_out = 0u32;
+            counter_count_out.recv(channel_receiver).unwrap();
+            counter_list_out.numCounters = counter_count_out;
+            let counters_out = recv_slice::<nvmlPRMCounter_v1_t, _>(channel_receiver).unwrap();
+            if !counter_list_out.counters.is_null() && !counters_out.is_empty() {
+                assert!(counters_out.len() <= counter_count_in as usize);
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        counters_out.as_ptr(),
+                        counter_list_out.counters,
+                        counters_out.len(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991251)]
+fn nvmlDeviceWorkloadPowerProfileGetProfilesInfo(
+    device: nvmlDevice_t,
+    #[skip] profilesInfo: *mut nvmlWorkloadPowerProfileProfilesInfo_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let profilesInfo_is_null = profilesInfo.is_null();
+        let profilesInfo_in = if profilesInfo_is_null {
+            unsafe { std::mem::zeroed::<nvmlWorkloadPowerProfileProfilesInfo_t>() }
+        } else {
+            unsafe { std::ptr::read_unaligned(profilesInfo) }
+        };
+    }
+    'client_extra_send: {
+        profilesInfo_is_null.send(channel_sender).unwrap();
+        profilesInfo_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut profilesInfo_is_null = false;
+        profilesInfo_is_null.recv(channel_receiver).unwrap();
+        let mut profilesInfo_storage =
+            std::mem::MaybeUninit::<nvmlWorkloadPowerProfileProfilesInfo_t>::uninit();
+        profilesInfo_storage.recv(channel_receiver).unwrap();
+        let mut profilesInfo_storage = unsafe { profilesInfo_storage.assume_init() };
+    }
+    'server_execution: {
+        let profilesInfo_ptr = if profilesInfo_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut profilesInfo_storage
+        };
+        let result =
+            unsafe { nvmlDeviceWorkloadPowerProfileGetProfilesInfo(device, profilesInfo_ptr) };
+    }
+    'server_after_send: {
+        if !profilesInfo_is_null {
+            profilesInfo_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !profilesInfo_is_null {
+            let mut profilesInfo_out =
+                std::mem::MaybeUninit::<nvmlWorkloadPowerProfileProfilesInfo_t>::uninit();
+            profilesInfo_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(profilesInfo, profilesInfo_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991252)]
+fn nvmlDeviceWorkloadPowerProfileGetCurrentProfiles(
+    device: nvmlDevice_t,
+    #[skip] currentProfiles: *mut nvmlWorkloadPowerProfileCurrentProfiles_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let currentProfiles_is_null = currentProfiles.is_null();
+        let currentProfiles_in = if currentProfiles_is_null {
+            unsafe { std::mem::zeroed::<nvmlWorkloadPowerProfileCurrentProfiles_t>() }
+        } else {
+            unsafe { std::ptr::read_unaligned(currentProfiles) }
+        };
+    }
+    'client_extra_send: {
+        currentProfiles_is_null.send(channel_sender).unwrap();
+        currentProfiles_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut currentProfiles_is_null = false;
+        currentProfiles_is_null.recv(channel_receiver).unwrap();
+        let mut currentProfiles_storage =
+            std::mem::MaybeUninit::<nvmlWorkloadPowerProfileCurrentProfiles_t>::uninit();
+        currentProfiles_storage.recv(channel_receiver).unwrap();
+        let mut currentProfiles_storage = unsafe { currentProfiles_storage.assume_init() };
+    }
+    'server_execution: {
+        let currentProfiles_ptr = if currentProfiles_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut currentProfiles_storage
+        };
+        let result = unsafe {
+            nvmlDeviceWorkloadPowerProfileGetCurrentProfiles(device, currentProfiles_ptr)
+        };
+    }
+    'server_after_send: {
+        if !currentProfiles_is_null {
+            currentProfiles_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !currentProfiles_is_null {
+            let mut currentProfiles_out =
+                std::mem::MaybeUninit::<nvmlWorkloadPowerProfileCurrentProfiles_t>::uninit();
+            currentProfiles_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(currentProfiles, currentProfiles_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991253)]
+fn nvmlDeviceValidateInforom(device: nvmlDevice_t) -> nvmlReturn_t;
