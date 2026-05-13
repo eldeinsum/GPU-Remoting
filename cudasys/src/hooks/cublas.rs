@@ -1390,6 +1390,412 @@ fn cublasZtpsv(
     incx: c_int,
 );
 
+#[cuda_custom_hook(proc_id = 1827)]
+fn cublasSgbmv(
+    trans: c_char,
+    m: c_int,
+    n: c_int,
+    kl: c_int,
+    ku: c_int,
+    alpha: f32,
+    A: *const f32,
+    lda: c_int,
+    x: *const f32,
+    incx: c_int,
+    beta: f32,
+    y: *mut f32,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1828)]
+fn cublasDgbmv(
+    trans: c_char,
+    m: c_int,
+    n: c_int,
+    kl: c_int,
+    ku: c_int,
+    alpha: f64,
+    A: *const f64,
+    lda: c_int,
+    x: *const f64,
+    incx: c_int,
+    beta: f64,
+    y: *mut f64,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1829)]
+fn cublasCgbmv(
+    trans: c_char,
+    m: c_int,
+    n: c_int,
+    kl: c_int,
+    ku: c_int,
+    alpha: cuComplex,
+    A: *const cuComplex,
+    lda: c_int,
+    x: *const cuComplex,
+    incx: c_int,
+    beta: cuComplex,
+    y: *mut cuComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1830)]
+fn cublasZgbmv(
+    trans: c_char,
+    m: c_int,
+    n: c_int,
+    kl: c_int,
+    ku: c_int,
+    alpha: cuDoubleComplex,
+    A: *const cuDoubleComplex,
+    lda: c_int,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    beta: cuDoubleComplex,
+    y: *mut cuDoubleComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1831)]
+fn cublasSsymv(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    A: *const f32,
+    lda: c_int,
+    x: *const f32,
+    incx: c_int,
+    beta: f32,
+    y: *mut f32,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1832)]
+fn cublasDsymv(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    A: *const f64,
+    lda: c_int,
+    x: *const f64,
+    incx: c_int,
+    beta: f64,
+    y: *mut f64,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1833)]
+fn cublasChemv(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuComplex,
+    A: *const cuComplex,
+    lda: c_int,
+    x: *const cuComplex,
+    incx: c_int,
+    beta: cuComplex,
+    y: *mut cuComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1834)]
+fn cublasZhemv(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuDoubleComplex,
+    A: *const cuDoubleComplex,
+    lda: c_int,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    beta: cuDoubleComplex,
+    y: *mut cuDoubleComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1835)]
+fn cublasSsbmv(
+    uplo: c_char,
+    n: c_int,
+    k: c_int,
+    alpha: f32,
+    A: *const f32,
+    lda: c_int,
+    x: *const f32,
+    incx: c_int,
+    beta: f32,
+    y: *mut f32,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1836)]
+fn cublasDsbmv(
+    uplo: c_char,
+    n: c_int,
+    k: c_int,
+    alpha: f64,
+    A: *const f64,
+    lda: c_int,
+    x: *const f64,
+    incx: c_int,
+    beta: f64,
+    y: *mut f64,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1837)]
+fn cublasChbmv(
+    uplo: c_char,
+    n: c_int,
+    k: c_int,
+    alpha: cuComplex,
+    A: *const cuComplex,
+    lda: c_int,
+    x: *const cuComplex,
+    incx: c_int,
+    beta: cuComplex,
+    y: *mut cuComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1838)]
+fn cublasZhbmv(
+    uplo: c_char,
+    n: c_int,
+    k: c_int,
+    alpha: cuDoubleComplex,
+    A: *const cuDoubleComplex,
+    lda: c_int,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    beta: cuDoubleComplex,
+    y: *mut cuDoubleComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1839)]
+fn cublasSspmv(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    AP: *const f32,
+    x: *const f32,
+    incx: c_int,
+    beta: f32,
+    y: *mut f32,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1840)]
+fn cublasDspmv(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    AP: *const f64,
+    x: *const f64,
+    incx: c_int,
+    beta: f64,
+    y: *mut f64,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1841)]
+fn cublasChpmv(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuComplex,
+    AP: *const cuComplex,
+    x: *const cuComplex,
+    incx: c_int,
+    beta: cuComplex,
+    y: *mut cuComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1842)]
+fn cublasZhpmv(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuDoubleComplex,
+    AP: *const cuDoubleComplex,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    beta: cuDoubleComplex,
+    y: *mut cuDoubleComplex,
+    incy: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1843)]
+fn cublasSsyr(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    x: *const f32,
+    incx: c_int,
+    A: *mut f32,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1844)]
+fn cublasDsyr(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    x: *const f64,
+    incx: c_int,
+    A: *mut f64,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1845)]
+fn cublasCher(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    x: *const cuComplex,
+    incx: c_int,
+    A: *mut cuComplex,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1846)]
+fn cublasZher(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    A: *mut cuDoubleComplex,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1847)]
+fn cublasSspr(uplo: c_char, n: c_int, alpha: f32, x: *const f32, incx: c_int, AP: *mut f32);
+
+#[cuda_custom_hook(proc_id = 1848)]
+fn cublasDspr(uplo: c_char, n: c_int, alpha: f64, x: *const f64, incx: c_int, AP: *mut f64);
+
+#[cuda_custom_hook(proc_id = 1849)]
+fn cublasChpr(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    x: *const cuComplex,
+    incx: c_int,
+    AP: *mut cuComplex,
+);
+
+#[cuda_custom_hook(proc_id = 1850)]
+fn cublasZhpr(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    AP: *mut cuDoubleComplex,
+);
+
+#[cuda_custom_hook(proc_id = 1851)]
+fn cublasSsyr2(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    x: *const f32,
+    incx: c_int,
+    y: *const f32,
+    incy: c_int,
+    A: *mut f32,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1852)]
+fn cublasDsyr2(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    x: *const f64,
+    incx: c_int,
+    y: *const f64,
+    incy: c_int,
+    A: *mut f64,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1853)]
+fn cublasCher2(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuComplex,
+    x: *const cuComplex,
+    incx: c_int,
+    y: *const cuComplex,
+    incy: c_int,
+    A: *mut cuComplex,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1854)]
+fn cublasZher2(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuDoubleComplex,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    y: *const cuDoubleComplex,
+    incy: c_int,
+    A: *mut cuDoubleComplex,
+    lda: c_int,
+);
+
+#[cuda_custom_hook(proc_id = 1855)]
+fn cublasSspr2(
+    uplo: c_char,
+    n: c_int,
+    alpha: f32,
+    x: *const f32,
+    incx: c_int,
+    y: *const f32,
+    incy: c_int,
+    AP: *mut f32,
+);
+
+#[cuda_custom_hook(proc_id = 1856)]
+fn cublasDspr2(
+    uplo: c_char,
+    n: c_int,
+    alpha: f64,
+    x: *const f64,
+    incx: c_int,
+    y: *const f64,
+    incy: c_int,
+    AP: *mut f64,
+);
+
+#[cuda_custom_hook(proc_id = 1857)]
+fn cublasChpr2(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuComplex,
+    x: *const cuComplex,
+    incx: c_int,
+    y: *const cuComplex,
+    incy: c_int,
+    AP: *mut cuComplex,
+);
+
+#[cuda_custom_hook(proc_id = 1858)]
+fn cublasZhpr2(
+    uplo: c_char,
+    n: c_int,
+    alpha: cuDoubleComplex,
+    x: *const cuDoubleComplex,
+    incx: c_int,
+    y: *const cuDoubleComplex,
+    incy: c_int,
+    AP: *mut cuDoubleComplex,
+);
+
 #[cuda_custom_hook] // local: returns a client-owned C string
 fn cublasGetStatusName(status: cublasStatus_t) -> *const c_char;
 

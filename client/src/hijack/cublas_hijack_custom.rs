@@ -164,6 +164,38 @@ legacy_void!(cublasStpsv, 1778, (uplo: c_char, trans: c_char, diag: c_char, n: c
 legacy_void!(cublasDtpsv, 1779, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const f64, x: *mut f64, incx: c_int));
 legacy_void!(cublasCtpsv, 1780, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const cuComplex, x: *mut cuComplex, incx: c_int));
 legacy_void!(cublasZtpsv, 1781, (uplo: c_char, trans: c_char, diag: c_char, n: c_int, AP: *const cuDoubleComplex, x: *mut cuDoubleComplex, incx: c_int));
+legacy_void!(cublasSgbmv, 1827, (trans: c_char, m: c_int, n: c_int, kl: c_int, ku: c_int, alpha: f32, A: *const f32, lda: c_int, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
+legacy_void!(cublasDgbmv, 1828, (trans: c_char, m: c_int, n: c_int, kl: c_int, ku: c_int, alpha: f64, A: *const f64, lda: c_int, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
+legacy_void!(cublasCgbmv, 1829, (trans: c_char, m: c_int, n: c_int, kl: c_int, ku: c_int, alpha: cuComplex, A: *const cuComplex, lda: c_int, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));
+legacy_void!(cublasZgbmv, 1830, (trans: c_char, m: c_int, n: c_int, kl: c_int, ku: c_int, alpha: cuDoubleComplex, A: *const cuDoubleComplex, lda: c_int, x: *const cuDoubleComplex, incx: c_int, beta: cuDoubleComplex, y: *mut cuDoubleComplex, incy: c_int));
+legacy_void!(cublasSsymv, 1831, (uplo: c_char, n: c_int, alpha: f32, A: *const f32, lda: c_int, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
+legacy_void!(cublasDsymv, 1832, (uplo: c_char, n: c_int, alpha: f64, A: *const f64, lda: c_int, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
+legacy_void!(cublasChemv, 1833, (uplo: c_char, n: c_int, alpha: cuComplex, A: *const cuComplex, lda: c_int, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));
+legacy_void!(cublasZhemv, 1834, (uplo: c_char, n: c_int, alpha: cuDoubleComplex, A: *const cuDoubleComplex, lda: c_int, x: *const cuDoubleComplex, incx: c_int, beta: cuDoubleComplex, y: *mut cuDoubleComplex, incy: c_int));
+legacy_void!(cublasSsbmv, 1835, (uplo: c_char, n: c_int, k: c_int, alpha: f32, A: *const f32, lda: c_int, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
+legacy_void!(cublasDsbmv, 1836, (uplo: c_char, n: c_int, k: c_int, alpha: f64, A: *const f64, lda: c_int, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
+legacy_void!(cublasChbmv, 1837, (uplo: c_char, n: c_int, k: c_int, alpha: cuComplex, A: *const cuComplex, lda: c_int, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));
+legacy_void!(cublasZhbmv, 1838, (uplo: c_char, n: c_int, k: c_int, alpha: cuDoubleComplex, A: *const cuDoubleComplex, lda: c_int, x: *const cuDoubleComplex, incx: c_int, beta: cuDoubleComplex, y: *mut cuDoubleComplex, incy: c_int));
+legacy_void!(cublasSspmv, 1839, (uplo: c_char, n: c_int, alpha: f32, AP: *const f32, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
+legacy_void!(cublasDspmv, 1840, (uplo: c_char, n: c_int, alpha: f64, AP: *const f64, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
+legacy_void!(cublasChpmv, 1841, (uplo: c_char, n: c_int, alpha: cuComplex, AP: *const cuComplex, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));
+legacy_void!(cublasZhpmv, 1842, (uplo: c_char, n: c_int, alpha: cuDoubleComplex, AP: *const cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, beta: cuDoubleComplex, y: *mut cuDoubleComplex, incy: c_int));
+legacy_void!(cublasSsyr, 1843, (uplo: c_char, n: c_int, alpha: f32, x: *const f32, incx: c_int, A: *mut f32, lda: c_int));
+legacy_void!(cublasDsyr, 1844, (uplo: c_char, n: c_int, alpha: f64, x: *const f64, incx: c_int, A: *mut f64, lda: c_int));
+legacy_void!(cublasCher, 1845, (uplo: c_char, n: c_int, alpha: f32, x: *const cuComplex, incx: c_int, A: *mut cuComplex, lda: c_int));
+legacy_void!(cublasZher, 1846, (uplo: c_char, n: c_int, alpha: f64, x: *const cuDoubleComplex, incx: c_int, A: *mut cuDoubleComplex, lda: c_int));
+legacy_void!(cublasSspr, 1847, (uplo: c_char, n: c_int, alpha: f32, x: *const f32, incx: c_int, AP: *mut f32));
+legacy_void!(cublasDspr, 1848, (uplo: c_char, n: c_int, alpha: f64, x: *const f64, incx: c_int, AP: *mut f64));
+legacy_void!(cublasChpr, 1849, (uplo: c_char, n: c_int, alpha: f32, x: *const cuComplex, incx: c_int, AP: *mut cuComplex));
+legacy_void!(cublasZhpr, 1850, (uplo: c_char, n: c_int, alpha: f64, x: *const cuDoubleComplex, incx: c_int, AP: *mut cuDoubleComplex));
+legacy_void!(cublasSsyr2, 1851, (uplo: c_char, n: c_int, alpha: f32, x: *const f32, incx: c_int, y: *const f32, incy: c_int, A: *mut f32, lda: c_int));
+legacy_void!(cublasDsyr2, 1852, (uplo: c_char, n: c_int, alpha: f64, x: *const f64, incx: c_int, y: *const f64, incy: c_int, A: *mut f64, lda: c_int));
+legacy_void!(cublasCher2, 1853, (uplo: c_char, n: c_int, alpha: cuComplex, x: *const cuComplex, incx: c_int, y: *const cuComplex, incy: c_int, A: *mut cuComplex, lda: c_int));
+legacy_void!(cublasZher2, 1854, (uplo: c_char, n: c_int, alpha: cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, y: *const cuDoubleComplex, incy: c_int, A: *mut cuDoubleComplex, lda: c_int));
+legacy_void!(cublasSspr2, 1855, (uplo: c_char, n: c_int, alpha: f32, x: *const f32, incx: c_int, y: *const f32, incy: c_int, AP: *mut f32));
+legacy_void!(cublasDspr2, 1856, (uplo: c_char, n: c_int, alpha: f64, x: *const f64, incx: c_int, y: *const f64, incy: c_int, AP: *mut f64));
+legacy_void!(cublasChpr2, 1857, (uplo: c_char, n: c_int, alpha: cuComplex, x: *const cuComplex, incx: c_int, y: *const cuComplex, incy: c_int, AP: *mut cuComplex));
+legacy_void!(cublasZhpr2, 1858, (uplo: c_char, n: c_int, alpha: cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, y: *const cuDoubleComplex, incy: c_int, AP: *mut cuDoubleComplex));
 
 #[no_mangle]
 pub extern "C" fn cublasLoggerConfigure(
