@@ -34,7 +34,8 @@ static int check_success(nvmlReturn_t result, const char *label)
 static int check_optional(nvmlReturn_t result, const char *label)
 {
     if (result == NVML_SUCCESS || result == NVML_ERROR_NOT_SUPPORTED ||
-        result == NVML_ERROR_FUNCTION_NOT_FOUND || result == NVML_ERROR_NO_PERMISSION)
+        result == NVML_ERROR_FUNCTION_NOT_FOUND || result == NVML_ERROR_NO_PERMISSION ||
+        result == NVML_ERROR_NOT_READY)
     {
         return 0;
     }
@@ -381,6 +382,8 @@ int main()
         "nvmlDeviceGetPcieReplayCounter",
         "nvmlDeviceGetFanSpeed",
     };
+    static_assert(sizeof(optional_results) / sizeof(optional_results[0]) ==
+                  sizeof(optional_labels) / sizeof(optional_labels[0]));
     for (size_t i = 0; i < sizeof(optional_results) / sizeof(optional_results[0]); ++i)
     {
         if (check_optional(optional_results[i], optional_labels[i]))
@@ -389,8 +392,243 @@ int main()
         }
     }
 
+    unsigned int unit_count = 0;
+    result = nvmlUnitGetCount(&unit_count);
+    if (check_optional(result, "nvmlUnitGetCount"))
+    {
+        return 1;
+    }
+
+    nvmlDeviceAttributes_t attributes = {};
+    result = nvmlDeviceGetAttributes_v2(device, &attributes);
+    if (check_optional(result, "nvmlDeviceGetAttributes_v2"))
+    {
+        return 1;
+    }
+
+    nvmlUnrepairableMemoryStatus_v1_t unrepairable_memory = {};
+    nvmlGpuTopologyLevel_t topology_level;
+    unsigned long long timestamp = 0;
+    unsigned long duration_us = 0;
+    int signed_value = 0;
+    nvmlEnableState_t default_enable_state;
+    nvmlGpuDynamicPstatesInfo_t dynamic_pstates = {};
+    int min_offset = 0;
+    int max_offset = 0;
     unsigned int min_limit = 0;
     unsigned int max_limit = 0;
+    nvmlPstates_t supported_pstates[NVML_MAX_GPU_PERF_PSTATES] = {};
+    nvmlGpuOperationMode_t current_gom;
+    nvmlGpuOperationMode_t pending_gom;
+    unsigned long long counter = 0;
+    nvmlEccErrorCounts_t ecc_counts = {};
+    nvmlFBCStats_t fbc_stats = {};
+    nvmlDriverModel_t current_driver_model;
+    nvmlDriverModel_t pending_driver_model;
+    nvmlBridgeChipHierarchy_t bridge_hierarchy = {};
+    int same_board = 0;
+    nvmlViolationTime_t violation_time = {};
+    nvmlPowerSource_t power_source = 0;
+    nvmlBusType_t bus_type = 0;
+    nvmlGpuFabricInfo_t fabric_info = {};
+    nvmlRowRemapperHistogramValues_t row_remapper = {};
+    nvmlReturn_t more_optional_results[] = {
+        nvmlDeviceGetModuleId(device, &value),
+        nvmlDeviceGetNumaNodeId(device, &value),
+        nvmlDeviceGetUnrepairableMemoryFlag_v1(device, &unrepairable_memory),
+        nvmlDeviceGetTopologyCommonAncestor(device, device, &topology_level),
+        nvmlDeviceGetInforomConfigurationChecksum(device, &value),
+        nvmlDeviceGetLastBBXFlushTime(device, &timestamp, &duration_us),
+        nvmlDeviceGetDisplayMode(device, &enable_state),
+        nvmlDeviceGetDisplayActive(device, &enable_state),
+        nvmlDeviceGetGpuMaxPcieLinkGeneration(device, &value),
+        nvmlDeviceGetGpcClkVfOffset(device, &signed_value),
+        nvmlDeviceGetClock(device, NVML_CLOCK_GRAPHICS, NVML_CLOCK_ID_CURRENT, &value),
+        nvmlDeviceGetMaxCustomerBoostClock(device, NVML_CLOCK_GRAPHICS, &value),
+        nvmlDeviceGetAutoBoostedClocksEnabled(device, &enable_state,
+                                              &default_enable_state),
+        nvmlDeviceGetFanSpeed_v2(device, 0, &value),
+        nvmlDeviceGetTargetFanSpeed(device, 0, &value),
+        nvmlDeviceGetMinMaxFanSpeed(device, &min_limit, &max_limit),
+        nvmlDeviceGetFanControlPolicy_v2(device, 0, &value),
+        nvmlDeviceGetNumFans(device, &value),
+        nvmlDeviceGetTemperatureThreshold(device, NVML_TEMPERATURE_THRESHOLD_SHUTDOWN,
+                                          &value),
+        nvmlDeviceGetCurrentClocksEventReasons(device, &counter),
+        nvmlDeviceGetCurrentClocksThrottleReasons(device, &counter),
+        nvmlDeviceGetSupportedClocksEventReasons(device, &counter),
+        nvmlDeviceGetSupportedClocksThrottleReasons(device, &counter),
+        nvmlDeviceGetPowerState(device, &pstate),
+        nvmlDeviceGetDynamicPstatesInfo(device, &dynamic_pstates),
+        nvmlDeviceGetMemClkVfOffset(device, &signed_value),
+        nvmlDeviceGetMinMaxClockOfPState(device, NVML_CLOCK_GRAPHICS, NVML_PSTATE_0,
+                                         &min_limit, &max_limit),
+        nvmlDeviceGetSupportedPerformanceStates(device, supported_pstates,
+                                                sizeof(supported_pstates)),
+        nvmlDeviceGetGpcClkMinMaxVfOffset(device, &min_offset, &max_offset),
+        nvmlDeviceGetMemClkMinMaxVfOffset(device, &min_offset, &max_offset),
+        nvmlDeviceGetGpuOperationMode(device, &current_gom, &pending_gom),
+        nvmlDeviceGetEccMode(device, &enable_state, &default_enable_state),
+        nvmlDeviceGetDefaultEccMode(device, &enable_state),
+        nvmlDeviceGetTotalEccErrors(device, NVML_MEMORY_ERROR_TYPE_CORRECTED,
+                                    NVML_VOLATILE_ECC, &counter),
+        nvmlDeviceGetDetailedEccErrors(device, NVML_MEMORY_ERROR_TYPE_CORRECTED,
+                                       NVML_VOLATILE_ECC, &ecc_counts),
+        nvmlDeviceGetMemoryErrorCounter(device, NVML_MEMORY_ERROR_TYPE_CORRECTED,
+                                        NVML_VOLATILE_ECC,
+                                        NVML_MEMORY_LOCATION_L2_CACHE, &counter),
+        nvmlDeviceGetEncoderUtilization(device, &value, &device_index),
+        nvmlDeviceGetEncoderCapacity(device, NVML_ENCODER_QUERY_H264, &value),
+        nvmlDeviceGetEncoderStats(device, &value, &device_index, &minor_number),
+        nvmlDeviceGetDecoderUtilization(device, &value, &device_index),
+        nvmlDeviceGetJpgUtilization(device, &value, &device_index),
+        nvmlDeviceGetOfaUtilization(device, &value, &device_index),
+        nvmlDeviceGetFBCStats(device, &fbc_stats),
+        nvmlDeviceGetDriverModel_v2(device, &current_driver_model,
+                                    &pending_driver_model),
+        nvmlDeviceGetBridgeChipInfo(device, &bridge_hierarchy),
+        nvmlDeviceGetAPIRestriction(device, NVML_RESTRICTED_API_SET_APPLICATION_CLOCKS,
+                                    &enable_state),
+        nvmlDeviceGetViolationStatus(device, NVML_PERF_POLICY_POWER, &violation_time),
+        nvmlDeviceGetIrqNum(device, &value),
+        nvmlDeviceGetNumGpuCores(device, &value),
+        nvmlDeviceGetPowerSource(device, &power_source),
+        nvmlDeviceGetMemoryBusWidth(device, &value),
+        nvmlDeviceGetPcieLinkMaxSpeed(device, &value),
+        nvmlDeviceGetPcieSpeed(device, &value),
+        nvmlDeviceGetAdaptiveClockInfoStatus(device, &value),
+        nvmlDeviceGetBusType(device, &bus_type),
+        nvmlDeviceGetGpuFabricInfo(device, &fabric_info),
+        nvmlDeviceGetGspFirmwareMode(device, &value, &device_index),
+        nvmlDeviceGetAccountingMode(device, &enable_state),
+        nvmlDeviceGetAccountingBufferSize(device, &value),
+        nvmlDeviceGetRetiredPagesPendingStatus(device, &enable_state),
+        nvmlDeviceGetRowRemapperHistogram(device, &row_remapper),
+    };
+    const char *more_optional_labels[] = {
+        "nvmlDeviceGetModuleId",
+        "nvmlDeviceGetNumaNodeId",
+        "nvmlDeviceGetUnrepairableMemoryFlag_v1",
+        "nvmlDeviceGetTopologyCommonAncestor",
+        "nvmlDeviceGetInforomConfigurationChecksum",
+        "nvmlDeviceGetLastBBXFlushTime",
+        "nvmlDeviceGetDisplayMode",
+        "nvmlDeviceGetDisplayActive",
+        "nvmlDeviceGetGpuMaxPcieLinkGeneration",
+        "nvmlDeviceGetGpcClkVfOffset",
+        "nvmlDeviceGetClock",
+        "nvmlDeviceGetMaxCustomerBoostClock",
+        "nvmlDeviceGetAutoBoostedClocksEnabled",
+        "nvmlDeviceGetFanSpeed_v2",
+        "nvmlDeviceGetTargetFanSpeed",
+        "nvmlDeviceGetMinMaxFanSpeed",
+        "nvmlDeviceGetFanControlPolicy_v2",
+        "nvmlDeviceGetNumFans",
+        "nvmlDeviceGetTemperatureThreshold",
+        "nvmlDeviceGetCurrentClocksEventReasons",
+        "nvmlDeviceGetCurrentClocksThrottleReasons",
+        "nvmlDeviceGetSupportedClocksEventReasons",
+        "nvmlDeviceGetSupportedClocksThrottleReasons",
+        "nvmlDeviceGetPowerState",
+        "nvmlDeviceGetDynamicPstatesInfo",
+        "nvmlDeviceGetMemClkVfOffset",
+        "nvmlDeviceGetMinMaxClockOfPState",
+        "nvmlDeviceGetSupportedPerformanceStates",
+        "nvmlDeviceGetGpcClkMinMaxVfOffset",
+        "nvmlDeviceGetMemClkMinMaxVfOffset",
+        "nvmlDeviceGetGpuOperationMode",
+        "nvmlDeviceGetEccMode",
+        "nvmlDeviceGetDefaultEccMode",
+        "nvmlDeviceGetTotalEccErrors",
+        "nvmlDeviceGetDetailedEccErrors",
+        "nvmlDeviceGetMemoryErrorCounter",
+        "nvmlDeviceGetEncoderUtilization",
+        "nvmlDeviceGetEncoderCapacity",
+        "nvmlDeviceGetEncoderStats",
+        "nvmlDeviceGetDecoderUtilization",
+        "nvmlDeviceGetJpgUtilization",
+        "nvmlDeviceGetOfaUtilization",
+        "nvmlDeviceGetFBCStats",
+        "nvmlDeviceGetDriverModel_v2",
+        "nvmlDeviceGetBridgeChipInfo",
+        "nvmlDeviceGetAPIRestriction",
+        "nvmlDeviceGetViolationStatus",
+        "nvmlDeviceGetIrqNum",
+        "nvmlDeviceGetNumGpuCores",
+        "nvmlDeviceGetPowerSource",
+        "nvmlDeviceGetMemoryBusWidth",
+        "nvmlDeviceGetPcieLinkMaxSpeed",
+        "nvmlDeviceGetPcieSpeed",
+        "nvmlDeviceGetAdaptiveClockInfoStatus",
+        "nvmlDeviceGetBusType",
+        "nvmlDeviceGetGpuFabricInfo",
+        "nvmlDeviceGetGspFirmwareMode",
+        "nvmlDeviceGetAccountingMode",
+        "nvmlDeviceGetAccountingBufferSize",
+        "nvmlDeviceGetRetiredPagesPendingStatus",
+        "nvmlDeviceGetRowRemapperHistogram",
+    };
+    static_assert(sizeof(more_optional_results) / sizeof(more_optional_results[0]) ==
+                  sizeof(more_optional_labels) / sizeof(more_optional_labels[0]));
+    for (size_t i = 0;
+         i < sizeof(more_optional_results) / sizeof(more_optional_results[0]); ++i)
+    {
+        if (check_optional(more_optional_results[i], more_optional_labels[i]))
+        {
+            return 1;
+        }
+    }
+
+    result = nvmlDeviceOnSameBoard(device, device, &same_board);
+    if (check_optional(result, "nvmlDeviceOnSameBoard"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && same_board == 0)
+    {
+        std::cout << "Expected device to be on the same board as itself" << std::endl;
+        return 1;
+    }
+
+    char inforom_version[NVML_DEVICE_INFOROM_VERSION_BUFFER_SIZE] = {};
+    result = nvmlDeviceGetInforomVersion(device, NVML_INFOROM_OEM,
+                                         inforom_version,
+                                         sizeof(inforom_version));
+    if (check_optional(result, "nvmlDeviceGetInforomVersion"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(inforom_version, "nvmlDeviceGetInforomVersion"))
+    {
+        return 1;
+    }
+
+    char inforom_image_version[NVML_DEVICE_INFOROM_VERSION_BUFFER_SIZE] = {};
+    result = nvmlDeviceGetInforomImageVersion(device, inforom_image_version,
+                                              sizeof(inforom_image_version));
+    if (check_optional(result, "nvmlDeviceGetInforomImageVersion"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(inforom_image_version, "nvmlDeviceGetInforomImageVersion"))
+    {
+        return 1;
+    }
+
+    char gsp_firmware_version[NVML_GSP_FIRMWARE_VERSION_BUF_SIZE] = {};
+    result = nvmlDeviceGetGspFirmwareVersion(device, gsp_firmware_version);
+    if (check_optional(result, "nvmlDeviceGetGspFirmwareVersion"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(gsp_firmware_version, "nvmlDeviceGetGspFirmwareVersion"))
+    {
+        return 1;
+    }
+
     result = nvmlDeviceGetPowerManagementLimitConstraints(device, &min_limit, &max_limit);
     if (check_optional(result, "nvmlDeviceGetPowerManagementLimitConstraints"))
     {
