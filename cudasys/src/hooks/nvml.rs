@@ -3885,3 +3885,625 @@ fn nvmlGpmQueryDeviceSupport(
 
 #[cuda_hook(proc_id = 991231)]
 fn nvmlGpmQueryIfStreamingEnabled(device: nvmlDevice_t, state: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991232)]
+fn nvmlSystemEventSetCreate(
+    #[skip] request: *mut nvmlSystemEventSetCreateRequest_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let request_is_null = request.is_null();
+        let request_in = if request_is_null {
+            nvmlSystemEventSetCreateRequest_t {
+                version: 0,
+                set: std::ptr::null_mut(),
+            }
+        } else {
+            unsafe { std::ptr::read_unaligned(request) }
+        };
+    }
+    'client_extra_send: {
+        request_is_null.send(channel_sender).unwrap();
+        request_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut request_is_null = false;
+        request_is_null.recv(channel_receiver).unwrap();
+        let mut request_storage =
+            std::mem::MaybeUninit::<nvmlSystemEventSetCreateRequest_t>::uninit();
+        request_storage.recv(channel_receiver).unwrap();
+        let mut request_storage = unsafe { request_storage.assume_init() };
+    }
+    'server_execution: {
+        let request_ptr = if request_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut request_storage
+        };
+        let result = unsafe { nvmlSystemEventSetCreate(request_ptr) };
+    }
+    'server_after_send: {
+        if !request_is_null {
+            request_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !request_is_null {
+            let mut request_out =
+                std::mem::MaybeUninit::<nvmlSystemEventSetCreateRequest_t>::uninit();
+            request_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(request, request_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991233)]
+fn nvmlSystemEventSetFree(#[skip] request: *mut nvmlSystemEventSetFreeRequest_t) -> nvmlReturn_t {
+    'client_before_send: {
+        let request_is_null = request.is_null();
+        let request_in = if request_is_null {
+            nvmlSystemEventSetFreeRequest_t {
+                version: 0,
+                set: std::ptr::null_mut(),
+            }
+        } else {
+            unsafe { std::ptr::read_unaligned(request) }
+        };
+    }
+    'client_extra_send: {
+        request_is_null.send(channel_sender).unwrap();
+        request_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut request_is_null = false;
+        request_is_null.recv(channel_receiver).unwrap();
+        let mut request_storage =
+            std::mem::MaybeUninit::<nvmlSystemEventSetFreeRequest_t>::uninit();
+        request_storage.recv(channel_receiver).unwrap();
+        let mut request_storage = unsafe { request_storage.assume_init() };
+    }
+    'server_execution: {
+        let request_ptr = if request_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut request_storage
+        };
+        let result = unsafe { nvmlSystemEventSetFree(request_ptr) };
+    }
+    'server_after_send: {
+        if !request_is_null {
+            request_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !request_is_null {
+            let mut request_out =
+                std::mem::MaybeUninit::<nvmlSystemEventSetFreeRequest_t>::uninit();
+            request_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(request, request_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991234)]
+fn nvmlSystemRegisterEvents(
+    #[skip] request: *mut nvmlSystemRegisterEventRequest_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let request_is_null = request.is_null();
+        let request_in = if request_is_null {
+            nvmlSystemRegisterEventRequest_t {
+                version: 0,
+                eventTypes: 0,
+                set: std::ptr::null_mut(),
+            }
+        } else {
+            unsafe { std::ptr::read_unaligned(request) }
+        };
+    }
+    'client_extra_send: {
+        request_is_null.send(channel_sender).unwrap();
+        request_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut request_is_null = false;
+        request_is_null.recv(channel_receiver).unwrap();
+        let mut request_storage =
+            std::mem::MaybeUninit::<nvmlSystemRegisterEventRequest_t>::uninit();
+        request_storage.recv(channel_receiver).unwrap();
+        let mut request_storage = unsafe { request_storage.assume_init() };
+    }
+    'server_execution: {
+        let request_ptr = if request_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut request_storage
+        };
+        let result = unsafe { nvmlSystemRegisterEvents(request_ptr) };
+    }
+    'server_after_send: {
+        if !request_is_null {
+            request_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !request_is_null {
+            let mut request_out =
+                std::mem::MaybeUninit::<nvmlSystemRegisterEventRequest_t>::uninit();
+            request_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(request, request_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991235)]
+fn nvmlSystemEventSetWait(#[skip] request: *mut nvmlSystemEventSetWaitRequest_t) -> nvmlReturn_t {
+    'client_before_send: {
+        let request_is_null = request.is_null();
+        let (
+            request_version_in,
+            request_timeout_in,
+            request_set_in,
+            request_data_is_null,
+            request_data_size_in,
+            request_num_event_in,
+        ) = if request_is_null {
+            (0u32, 0u32, std::ptr::null_mut(), true, 0u32, 0u32)
+        } else {
+            let request_in = unsafe { std::ptr::read_unaligned(request) };
+            (
+                request_in.version,
+                request_in.timeoutms,
+                request_in.set,
+                request_in.data.is_null(),
+                request_in.dataSize,
+                request_in.numEvent,
+            )
+        };
+    }
+    'client_extra_send: {
+        request_is_null.send(channel_sender).unwrap();
+        request_version_in.send(channel_sender).unwrap();
+        request_timeout_in.send(channel_sender).unwrap();
+        request_set_in.send(channel_sender).unwrap();
+        request_data_is_null.send(channel_sender).unwrap();
+        request_data_size_in.send(channel_sender).unwrap();
+        request_num_event_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut request_is_null = false;
+        request_is_null.recv(channel_receiver).unwrap();
+        let mut request_version_in = 0u32;
+        request_version_in.recv(channel_receiver).unwrap();
+        let mut request_timeout_in = 0u32;
+        request_timeout_in.recv(channel_receiver).unwrap();
+        let mut request_set_in: nvmlSystemEventSet_t = std::ptr::null_mut();
+        request_set_in.recv(channel_receiver).unwrap();
+        let mut request_data_is_null = true;
+        request_data_is_null.recv(channel_receiver).unwrap();
+        let mut request_data_size_in = 0u32;
+        request_data_size_in.recv(channel_receiver).unwrap();
+        let mut request_num_event_in = 0u32;
+        request_num_event_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut data_storage =
+            Vec::<std::mem::MaybeUninit<nvmlSystemEventData_v1_t>>::with_capacity(
+                request_data_size_in as usize,
+            );
+        let mut request_storage = nvmlSystemEventSetWaitRequest_t {
+            version: request_version_in,
+            timeoutms: request_timeout_in,
+            set: request_set_in,
+            data: if request_data_is_null {
+                std::ptr::null_mut()
+            } else {
+                data_storage.as_mut_ptr().cast::<nvmlSystemEventData_v1_t>()
+            },
+            dataSize: request_data_size_in,
+            numEvent: request_num_event_in,
+        };
+        let request_ptr = if request_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut request_storage
+        };
+        let result = unsafe { nvmlSystemEventSetWait(request_ptr) };
+    }
+    'server_after_send: {
+        if !request_is_null {
+            request_storage.version.send(channel_sender).unwrap();
+            request_storage.numEvent.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !request_data_is_null
+                && request_storage.numEvent > 0
+            {
+                let event_count = std::cmp::min(
+                    request_storage.numEvent as usize,
+                    request_data_size_in as usize,
+                );
+                let data_out = unsafe {
+                    std::slice::from_raw_parts(
+                        data_storage.as_ptr().cast::<nvmlSystemEventData_v1_t>(),
+                        event_count,
+                    )
+                };
+                send_slice(data_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !request_is_null {
+            let mut request_version_out = 0u32;
+            request_version_out.recv(channel_receiver).unwrap();
+            let mut request_num_event_out = 0u32;
+            request_num_event_out.recv(channel_receiver).unwrap();
+            let request_out = unsafe { &mut *request };
+            request_out.version = request_version_out;
+            request_out.numEvent = request_num_event_out;
+            if result == nvmlReturn_t::NVML_SUCCESS
+                && !request_data_is_null
+                && request_num_event_out > 0
+            {
+                let event_count = std::cmp::min(
+                    request_num_event_out as usize,
+                    request_data_size_in as usize,
+                );
+                let data_out =
+                    unsafe { std::slice::from_raw_parts_mut(request_out.data, event_count) };
+                recv_slice_to(data_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991236)]
+fn nvmlDeviceGetGpuInstanceProfileInfo(
+    device: nvmlDevice_t,
+    profile: c_uint,
+    info: *mut nvmlGpuInstanceProfileInfo_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991237)]
+fn nvmlDeviceGetGpuInstanceProfileInfoV(
+    device: nvmlDevice_t,
+    profile: c_uint,
+    #[skip] info: *mut nvmlGpuInstanceProfileInfo_v2_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let info_is_null = info.is_null();
+        let info_in = if info_is_null {
+            nvmlGpuInstanceProfileInfo_v2_t {
+                version: 0,
+                id: 0,
+                isP2pSupported: 0,
+                sliceCount: 0,
+                instanceCount: 0,
+                multiprocessorCount: 0,
+                copyEngineCount: 0,
+                decoderCount: 0,
+                encoderCount: 0,
+                jpegCount: 0,
+                ofaCount: 0,
+                memorySizeMB: 0,
+                name: [0; 96usize],
+            }
+        } else {
+            unsafe { std::ptr::read_unaligned(info) }
+        };
+    }
+    'client_extra_send: {
+        info_is_null.send(channel_sender).unwrap();
+        info_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut info_is_null = false;
+        info_is_null.recv(channel_receiver).unwrap();
+        let mut info_storage = std::mem::MaybeUninit::<nvmlGpuInstanceProfileInfo_v2_t>::uninit();
+        info_storage.recv(channel_receiver).unwrap();
+        let mut info_storage = unsafe { info_storage.assume_init() };
+    }
+    'server_execution: {
+        let info_ptr = if info_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut info_storage
+        };
+        let result = unsafe { nvmlDeviceGetGpuInstanceProfileInfoV(device, profile, info_ptr) };
+    }
+    'server_after_send: {
+        if !info_is_null {
+            info_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !info_is_null {
+            let mut info_out = std::mem::MaybeUninit::<nvmlGpuInstanceProfileInfo_v2_t>::uninit();
+            info_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(info, info_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991238)]
+fn nvmlDeviceGetGpuInstanceProfileInfoByIdV(
+    device: nvmlDevice_t,
+    profileId: c_uint,
+    #[skip] info: *mut nvmlGpuInstanceProfileInfo_v2_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let info_is_null = info.is_null();
+        let info_in = if info_is_null {
+            nvmlGpuInstanceProfileInfo_v2_t {
+                version: 0,
+                id: 0,
+                isP2pSupported: 0,
+                sliceCount: 0,
+                instanceCount: 0,
+                multiprocessorCount: 0,
+                copyEngineCount: 0,
+                decoderCount: 0,
+                encoderCount: 0,
+                jpegCount: 0,
+                ofaCount: 0,
+                memorySizeMB: 0,
+                name: [0; 96usize],
+            }
+        } else {
+            unsafe { std::ptr::read_unaligned(info) }
+        };
+    }
+    'client_extra_send: {
+        info_is_null.send(channel_sender).unwrap();
+        info_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut info_is_null = false;
+        info_is_null.recv(channel_receiver).unwrap();
+        let mut info_storage = std::mem::MaybeUninit::<nvmlGpuInstanceProfileInfo_v2_t>::uninit();
+        info_storage.recv(channel_receiver).unwrap();
+        let mut info_storage = unsafe { info_storage.assume_init() };
+    }
+    'server_execution: {
+        let info_ptr = if info_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut info_storage
+        };
+        let result =
+            unsafe { nvmlDeviceGetGpuInstanceProfileInfoByIdV(device, profileId, info_ptr) };
+    }
+    'server_after_send: {
+        if !info_is_null {
+            info_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !info_is_null {
+            let mut info_out = std::mem::MaybeUninit::<nvmlGpuInstanceProfileInfo_v2_t>::uninit();
+            info_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(info, info_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991239)]
+fn nvmlDeviceGetGpuInstancePossiblePlacements_v2(
+    device: nvmlDevice_t,
+    profileId: c_uint,
+    #[skip] placements: *mut nvmlGpuInstancePlacement_t,
+    #[skip] count: *mut c_uint,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let placements_is_null = placements.is_null();
+        let count_is_null = count.is_null();
+        let count_in = if count_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(count) }
+        };
+    }
+    'client_extra_send: {
+        placements_is_null.send(channel_sender).unwrap();
+        count_is_null.send(channel_sender).unwrap();
+        count_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut placements_is_null = false;
+        placements_is_null.recv(channel_receiver).unwrap();
+        let mut count_is_null = false;
+        count_is_null.recv(channel_receiver).unwrap();
+        let mut count_in = 0u32;
+        count_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut count_storage = count_in;
+        let mut placements_storage =
+            Vec::<std::mem::MaybeUninit<nvmlGpuInstancePlacement_t>>::with_capacity(
+                count_in as usize,
+            );
+        let placements_ptr = if placements_is_null {
+            std::ptr::null_mut()
+        } else {
+            placements_storage
+                .as_mut_ptr()
+                .cast::<nvmlGpuInstancePlacement_t>()
+        };
+        let count_ptr = if count_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut count_storage
+        };
+        let result = unsafe {
+            nvmlDeviceGetGpuInstancePossiblePlacements_v2(
+                device,
+                profileId,
+                placements_ptr,
+                count_ptr,
+            )
+        };
+    }
+    'server_after_send: {
+        if !count_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            count_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !placements_is_null && count_storage > 0 {
+                assert!((count_storage as usize) <= count_in as usize);
+                let placements_out = unsafe {
+                    std::slice::from_raw_parts(
+                        placements_storage
+                            .as_ptr()
+                            .cast::<nvmlGpuInstancePlacement_t>(),
+                        count_storage as usize,
+                    )
+                };
+                send_slice(placements_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !count_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut count_out = 0u32;
+            count_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(count, count_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !placements_is_null && count_out > 0 {
+                assert!((count_out as usize) <= count_in as usize);
+                let placements_out =
+                    unsafe { std::slice::from_raw_parts_mut(placements, count_out as usize) };
+                recv_slice_to(placements_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991240)]
+fn nvmlDeviceGetGpuInstanceRemainingCapacity(
+    device: nvmlDevice_t,
+    profileId: c_uint,
+    count: *mut c_uint,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991241)]
+fn nvmlDeviceGetGpuInstances(
+    device: nvmlDevice_t,
+    profileId: c_uint,
+    #[skip] gpuInstances: *mut nvmlGpuInstance_t,
+    #[skip] count: *mut c_uint,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let gpuInstances_is_null = gpuInstances.is_null();
+        let count_is_null = count.is_null();
+        let count_in = if count_is_null {
+            0
+        } else {
+            unsafe { std::ptr::read_unaligned(count) }
+        };
+    }
+    'client_extra_send: {
+        gpuInstances_is_null.send(channel_sender).unwrap();
+        count_is_null.send(channel_sender).unwrap();
+        count_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut gpuInstances_is_null = false;
+        gpuInstances_is_null.recv(channel_receiver).unwrap();
+        let mut count_is_null = false;
+        count_is_null.recv(channel_receiver).unwrap();
+        let mut count_in = 0u32;
+        count_in.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut count_storage = count_in;
+        let mut gpuInstances_storage =
+            Vec::<std::mem::MaybeUninit<nvmlGpuInstance_t>>::with_capacity(count_in as usize);
+        let gpuInstances_ptr = if gpuInstances_is_null {
+            std::ptr::null_mut()
+        } else {
+            gpuInstances_storage
+                .as_mut_ptr()
+                .cast::<nvmlGpuInstance_t>()
+        };
+        let count_ptr = if count_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut count_storage
+        };
+        let result =
+            unsafe { nvmlDeviceGetGpuInstances(device, profileId, gpuInstances_ptr, count_ptr) };
+    }
+    'server_after_send: {
+        if !count_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            count_storage.send(channel_sender).unwrap();
+            if result == nvmlReturn_t::NVML_SUCCESS && !gpuInstances_is_null && count_storage > 0 {
+                assert!((count_storage as usize) <= count_in as usize);
+                let gpuInstances_out = unsafe {
+                    std::slice::from_raw_parts(
+                        gpuInstances_storage.as_ptr().cast::<nvmlGpuInstance_t>(),
+                        count_storage as usize,
+                    )
+                };
+                send_slice(gpuInstances_out, channel_sender).unwrap();
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !count_is_null
+            && matches!(
+                result,
+                nvmlReturn_t::NVML_SUCCESS | nvmlReturn_t::NVML_ERROR_INSUFFICIENT_SIZE
+            )
+        {
+            let mut count_out = 0u32;
+            count_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(count, count_out);
+            }
+            if result == nvmlReturn_t::NVML_SUCCESS && !gpuInstances_is_null && count_out > 0 {
+                assert!((count_out as usize) <= count_in as usize);
+                let gpuInstances_out =
+                    unsafe { std::slice::from_raw_parts_mut(gpuInstances, count_out as usize) };
+                recv_slice_to(gpuInstances_out, channel_receiver).unwrap();
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991242)]
+fn nvmlDeviceGetGpuInstanceById(
+    device: nvmlDevice_t,
+    id: c_uint,
+    gpuInstance: *mut nvmlGpuInstance_t,
+) -> nvmlReturn_t;

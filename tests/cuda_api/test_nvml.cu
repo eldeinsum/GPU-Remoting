@@ -72,6 +72,15 @@ static int check_optional_list(nvmlReturn_t result, const char *label)
     return 1;
 }
 
+static int check_event_wait(nvmlReturn_t result, const char *label)
+{
+    if (result == NVML_SUCCESS || result == NVML_ERROR_TIMEOUT)
+    {
+        return 0;
+    }
+    return check_optional(result, label);
+}
+
 static int check_nonempty(const char *value, const char *label)
 {
     if (value[0] != '\0')
@@ -1758,6 +1767,86 @@ int main()
         }
     }
 
+    nvmlGpuInstanceProfileInfo_t gpu_instance_profile = {};
+    result = nvmlDeviceGetGpuInstanceProfileInfo(
+        device, NVML_GPU_INSTANCE_PROFILE_1_SLICE, &gpu_instance_profile);
+    if (check_optional(result, "nvmlDeviceGetGpuInstanceProfileInfo"))
+    {
+        return 1;
+    }
+
+    nvmlGpuInstanceProfileInfo_v2_t gpu_instance_profile_v = {};
+    gpu_instance_profile_v.version = nvmlGpuInstanceProfileInfo_v2;
+    result = nvmlDeviceGetGpuInstanceProfileInfoV(
+        device, NVML_GPU_INSTANCE_PROFILE_1_SLICE, &gpu_instance_profile_v);
+    if (check_optional(result, "nvmlDeviceGetGpuInstanceProfileInfoV"))
+    {
+        return 1;
+    }
+
+    nvmlGpuInstanceProfileInfo_v2_t gpu_instance_profile_by_id = {};
+    gpu_instance_profile_by_id.version = nvmlGpuInstanceProfileInfo_v2;
+    result = nvmlDeviceGetGpuInstanceProfileInfoByIdV(
+        device, NVML_GPU_INSTANCE_PROFILE_1_SLICE, &gpu_instance_profile_by_id);
+    if (check_optional(result, "nvmlDeviceGetGpuInstanceProfileInfoByIdV"))
+    {
+        return 1;
+    }
+
+    std::vector<nvmlGpuInstancePlacement_t> gpu_instance_placements(16);
+    unsigned int gpu_instance_placement_count =
+        static_cast<unsigned int>(gpu_instance_placements.size());
+    result = nvmlDeviceGetGpuInstancePossiblePlacements_v2(
+        device, NVML_GPU_INSTANCE_PROFILE_1_SLICE,
+        gpu_instance_placements.data(), &gpu_instance_placement_count);
+    if (check_optional_list(result,
+                            "nvmlDeviceGetGpuInstancePossiblePlacements_v2"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        gpu_instance_placement_count > gpu_instance_placements.size())
+    {
+        std::cout << "GPU instance placement query returned "
+                  << gpu_instance_placement_count << " entries for capacity "
+                  << gpu_instance_placements.size() << std::endl;
+        return 1;
+    }
+
+    unsigned int gpu_instance_remaining_capacity = 0;
+    result = nvmlDeviceGetGpuInstanceRemainingCapacity(
+        device, NVML_GPU_INSTANCE_PROFILE_1_SLICE,
+        &gpu_instance_remaining_capacity);
+    if (check_optional(result, "nvmlDeviceGetGpuInstanceRemainingCapacity"))
+    {
+        return 1;
+    }
+
+    std::vector<nvmlGpuInstance_t> gpu_instances(16);
+    unsigned int gpu_instance_count =
+        static_cast<unsigned int>(gpu_instances.size());
+    result = nvmlDeviceGetGpuInstances(device, NVML_GPU_INSTANCE_PROFILE_1_SLICE,
+                                       gpu_instances.data(),
+                                       &gpu_instance_count);
+    if (check_optional_list(result, "nvmlDeviceGetGpuInstances"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && gpu_instance_count > gpu_instances.size())
+    {
+        std::cout << "GPU instance query returned " << gpu_instance_count
+                  << " entries for capacity " << gpu_instances.size()
+                  << std::endl;
+        return 1;
+    }
+
+    nvmlGpuInstance_t gpu_instance = nullptr;
+    result = nvmlDeviceGetGpuInstanceById(device, 0, &gpu_instance);
+    if (check_optional_list(result, "nvmlDeviceGetGpuInstanceById"))
+    {
+        return 1;
+    }
+
     nvmlDeviceCapabilities_t caps = {};
     caps.version = nvmlDeviceCapabilities_v1;
     result = nvmlDeviceGetCapabilities(device, &caps);
@@ -1890,6 +1979,56 @@ int main()
     }
     result = nvmlEventSetFree(event_set);
     if (check_success(result, "nvmlEventSetFree"))
+    {
+        return 1;
+    }
+
+    nvmlSystemEventSetCreateRequest_t system_event_create = {};
+    system_event_create.version = nvmlSystemEventSetCreateRequest_v1;
+    result = nvmlSystemEventSetCreate(&system_event_create);
+    if (check_success(result, "nvmlSystemEventSetCreate"))
+    {
+        return 1;
+    }
+
+    nvmlSystemRegisterEventRequest_t system_event_register = {};
+    system_event_register.version = nvmlSystemRegisterEventRequest_v1;
+    system_event_register.eventTypes =
+        nvmlSystemEventTypeGpuDriverUnbind | nvmlSystemEventTypeGpuDriverBind;
+    system_event_register.set = system_event_create.set;
+    result = nvmlSystemRegisterEvents(&system_event_register);
+    if (check_success(result, "nvmlSystemRegisterEvents"))
+    {
+        return 1;
+    }
+
+    nvmlSystemEventData_v1_t system_event_data[4] = {};
+    nvmlSystemEventSetWaitRequest_t system_event_wait = {};
+    system_event_wait.version = nvmlSystemEventSetWaitRequest_v1;
+    system_event_wait.timeoutms = 0;
+    system_event_wait.set = system_event_create.set;
+    system_event_wait.data = system_event_data;
+    system_event_wait.dataSize =
+        sizeof(system_event_data) / sizeof(system_event_data[0]);
+    result = nvmlSystemEventSetWait(&system_event_wait);
+    if (check_event_wait(result, "nvmlSystemEventSetWait"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        system_event_wait.numEvent > system_event_wait.dataSize)
+    {
+        std::cout << "System event wait returned "
+                  << system_event_wait.numEvent << " entries for capacity "
+                  << system_event_wait.dataSize << std::endl;
+        return 1;
+    }
+
+    nvmlSystemEventSetFreeRequest_t system_event_free = {};
+    system_event_free.version = nvmlSystemEventSetFreeRequest_v1;
+    system_event_free.set = system_event_create.set;
+    result = nvmlSystemEventSetFree(&system_event_free);
+    if (check_success(result, "nvmlSystemEventSetFree"))
     {
         return 1;
     }
