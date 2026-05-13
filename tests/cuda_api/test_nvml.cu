@@ -161,6 +161,19 @@ int main()
     {
         return 1;
     }
+
+    const char *success_error_string = nvmlErrorString(NVML_SUCCESS);
+    if (success_error_string == nullptr ||
+        check_nonempty(success_error_string, "nvmlErrorString success"))
+    {
+        return 1;
+    }
+    const char *invalid_error_string = nvmlErrorString(NVML_ERROR_INVALID_ARGUMENT);
+    if (invalid_error_string == nullptr ||
+        check_nonempty(invalid_error_string, "nvmlErrorString invalid argument"))
+    {
+        return 1;
+    }
     // result = nvmlInitWithFlags(NVML_INIT_FLAG_NO_ATTACH);
     // if (NVML_SUCCESS != result)
     // {

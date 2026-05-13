@@ -1,6 +1,9 @@
 use crate::types::nvml::*;
-use codegen::cuda_hook;
+use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
+
+#[cuda_custom_hook] // local: returns a client-owned C string
+fn nvmlErrorString(result: nvmlReturn_t) -> *const c_char;
 
 #[cuda_hook(proc_id = 991000, async_api = false)]
 fn nvmlInit_v2() -> nvmlReturn_t {
