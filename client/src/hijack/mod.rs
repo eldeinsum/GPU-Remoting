@@ -44,6 +44,7 @@ use crate::{
     cublaslt_unbind_emulation_desc, cublaslt_unbind_matmul_desc, cublaslt_unbind_matmul_preference,
     cublaslt_unbind_matrix_layout, cublaslt_unbind_transform_desc, cudnn_ctc_batch_size,
     cudnn_ctc_label_count, cudnn_data_type_scalar_size, cudnn_filter_desc_scalar_size,
-    cudnn_record_filter_desc_type, cudnn_record_tensor_desc, cudnn_remove_filter_desc,
-    cudnn_remove_tensor_desc, cudnn_tensor_desc_scalar_size,
+    cudnn_record_filter_desc_type, cudnn_record_seq_data_desc, cudnn_record_tensor_desc,
+    cudnn_remove_filter_desc, cudnn_remove_seq_data_desc, cudnn_remove_tensor_desc,
+    cudnn_seq_data_time_length, cudnn_tensor_desc_scalar_size,
 };

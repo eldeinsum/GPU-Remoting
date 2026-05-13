@@ -35,7 +35,10 @@ use cudasys::types::cuda::{
     CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS,
 };
 use cudasys::types::cudart::{cudaGraphNode_t, cudaKernelNodeParams};
-use cudasys::types::cudnn::{cudnnDataType_t, cudnnFilterDescriptor_t, cudnnTensorDescriptor_t};
+use cudasys::types::cudnn::{
+    cudnnDataType_t, cudnnFilterDescriptor_t, cudnnSeqDataAxis_t, cudnnSeqDataDescriptor_t,
+    cudnnTensorDescriptor_t,
+};
 type FatBinaryHandle = usize;
 type HostPtr = usize;
 
@@ -513,8 +516,14 @@ struct CudnnTensorDescState {
     dims: Vec<c_int>,
 }
 
+struct CudnnSeqDataDescState {
+    dims: Vec<c_int>,
+    axes: Vec<cudnnSeqDataAxis_t>,
+}
+
 struct CudnnCache {
     tensor_descs: BTreeMap<cudnnTensorDescriptor_t, CudnnTensorDescState>,
+    seq_data_descs: BTreeMap<cudnnSeqDataDescriptor_t, CudnnSeqDataDescState>,
     filter_desc_types: BTreeMap<cudnnFilterDescriptor_t, cudnnDataType_t>,
 }
 
@@ -525,12 +534,14 @@ impl CudnnCache {
     const fn new() -> Self {
         Self {
             tensor_descs: BTreeMap::new(),
+            seq_data_descs: BTreeMap::new(),
             filter_desc_types: BTreeMap::new(),
         }
     }
 
     fn reset_after_fork(&mut self) {
         self.tensor_descs.clear();
+        self.seq_data_descs.clear();
         self.filter_desc_types.clear();
     }
 }
@@ -576,6 +587,47 @@ fn cudnn_record_tensor_desc(
 
 fn cudnn_remove_tensor_desc(desc: cudnnTensorDescriptor_t) {
     CUDNN_CACHE.write().unwrap().tensor_descs.remove(&desc);
+}
+
+fn cudnn_record_seq_data_desc(
+    desc: cudnnSeqDataDescriptor_t,
+    dims: &[c_int],
+    axes: &[cudnnSeqDataAxis_t],
+) {
+    CUDNN_CACHE.write().unwrap().seq_data_descs.insert(
+        desc,
+        CudnnSeqDataDescState {
+            dims: dims.to_vec(),
+            axes: axes.to_vec(),
+        },
+    );
+}
+
+fn cudnn_remove_seq_data_desc(desc: cudnnSeqDataDescriptor_t) {
+    CUDNN_CACHE.write().unwrap().seq_data_descs.remove(&desc);
+}
+
+fn cudnn_seq_data_time_length(desc: cudnnSeqDataDescriptor_t) -> Option<usize> {
+    CUDNN_CACHE
+        .read()
+        .unwrap()
+        .seq_data_descs
+        .get(&desc)
+        .and_then(|state| {
+            if state
+                .axes
+                .contains(&cudnnSeqDataAxis_t::CUDNN_SEQDATA_TIME_DIM)
+            {
+                state
+                    .dims
+                    .get(cudnnSeqDataAxis_t::CUDNN_SEQDATA_TIME_DIM as usize)
+                    .copied()
+            } else {
+                None
+            }
+        })
+        .and_then(|dim| usize::try_from(dim).ok())
+        .filter(|dim| *dim > 0)
 }
 
 fn cudnn_tensor_desc_scalar_size(desc: cudnnTensorDescriptor_t) -> usize {

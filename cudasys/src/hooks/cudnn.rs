@@ -1058,7 +1058,11 @@ fn cudnnRNNBackwardWeights_v8(
 fn cudnnCreateSeqDataDescriptor(seqDataDesc: *mut cudnnSeqDataDescriptor_t) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 2380, async_api)]
-fn cudnnDestroySeqDataDescriptor(seqDataDesc: cudnnSeqDataDescriptor_t) -> cudnnStatus_t;
+fn cudnnDestroySeqDataDescriptor(seqDataDesc: cudnnSeqDataDescriptor_t) -> cudnnStatus_t {
+    'client_before_send: {
+        cudnn_remove_seq_data_desc(seqDataDesc);
+    }
+}
 
 #[cuda_hook(proc_id = 2381)]
 fn cudnnSetSeqDataDescriptor(
@@ -1112,6 +1116,14 @@ fn cudnnSetSeqDataDescriptor(
                 padding_fill_ptr,
             )
         };
+    }
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            let dim_count = usize::try_from(nbDims).unwrap_or(0);
+            let dims = &dimA[..dim_count.min(dimA.len())];
+            let axis_values = &axes[..dim_count.min(axes.len())];
+            cudnn_record_seq_data_desc(seqDataDesc, dims, axis_values);
+        }
     }
 }
 
@@ -3707,6 +3719,233 @@ fn cudnnGetMultiHeadAttnWeights(
     #[device] weights: *const c_void,
     wDesc: cudnnTensorDescriptor_t,
     wAddr: *mut *mut c_void,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2526)]
+fn cudnnMultiHeadAttnForward(
+    handle: cudnnHandle_t,
+    attnDesc: cudnnAttnDescriptor_t,
+    currIdx: c_int,
+    #[skip] loWinIdx: *const c_int,
+    #[skip] hiWinIdx: *const c_int,
+    #[device] devSeqLengthsQO: *const c_int,
+    #[device] devSeqLengthsKV: *const c_int,
+    qDesc: cudnnSeqDataDescriptor_t,
+    #[device] queries: *const c_void,
+    #[device] residuals: *const c_void,
+    kDesc: cudnnSeqDataDescriptor_t,
+    #[device] keys: *const c_void,
+    vDesc: cudnnSeqDataDescriptor_t,
+    #[device] values: *const c_void,
+    oDesc: cudnnSeqDataDescriptor_t,
+    #[device] out: *mut c_void,
+    weightSizeInBytes: usize,
+    #[device] weights: *const c_void,
+    workSpaceSizeInBytes: usize,
+    #[device] workSpace: *mut c_void,
+    reserveSpaceSizeInBytes: usize,
+    #[device] reserveSpace: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let window_len = if currIdx >= 0 {
+            usize::try_from(currIdx)
+                .ok()
+                .and_then(|idx| idx.checked_add(1))
+                .unwrap_or(0)
+        } else {
+            match cudnn_seq_data_time_length(qDesc) {
+                Some(time_len) => time_len,
+                None => return cudnnStatus_t::CUDNN_STATUS_BAD_PARAM,
+            }
+        };
+        let lo_win_idx_is_null = loWinIdx.is_null();
+        let hi_win_idx_is_null = hiWinIdx.is_null();
+        let lo_win_idx = if lo_win_idx_is_null {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(loWinIdx, window_len) }
+        };
+        let hi_win_idx = if hi_win_idx_is_null {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(hiWinIdx, window_len) }
+        };
+    }
+    'client_extra_send: {
+        lo_win_idx_is_null.send(channel_sender).unwrap();
+        hi_win_idx_is_null.send(channel_sender).unwrap();
+        send_slice(lo_win_idx, channel_sender).unwrap();
+        send_slice(hi_win_idx, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut lo_win_idx_is_null = false;
+        lo_win_idx_is_null.recv(channel_receiver).unwrap();
+        let mut hi_win_idx_is_null = false;
+        hi_win_idx_is_null.recv(channel_receiver).unwrap();
+        let lo_win_idx = recv_slice::<c_int, _>(channel_receiver).unwrap();
+        let hi_win_idx = recv_slice::<c_int, _>(channel_receiver).unwrap();
+        let lo_win_idx_ptr = if lo_win_idx_is_null {
+            std::ptr::null()
+        } else {
+            lo_win_idx.as_ptr()
+        };
+        let hi_win_idx_ptr = if hi_win_idx_is_null {
+            std::ptr::null()
+        } else {
+            hi_win_idx.as_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnMultiHeadAttnForward(
+                handle,
+                attnDesc,
+                currIdx,
+                lo_win_idx_ptr,
+                hi_win_idx_ptr,
+                devSeqLengthsQO,
+                devSeqLengthsKV,
+                qDesc,
+                queries,
+                residuals,
+                kDesc,
+                keys,
+                vDesc,
+                values,
+                oDesc,
+                out,
+                weightSizeInBytes,
+                weights,
+                workSpaceSizeInBytes,
+                workSpace,
+                reserveSpaceSizeInBytes,
+                reserveSpace,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2527)]
+fn cudnnMultiHeadAttnBackwardData(
+    handle: cudnnHandle_t,
+    attnDesc: cudnnAttnDescriptor_t,
+    #[skip] loWinIdx: *const c_int,
+    #[skip] hiWinIdx: *const c_int,
+    #[device] devSeqLengthsDQDO: *const c_int,
+    #[device] devSeqLengthsDKDV: *const c_int,
+    doDesc: cudnnSeqDataDescriptor_t,
+    #[device] dout: *const c_void,
+    dqDesc: cudnnSeqDataDescriptor_t,
+    #[device] dqueries: *mut c_void,
+    #[device] queries: *const c_void,
+    dkDesc: cudnnSeqDataDescriptor_t,
+    #[device] dkeys: *mut c_void,
+    #[device] keys: *const c_void,
+    dvDesc: cudnnSeqDataDescriptor_t,
+    #[device] dvalues: *mut c_void,
+    #[device] values: *const c_void,
+    weightSizeInBytes: usize,
+    #[device] weights: *const c_void,
+    workSpaceSizeInBytes: usize,
+    #[device] workSpace: *mut c_void,
+    reserveSpaceSizeInBytes: usize,
+    #[device] reserveSpace: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let window_len = match cudnn_seq_data_time_length(doDesc)
+            .or_else(|| cudnn_seq_data_time_length(dqDesc))
+        {
+            Some(time_len) => time_len,
+            None => return cudnnStatus_t::CUDNN_STATUS_BAD_PARAM,
+        };
+        let lo_win_idx_is_null = loWinIdx.is_null();
+        let hi_win_idx_is_null = hiWinIdx.is_null();
+        let lo_win_idx = if lo_win_idx_is_null {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(loWinIdx, window_len) }
+        };
+        let hi_win_idx = if hi_win_idx_is_null {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(hiWinIdx, window_len) }
+        };
+    }
+    'client_extra_send: {
+        lo_win_idx_is_null.send(channel_sender).unwrap();
+        hi_win_idx_is_null.send(channel_sender).unwrap();
+        send_slice(lo_win_idx, channel_sender).unwrap();
+        send_slice(hi_win_idx, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut lo_win_idx_is_null = false;
+        lo_win_idx_is_null.recv(channel_receiver).unwrap();
+        let mut hi_win_idx_is_null = false;
+        hi_win_idx_is_null.recv(channel_receiver).unwrap();
+        let lo_win_idx = recv_slice::<c_int, _>(channel_receiver).unwrap();
+        let hi_win_idx = recv_slice::<c_int, _>(channel_receiver).unwrap();
+        let lo_win_idx_ptr = if lo_win_idx_is_null {
+            std::ptr::null()
+        } else {
+            lo_win_idx.as_ptr()
+        };
+        let hi_win_idx_ptr = if hi_win_idx_is_null {
+            std::ptr::null()
+        } else {
+            hi_win_idx.as_ptr()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnMultiHeadAttnBackwardData(
+                handle,
+                attnDesc,
+                lo_win_idx_ptr,
+                hi_win_idx_ptr,
+                devSeqLengthsDQDO,
+                devSeqLengthsDKDV,
+                doDesc,
+                dout,
+                dqDesc,
+                dqueries,
+                queries,
+                dkDesc,
+                dkeys,
+                keys,
+                dvDesc,
+                dvalues,
+                values,
+                weightSizeInBytes,
+                weights,
+                workSpaceSizeInBytes,
+                workSpace,
+                reserveSpaceSizeInBytes,
+                reserveSpace,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2528, async_api)]
+fn cudnnMultiHeadAttnBackwardWeights(
+    handle: cudnnHandle_t,
+    attnDesc: cudnnAttnDescriptor_t,
+    addGrad: cudnnWgradMode_t,
+    qDesc: cudnnSeqDataDescriptor_t,
+    #[device] queries: *const c_void,
+    kDesc: cudnnSeqDataDescriptor_t,
+    #[device] keys: *const c_void,
+    vDesc: cudnnSeqDataDescriptor_t,
+    #[device] values: *const c_void,
+    doDesc: cudnnSeqDataDescriptor_t,
+    #[device] dout: *const c_void,
+    weightSizeInBytes: usize,
+    #[device] weights: *const c_void,
+    #[device] dweights: *mut c_void,
+    workSpaceSizeInBytes: usize,
+    #[device] workSpace: *mut c_void,
+    reserveSpaceSizeInBytes: usize,
+    #[device] reserveSpace: *mut c_void,
 ) -> cudnnStatus_t;
 
 // TODO: shadow_desc
