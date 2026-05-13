@@ -3503,6 +3503,21 @@ fn cudnnCreateFusedOpsPlan(plan: *mut cudnnFusedOpsPlan_t, ops: cudnnFusedOps_t)
 #[cuda_hook(proc_id = 2515, async_api)]
 fn cudnnDestroyFusedOpsPlan(plan: cudnnFusedOpsPlan_t) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2516)]
+fn cudnnMakeFusedOpsPlan(
+    handle: cudnnHandle_t,
+    plan: cudnnFusedOpsPlan_t,
+    constPack: cudnnFusedOpsConstParamPack_t,
+    workspaceSizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2517, async_api)]
+fn cudnnFusedOpsExecute(
+    handle: cudnnHandle_t,
+    plan: cudnnFusedOpsPlan_t,
+    varPack: cudnnFusedOpsVariantParamPack_t,
+) -> cudnnStatus_t;
+
 #[cuda_custom_hook] // calls one of the following internal APIs
 fn cudnnSetFusedOpsConstParamPackAttribute(
     constPack: cudnnFusedOpsConstParamPack_t,
