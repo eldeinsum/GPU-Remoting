@@ -9,6 +9,7 @@ use crate::ServerWorker;
 
 mod cublasLt_exe;
 mod cublas_exe;
+mod cublas_exe_custom;
 mod cuda_exe;
 mod cuda_exe_custom;
 mod cuda_exe_utils;
