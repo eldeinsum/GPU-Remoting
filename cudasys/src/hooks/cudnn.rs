@@ -625,6 +625,23 @@ fn cudnnGetCTCLossWorkspaceSize_v8(
     sizeInBytes: *mut usize,
 ) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2407, async_api)]
+fn cudnnCTCLoss_v8(
+    handle: cudnnHandle_t,
+    algo: cudnnCTCLossAlgo_t,
+    ctcLossDesc: cudnnCTCLossDescriptor_t,
+    probsDesc: cudnnTensorDescriptor_t,
+    #[device] probs: *const c_void,
+    #[device] labels: *const c_int,
+    #[device] labelLengths: *const c_int,
+    #[device] inputLengths: *const c_int,
+    #[device] costs: *mut c_void,
+    gradientsDesc: cudnnTensorDescriptor_t,
+    #[device] gradients: *mut c_void,
+    workSpaceSizeInBytes: usize,
+    #[device] workspace: *mut c_void,
+) -> cudnnStatus_t;
+
 #[cuda_hook(proc_id = 2361)]
 fn cudnnCreateRNNDescriptor(rnnDesc: *mut cudnnRNNDescriptor_t) -> cudnnStatus_t;
 
@@ -1777,6 +1794,112 @@ fn cudnnLRNCrossChannelBackward(
                 beta_arg.as_ptr(),
                 dxDesc,
                 dx,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2405, async_api)]
+fn cudnnDivisiveNormalizationForward(
+    handle: cudnnHandle_t,
+    normDesc: cudnnLRNDescriptor_t,
+    mode: cudnnDivNormMode_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[device] means: *const c_void,
+    #[device] temp: *mut c_void,
+    #[device] temp2: *mut c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnDivisiveNormalizationForward(
+                handle,
+                normDesc,
+                mode,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                means,
+                temp,
+                temp2,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2406, async_api)]
+fn cudnnDivisiveNormalizationBackward(
+    handle: cudnnHandle_t,
+    normDesc: cudnnLRNDescriptor_t,
+    mode: cudnnDivNormMode_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[device] means: *const c_void,
+    #[device] dy: *const c_void,
+    #[device] temp: *mut c_void,
+    #[device] temp2: *mut c_void,
+    #[skip] beta: *const c_void,
+    dXdMeansDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+    #[device] dMeans: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dXdMeansDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnDivisiveNormalizationBackward(
+                handle,
+                normDesc,
+                mode,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                means,
+                dy,
+                temp,
+                temp2,
+                beta_arg.as_ptr(),
+                dXdMeansDesc,
+                dx,
+                dMeans,
             )
         };
     }

@@ -240,6 +240,10 @@ int main() {
   float *lrn_y = device_from_host(std::vector<float>(3, 0.0f));
   float *lrn_dy = device_from_host(std::vector<float>(3, 1.0f));
   float *lrn_dx = device_from_host(std::vector<float>(3, 0.0f));
+  float *lrn_means = device_from_host(std::vector<float>(3, 0.0f));
+  float *lrn_temp = device_from_host(std::vector<float>(3, 0.0f));
+  float *lrn_temp2 = device_from_host(std::vector<float>(3, 0.0f));
+  float *lrn_dmeans = device_from_host(std::vector<float>(3, 0.0f));
   CUDNN_CALL(cudnnLRNCrossChannelForward(handle, lrn_desc,
                                          CUDNN_LRN_CROSS_CHANNEL_DIM1, &one,
                                          lrn_tensor_desc, lrn_x, &zero,
@@ -250,6 +254,19 @@ int main() {
       lrn_y, lrn_tensor_desc, lrn_dy, lrn_tensor_desc, lrn_x, &zero,
       lrn_tensor_desc, lrn_dx));
   expect_finite(host_from_device(lrn_dx, 3), "lrn backward");
+  upload(lrn_y, std::vector<float>(3, 0.0f));
+  upload(lrn_dx, std::vector<float>(3, 0.0f));
+  CUDNN_CALL(cudnnDivisiveNormalizationForward(
+      handle, lrn_desc, CUDNN_DIVNORM_PRECOMPUTED_MEANS, &one,
+      lrn_tensor_desc, lrn_x, lrn_means, lrn_temp, lrn_temp2, &zero,
+      lrn_tensor_desc, lrn_y));
+  expect_finite(host_from_device(lrn_y, 3), "divisive norm forward");
+  CUDNN_CALL(cudnnDivisiveNormalizationBackward(
+      handle, lrn_desc, CUDNN_DIVNORM_PRECOMPUTED_MEANS, &one,
+      lrn_tensor_desc, lrn_x, lrn_means, lrn_dy, lrn_temp, lrn_temp2, &zero,
+      lrn_tensor_desc, lrn_dx, lrn_dmeans));
+  expect_finite(host_from_device(lrn_dx, 3), "divisive norm backward dx");
+  expect_finite(host_from_device(lrn_dmeans, 3), "divisive norm backward means");
 
   cudnnTensorDescriptor_t bias_desc = nullptr;
   CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc));
@@ -320,6 +337,10 @@ int main() {
 
   CUDNN_CALL(cudnnDestroyTensorDescriptor(bias_desc));
   CUDA_CALL(cudaFree(bias_grad));
+  CUDA_CALL(cudaFree(lrn_dmeans));
+  CUDA_CALL(cudaFree(lrn_temp2));
+  CUDA_CALL(cudaFree(lrn_temp));
+  CUDA_CALL(cudaFree(lrn_means));
   CUDA_CALL(cudaFree(lrn_dx));
   CUDA_CALL(cudaFree(lrn_dy));
   CUDA_CALL(cudaFree(lrn_y));
