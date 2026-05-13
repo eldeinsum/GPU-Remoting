@@ -43,6 +43,29 @@ static bool close_value(cuDoubleComplex got, cuDoubleComplex want) {
     return close_value(got.x, want.x) && close_value(got.y, want.y);
 }
 
+template <typename T>
+static cudaDataType_t cuda_type();
+
+template <>
+cudaDataType_t cuda_type<float>() {
+    return CUDA_R_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<double>() {
+    return CUDA_R_64F;
+}
+
+template <>
+cudaDataType_t cuda_type<cuComplex>() {
+    return CUDA_C_32F;
+}
+
+template <>
+cudaDataType_t cuda_type<cuDoubleComplex>() {
+    return CUDA_C_64F;
+}
+
 static float scale_value(float value, float alpha) {
     return value * alpha;
 }
@@ -185,6 +208,49 @@ static void run_scal_case(cublasHandle_t handle, const std::vector<VecT> &input,
     CHECK_CUDA(cudaFree(device));
 }
 
+template <typename VecT, typename AlphaT, typename ScalFn, typename Scal64Fn>
+static void run_scal_ex_case(cublasHandle_t handle,
+                             const std::vector<VecT> &input,
+                             AlphaT host_alpha, AlphaT device_alpha,
+                             ScalFn scal_fn, Scal64Fn scal64_fn,
+                             const char *label) {
+    const int n = static_cast<int>(input.size());
+    const cudaDataType_t alpha_type = cuda_type<AlphaT>();
+    const cudaDataType_t x_type = cuda_type<VecT>();
+    VecT *device = to_device(input);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUBLAS(scal_fn(handle, n, &host_alpha, alpha_type, device, x_type, 1,
+                         x_type));
+    expect_vector(from_device(device, input.size()),
+                  scaled_expected(input, host_alpha), label);
+
+    copy_to_device(device, input);
+    CHECK_CUBLAS(scal64_fn(handle, static_cast<int64_t>(n), &host_alpha,
+                           alpha_type, device, x_type, 1, x_type));
+    expect_vector(from_device(device, input.size()),
+                  scaled_expected(input, host_alpha), label);
+
+    AlphaT *device_alpha_ptr = to_device(std::vector<AlphaT>{device_alpha});
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+
+    copy_to_device(device, input);
+    CHECK_CUBLAS(scal_fn(handle, n, device_alpha_ptr, alpha_type, device,
+                         x_type, 1, x_type));
+    expect_vector(from_device(device, input.size()),
+                  scaled_expected(input, device_alpha), label);
+
+    copy_to_device(device, input);
+    CHECK_CUBLAS(scal64_fn(handle, static_cast<int64_t>(n), device_alpha_ptr,
+                           alpha_type, device, x_type, 1, x_type));
+    expect_vector(from_device(device, input.size()),
+                  scaled_expected(input, device_alpha), label);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_alpha_ptr));
+    CHECK_CUDA(cudaFree(device));
+}
+
 template <typename VecT, typename AlphaT, typename AxpyFn, typename Axpy64Fn>
 static void run_axpy_case(cublasHandle_t handle, const std::vector<VecT> &x,
                           const std::vector<VecT> &y, AlphaT host_alpha,
@@ -226,6 +292,54 @@ static void run_axpy_case(cublasHandle_t handle, const std::vector<VecT> &x,
     CHECK_CUDA(cudaFree(device_x));
 }
 
+template <typename VecT, typename AlphaT, typename AxpyFn, typename Axpy64Fn>
+static void run_axpy_ex_case(cublasHandle_t handle, const std::vector<VecT> &x,
+                             const std::vector<VecT> &y, AlphaT host_alpha,
+                             AlphaT device_alpha, AxpyFn axpy_fn,
+                             Axpy64Fn axpy64_fn, const char *label) {
+    const int n = static_cast<int>(x.size());
+    const cudaDataType_t alpha_type = cuda_type<AlphaT>();
+    const cudaDataType_t value_type = cuda_type<VecT>();
+    VecT *device_x = to_device(x);
+    VecT *device_y = to_device(y);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUBLAS(axpy_fn(handle, n, &host_alpha, alpha_type, device_x,
+                         value_type, 1, device_y, value_type, 1,
+                         value_type));
+    expect_vector(from_device(device_y, y.size()),
+                  axpy_expected(x, y, host_alpha), label);
+
+    copy_to_device(device_y, y);
+    CHECK_CUBLAS(axpy64_fn(handle, static_cast<int64_t>(n), &host_alpha,
+                           alpha_type, device_x, value_type, 1, device_y,
+                           value_type, 1, value_type));
+    expect_vector(from_device(device_y, y.size()),
+                  axpy_expected(x, y, host_alpha), label);
+
+    AlphaT *device_alpha_ptr = to_device(std::vector<AlphaT>{device_alpha});
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+
+    copy_to_device(device_y, y);
+    CHECK_CUBLAS(axpy_fn(handle, n, device_alpha_ptr, alpha_type, device_x,
+                         value_type, 1, device_y, value_type, 1,
+                         value_type));
+    expect_vector(from_device(device_y, y.size()),
+                  axpy_expected(x, y, device_alpha), label);
+
+    copy_to_device(device_y, y);
+    CHECK_CUBLAS(axpy64_fn(handle, static_cast<int64_t>(n), device_alpha_ptr,
+                           alpha_type, device_x, value_type, 1, device_y,
+                           value_type, 1, value_type));
+    expect_vector(from_device(device_y, y.size()),
+                  axpy_expected(x, y, device_alpha), label);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_alpha_ptr));
+    CHECK_CUDA(cudaFree(device_y));
+    CHECK_CUDA(cudaFree(device_x));
+}
+
 static void test_scal(cublasHandle_t handle) {
     run_scal_case<float>(
         handle, {1.0f, -2.0f, 3.0f}, 2.0f, -0.5f, cublasSscal_v2,
@@ -247,6 +361,20 @@ static void test_scal(cublasHandle_t handle) {
     run_scal_case<cuDoubleComplex, double>(
         handle, {{1.0, 2.0}, {-3.0, 4.0}, {5.0, -6.0}}, 2.0, -0.5,
         cublasZdscal_v2, cublasZdscal_v2_64, "Zdscal");
+    run_scal_ex_case<float>(
+        handle, {1.0f, -2.0f, 3.0f}, 2.0f, -0.5f, cublasScalEx,
+        cublasScalEx_64, "ScalEx float");
+    run_scal_ex_case<double>(
+        handle, {1.0, -2.0, 3.0}, 2.0, -0.5, cublasScalEx,
+        cublasScalEx_64, "ScalEx double");
+    run_scal_ex_case<cuComplex>(
+        handle, {{1.0f, 2.0f}, {-3.0f, 4.0f}, {5.0f, -6.0f}},
+        cuComplex{0.5f, -1.0f}, cuComplex{-1.5f, 0.25f}, cublasScalEx,
+        cublasScalEx_64, "ScalEx complex-float");
+    run_scal_ex_case<cuDoubleComplex>(
+        handle, {{1.0, 2.0}, {-3.0, 4.0}, {5.0, -6.0}},
+        cuDoubleComplex{0.5, -1.0}, cuDoubleComplex{-1.5, 0.25},
+        cublasScalEx, cublasScalEx_64, "ScalEx complex-double");
 }
 
 static void test_axpy(cublasHandle_t handle) {
@@ -266,6 +394,22 @@ static void test_axpy(cublasHandle_t handle) {
         {{7.0, -8.0}, {9.0, 10.0}, {-11.0, 12.0}},
         cuDoubleComplex{0.5, -1.0}, cuDoubleComplex{-1.5, 0.25},
         cublasZaxpy_v2, cublasZaxpy_v2_64, "Zaxpy");
+    run_axpy_ex_case<float>(
+        handle, {1.0f, -2.0f, 3.0f}, {4.0f, 5.0f, -6.0f}, 2.0f, -0.5f,
+        cublasAxpyEx, cublasAxpyEx_64, "AxpyEx float");
+    run_axpy_ex_case<double>(
+        handle, {1.0, -2.0, 3.0}, {4.0, 5.0, -6.0}, 2.0, -0.5,
+        cublasAxpyEx, cublasAxpyEx_64, "AxpyEx double");
+    run_axpy_ex_case<cuComplex>(
+        handle, {{1.0f, 2.0f}, {-3.0f, 4.0f}, {5.0f, -6.0f}},
+        {{7.0f, -8.0f}, {9.0f, 10.0f}, {-11.0f, 12.0f}},
+        cuComplex{0.5f, -1.0f}, cuComplex{-1.5f, 0.25f}, cublasAxpyEx,
+        cublasAxpyEx_64, "AxpyEx complex-float");
+    run_axpy_ex_case<cuDoubleComplex>(
+        handle, {{1.0, 2.0}, {-3.0, 4.0}, {5.0, -6.0}},
+        {{7.0, -8.0}, {9.0, 10.0}, {-11.0, 12.0}},
+        cuDoubleComplex{0.5, -1.0}, cuDoubleComplex{-1.5, 0.25},
+        cublasAxpyEx, cublasAxpyEx_64, "AxpyEx complex-double");
 }
 
 int main() {

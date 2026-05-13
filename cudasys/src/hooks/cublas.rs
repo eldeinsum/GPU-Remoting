@@ -18748,6 +18748,240 @@ fn cublasSwapEx_64(
     incy: i64,
 ) -> cublasStatus_t;
 
+#[cuda_hook(proc_id = 1666)]
+fn cublasScalEx(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[skip] alpha: *const c_void,
+    alphaType: cudaDataType,
+    #[device] x: *mut c_void,
+    xType: cudaDataType,
+    incx: c_int,
+    executionType: cudaDataType,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && alpha.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let alpha_size = match alphaType {
+            cudaDataType::CUDA_R_16F
+            | cudaDataType::CUDA_R_16BF
+            | cudaDataType::CUDA_R_16I
+            | cudaDataType::CUDA_R_16U => 2usize,
+            cudaDataType::CUDA_C_16F
+            | cudaDataType::CUDA_C_16BF
+            | cudaDataType::CUDA_C_16I
+            | cudaDataType::CUDA_C_16U
+            | cudaDataType::CUDA_R_32F
+            | cudaDataType::CUDA_R_32I
+            | cudaDataType::CUDA_R_32U => 4usize,
+            cudaDataType::CUDA_C_32F
+            | cudaDataType::CUDA_C_32I
+            | cudaDataType::CUDA_C_32U
+            | cudaDataType::CUDA_R_64F
+            | cudaDataType::CUDA_R_64I
+            | cudaDataType::CUDA_R_64U => 8usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
+            cudaDataType::CUDA_R_4I
+            | cudaDataType::CUDA_R_4U
+            | cudaDataType::CUDA_C_4I
+            | cudaDataType::CUDA_C_4U
+            | cudaDataType::CUDA_R_8I
+            | cudaDataType::CUDA_R_8U
+            | cudaDataType::CUDA_R_8F_E4M3
+            | cudaDataType::CUDA_R_8F_E5M2
+            | cudaDataType::CUDA_R_8F_UE8M0
+            | cudaDataType::CUDA_R_6F_E2M3
+            | cudaDataType::CUDA_R_6F_E3M2
+            | cudaDataType::CUDA_R_4F_E2M1 => 1usize,
+            cudaDataType::CUDA_C_8I | cudaDataType::CUDA_C_8U => 2usize,
+        };
+        let alpha_addr = alpha as usize;
+        let mut alpha_host_storage = [0u8; 16];
+        assert!(alpha_size <= alpha_host_storage.len());
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    alpha.cast::<u8>(),
+                    alpha_host_storage.as_mut_ptr(),
+                    alpha_size,
+                );
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_size.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&alpha_host_storage[..alpha_size], channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_size = 0usize;
+        alpha_size.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        #[repr(align(16))]
+        struct AlignedAlpha([u8; 16]);
+        let mut alpha_host_storage = AlignedAlpha([0; 16]);
+        assert!(alpha_size <= alpha_host_storage.0.len());
+        if !device_pointer_mode {
+            let alpha_bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert!(alpha_bytes.len() == alpha_size);
+            alpha_host_storage.0[..alpha_size].copy_from_slice(&alpha_bytes);
+        }
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const c_void
+        } else {
+            alpha_host_storage.0.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasScalEx(
+                handle,
+                n,
+                alpha_arg,
+                alphaType,
+                x,
+                xType,
+                incx,
+                executionType,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1667)]
+fn cublasScalEx_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[skip] alpha: *const c_void,
+    alphaType: cudaDataType,
+    #[device] x: *mut c_void,
+    xType: cudaDataType,
+    incx: i64,
+    executionType: cudaDataType,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && alpha.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let alpha_size = match alphaType {
+            cudaDataType::CUDA_R_16F
+            | cudaDataType::CUDA_R_16BF
+            | cudaDataType::CUDA_R_16I
+            | cudaDataType::CUDA_R_16U => 2usize,
+            cudaDataType::CUDA_C_16F
+            | cudaDataType::CUDA_C_16BF
+            | cudaDataType::CUDA_C_16I
+            | cudaDataType::CUDA_C_16U
+            | cudaDataType::CUDA_R_32F
+            | cudaDataType::CUDA_R_32I
+            | cudaDataType::CUDA_R_32U => 4usize,
+            cudaDataType::CUDA_C_32F
+            | cudaDataType::CUDA_C_32I
+            | cudaDataType::CUDA_C_32U
+            | cudaDataType::CUDA_R_64F
+            | cudaDataType::CUDA_R_64I
+            | cudaDataType::CUDA_R_64U => 8usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
+            cudaDataType::CUDA_R_4I
+            | cudaDataType::CUDA_R_4U
+            | cudaDataType::CUDA_C_4I
+            | cudaDataType::CUDA_C_4U
+            | cudaDataType::CUDA_R_8I
+            | cudaDataType::CUDA_R_8U
+            | cudaDataType::CUDA_R_8F_E4M3
+            | cudaDataType::CUDA_R_8F_E5M2
+            | cudaDataType::CUDA_R_8F_UE8M0
+            | cudaDataType::CUDA_R_6F_E2M3
+            | cudaDataType::CUDA_R_6F_E3M2
+            | cudaDataType::CUDA_R_4F_E2M1 => 1usize,
+            cudaDataType::CUDA_C_8I | cudaDataType::CUDA_C_8U => 2usize,
+        };
+        let alpha_addr = alpha as usize;
+        let mut alpha_host_storage = [0u8; 16];
+        assert!(alpha_size <= alpha_host_storage.len());
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    alpha.cast::<u8>(),
+                    alpha_host_storage.as_mut_ptr(),
+                    alpha_size,
+                );
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_size.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&alpha_host_storage[..alpha_size], channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_size = 0usize;
+        alpha_size.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        #[repr(align(16))]
+        struct AlignedAlpha([u8; 16]);
+        let mut alpha_host_storage = AlignedAlpha([0; 16]);
+        assert!(alpha_size <= alpha_host_storage.0.len());
+        if !device_pointer_mode {
+            let alpha_bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert!(alpha_bytes.len() == alpha_size);
+            alpha_host_storage.0[..alpha_size].copy_from_slice(&alpha_bytes);
+        }
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const c_void
+        } else {
+            alpha_host_storage.0.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasScalEx_64(
+                handle,
+                n,
+                alpha_arg,
+                alphaType,
+                x,
+                xType,
+                incx,
+                executionType,
+            )
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 1182)]
 fn cublasSscal_v2(
     handle: cublasHandle_t,
@@ -19321,6 +19555,252 @@ fn cublasZdscal_v2_64(
     }
     'server_execution: {
         let result = unsafe { cublasZdscal_v2_64(handle, n, alpha_arg, x, incx) };
+    }
+}
+
+#[cuda_hook(proc_id = 1668)]
+fn cublasAxpyEx(
+    handle: cublasHandle_t,
+    n: c_int,
+    #[skip] alpha: *const c_void,
+    alphaType: cudaDataType,
+    #[device] x: *const c_void,
+    xType: cudaDataType,
+    incx: c_int,
+    #[device] y: *mut c_void,
+    yType: cudaDataType,
+    incy: c_int,
+    executiontype: cudaDataType,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && alpha.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let alpha_size = match alphaType {
+            cudaDataType::CUDA_R_16F
+            | cudaDataType::CUDA_R_16BF
+            | cudaDataType::CUDA_R_16I
+            | cudaDataType::CUDA_R_16U => 2usize,
+            cudaDataType::CUDA_C_16F
+            | cudaDataType::CUDA_C_16BF
+            | cudaDataType::CUDA_C_16I
+            | cudaDataType::CUDA_C_16U
+            | cudaDataType::CUDA_R_32F
+            | cudaDataType::CUDA_R_32I
+            | cudaDataType::CUDA_R_32U => 4usize,
+            cudaDataType::CUDA_C_32F
+            | cudaDataType::CUDA_C_32I
+            | cudaDataType::CUDA_C_32U
+            | cudaDataType::CUDA_R_64F
+            | cudaDataType::CUDA_R_64I
+            | cudaDataType::CUDA_R_64U => 8usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
+            cudaDataType::CUDA_R_4I
+            | cudaDataType::CUDA_R_4U
+            | cudaDataType::CUDA_C_4I
+            | cudaDataType::CUDA_C_4U
+            | cudaDataType::CUDA_R_8I
+            | cudaDataType::CUDA_R_8U
+            | cudaDataType::CUDA_R_8F_E4M3
+            | cudaDataType::CUDA_R_8F_E5M2
+            | cudaDataType::CUDA_R_8F_UE8M0
+            | cudaDataType::CUDA_R_6F_E2M3
+            | cudaDataType::CUDA_R_6F_E3M2
+            | cudaDataType::CUDA_R_4F_E2M1 => 1usize,
+            cudaDataType::CUDA_C_8I | cudaDataType::CUDA_C_8U => 2usize,
+        };
+        let alpha_addr = alpha as usize;
+        let mut alpha_host_storage = [0u8; 16];
+        assert!(alpha_size <= alpha_host_storage.len());
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    alpha.cast::<u8>(),
+                    alpha_host_storage.as_mut_ptr(),
+                    alpha_size,
+                );
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_size.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&alpha_host_storage[..alpha_size], channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_size = 0usize;
+        alpha_size.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        #[repr(align(16))]
+        struct AlignedAlpha([u8; 16]);
+        let mut alpha_host_storage = AlignedAlpha([0; 16]);
+        assert!(alpha_size <= alpha_host_storage.0.len());
+        if !device_pointer_mode {
+            let alpha_bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert!(alpha_bytes.len() == alpha_size);
+            alpha_host_storage.0[..alpha_size].copy_from_slice(&alpha_bytes);
+        }
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const c_void
+        } else {
+            alpha_host_storage.0.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasAxpyEx(
+                handle,
+                n,
+                alpha_arg,
+                alphaType,
+                x,
+                xType,
+                incx,
+                y,
+                yType,
+                incy,
+                executiontype,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 1669)]
+fn cublasAxpyEx_64(
+    handle: cublasHandle_t,
+    n: i64,
+    #[skip] alpha: *const c_void,
+    alphaType: cudaDataType,
+    #[device] x: *const c_void,
+    xType: cudaDataType,
+    incx: i64,
+    #[device] y: *mut c_void,
+    yType: cudaDataType,
+    incy: i64,
+    executiontype: cudaDataType,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let pointer_mode = CUBLAS_CACHE
+            .read()
+            .unwrap()
+            .pointer_modes
+            .get(&handle)
+            .copied()
+            .unwrap_or(cublasPointerMode_t::CUBLAS_POINTER_MODE_HOST);
+        let device_pointer_mode = pointer_mode == cublasPointerMode_t::CUBLAS_POINTER_MODE_DEVICE;
+        if !device_pointer_mode && alpha.is_null() {
+            return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+        }
+        let alpha_size = match alphaType {
+            cudaDataType::CUDA_R_16F
+            | cudaDataType::CUDA_R_16BF
+            | cudaDataType::CUDA_R_16I
+            | cudaDataType::CUDA_R_16U => 2usize,
+            cudaDataType::CUDA_C_16F
+            | cudaDataType::CUDA_C_16BF
+            | cudaDataType::CUDA_C_16I
+            | cudaDataType::CUDA_C_16U
+            | cudaDataType::CUDA_R_32F
+            | cudaDataType::CUDA_R_32I
+            | cudaDataType::CUDA_R_32U => 4usize,
+            cudaDataType::CUDA_C_32F
+            | cudaDataType::CUDA_C_32I
+            | cudaDataType::CUDA_C_32U
+            | cudaDataType::CUDA_R_64F
+            | cudaDataType::CUDA_R_64I
+            | cudaDataType::CUDA_R_64U => 8usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
+            cudaDataType::CUDA_R_4I
+            | cudaDataType::CUDA_R_4U
+            | cudaDataType::CUDA_C_4I
+            | cudaDataType::CUDA_C_4U
+            | cudaDataType::CUDA_R_8I
+            | cudaDataType::CUDA_R_8U
+            | cudaDataType::CUDA_R_8F_E4M3
+            | cudaDataType::CUDA_R_8F_E5M2
+            | cudaDataType::CUDA_R_8F_UE8M0
+            | cudaDataType::CUDA_R_6F_E2M3
+            | cudaDataType::CUDA_R_6F_E3M2
+            | cudaDataType::CUDA_R_4F_E2M1 => 1usize,
+            cudaDataType::CUDA_C_8I | cudaDataType::CUDA_C_8U => 2usize,
+        };
+        let alpha_addr = alpha as usize;
+        let mut alpha_host_storage = [0u8; 16];
+        assert!(alpha_size <= alpha_host_storage.len());
+        if !device_pointer_mode {
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    alpha.cast::<u8>(),
+                    alpha_host_storage.as_mut_ptr(),
+                    alpha_size,
+                );
+            }
+        }
+    }
+    'client_extra_send: {
+        device_pointer_mode.send(channel_sender).unwrap();
+        alpha_size.send(channel_sender).unwrap();
+        alpha_addr.send(channel_sender).unwrap();
+        if !device_pointer_mode {
+            send_slice(&alpha_host_storage[..alpha_size], channel_sender).unwrap();
+        }
+    }
+    'server_extra_recv: {
+        let mut device_pointer_mode = false;
+        device_pointer_mode.recv(channel_receiver).unwrap();
+        let mut alpha_size = 0usize;
+        alpha_size.recv(channel_receiver).unwrap();
+        let mut alpha_addr = 0usize;
+        alpha_addr.recv(channel_receiver).unwrap();
+        #[repr(align(16))]
+        struct AlignedAlpha([u8; 16]);
+        let mut alpha_host_storage = AlignedAlpha([0; 16]);
+        assert!(alpha_size <= alpha_host_storage.0.len());
+        if !device_pointer_mode {
+            let alpha_bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert!(alpha_bytes.len() == alpha_size);
+            alpha_host_storage.0[..alpha_size].copy_from_slice(&alpha_bytes);
+        }
+        let alpha_arg = if device_pointer_mode {
+            alpha_addr as *const c_void
+        } else {
+            alpha_host_storage.0.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe {
+            cublasAxpyEx_64(
+                handle,
+                n,
+                alpha_arg,
+                alphaType,
+                x,
+                xType,
+                incx,
+                y,
+                yType,
+                incy,
+                executiontype,
+            )
+        };
     }
 }
 
@@ -20229,9 +20709,9 @@ fn cublasNrm2Ex(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -20271,8 +20751,18 @@ fn cublasNrm2Ex(
         };
     }
     'server_execution: {
-        let result =
-            unsafe { cublasNrm2Ex(handle, n, x, xType, incx, result_arg, resultType, executionType) };
+        let result = unsafe {
+            cublasNrm2Ex(
+                handle,
+                n,
+                x,
+                xType,
+                incx,
+                result_arg,
+                resultType,
+                executionType,
+            )
+        };
     }
     'server_after_send: {
         if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
@@ -20336,9 +20826,9 @@ fn cublasNrm2Ex_64(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -20379,7 +20869,16 @@ fn cublasNrm2Ex_64(
     }
     'server_execution: {
         let result = unsafe {
-            cublasNrm2Ex_64(handle, n, x, xType, incx, result_arg, resultType, executionType)
+            cublasNrm2Ex_64(
+                handle,
+                n,
+                x,
+                xType,
+                incx,
+                result_arg,
+                resultType,
+                executionType,
+            )
         };
     }
     'server_after_send: {
@@ -20908,9 +21407,9 @@ fn cublasAsumEx(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -20950,8 +21449,18 @@ fn cublasAsumEx(
         };
     }
     'server_execution: {
-        let result =
-            unsafe { cublasAsumEx(handle, n, x, xType, incx, result_arg, resultType, executionType) };
+        let result = unsafe {
+            cublasAsumEx(
+                handle,
+                n,
+                x,
+                xType,
+                incx,
+                result_arg,
+                resultType,
+                executionType,
+            )
+        };
     }
     'server_after_send: {
         if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS && !device_pointer_mode {
@@ -21015,9 +21524,9 @@ fn cublasAsumEx_64(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -21058,7 +21567,16 @@ fn cublasAsumEx_64(
     }
     'server_execution: {
         let result = unsafe {
-            cublasAsumEx_64(handle, n, x, xType, incx, result_arg, resultType, executionType)
+            cublasAsumEx_64(
+                handle,
+                n,
+                x,
+                xType,
+                incx,
+                result_arg,
+                resultType,
+                executionType,
+            )
         };
     }
     'server_after_send: {
@@ -21846,9 +22364,9 @@ fn cublasDotEx(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -21969,9 +22487,9 @@ fn cublasDotEx_64(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -22092,9 +22610,9 @@ fn cublasDotcEx(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
@@ -22215,9 +22733,9 @@ fn cublasDotcEx_64(
             | cudaDataType::CUDA_R_64F
             | cudaDataType::CUDA_R_64I
             | cudaDataType::CUDA_R_64U => 8usize,
-            cudaDataType::CUDA_C_64F
-            | cudaDataType::CUDA_C_64I
-            | cudaDataType::CUDA_C_64U => 16usize,
+            cudaDataType::CUDA_C_64F | cudaDataType::CUDA_C_64I | cudaDataType::CUDA_C_64U => {
+                16usize
+            }
             cudaDataType::CUDA_R_4I
             | cudaDataType::CUDA_R_4U
             | cudaDataType::CUDA_C_4I
