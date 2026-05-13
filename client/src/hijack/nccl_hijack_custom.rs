@@ -6,7 +6,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 
-use crate::{CLIENT_THREAD, ClientThread};
+use crate::{ClientThread, CLIENT_THREAD};
 
 #[derive(Default)]
 struct NcclGroupState {
@@ -183,11 +183,7 @@ pub extern "C" fn ncclGroupEnd() -> ncclResult_t {
                 return ncclResult_t::ncclInternalError;
             }
 
-            for (out_ptr, handle) in state
-                .pending_window_outputs
-                .drain(..)
-                .zip(window_handles)
-            {
+            for (out_ptr, handle) in state.pending_window_outputs.drain(..).zip(window_handles) {
                 unsafe {
                     *(out_ptr as *mut ncclWindow_t) = handle;
                 }
@@ -358,8 +354,7 @@ pub extern "C" fn ncclCommShrink(
     } else if excludeRanksList.is_null() {
         return ncclResult_t::ncclInvalidArgument;
     } else {
-        unsafe { std::slice::from_raw_parts(excludeRanksList, excludeRanksCount as usize) }
-            .to_vec()
+        unsafe { std::slice::from_raw_parts(excludeRanksList, excludeRanksCount as usize) }.to_vec()
     };
 
     let (result, deferred, handle) = CLIENT_THREAD.with_borrow_mut(|client| {

@@ -6,11 +6,11 @@
 // https://github.com/llvm/llvm-project/blob/main/clang/lib/Interpreter/DeviceOffload.cpp
 
 use std::borrow::Cow;
-use std::ffi::{CStr, c_int, c_uint, c_ulonglong, c_ushort};
+use std::ffi::{c_int, c_uint, c_ulonglong, c_ushort, CStr};
 use std::{ptr, slice};
 
-use elf::ElfBytes;
 use elf::endian::NativeEndian;
+use elf::ElfBytes;
 use lz4_flex::decompress as decompress_lz4;
 
 #[repr(C, packed)]

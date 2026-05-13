@@ -10,7 +10,7 @@ use dispatcher::dispatch;
 use network::ringbufferchannel::RDMAChannel;
 
 use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
-use network::{Channel, CommChannel, CommChannelError, NetworkConfig, Transportable, tcp};
+use network::{tcp, Channel, CommChannel, CommChannelError, NetworkConfig, Transportable};
 
 use log::{error, info};
 

@@ -364,7 +364,12 @@ pub fn cuTensorMapReplaceAddressExe<C: CommChannel>(server: &mut ServerWorker<C>
 
     let result = unsafe { cuTensorMapReplaceAddress(&raw mut tensor_map, global_address) };
     tensor_map.send(channel_sender).unwrap();
-    send_result("cuTensorMapReplaceAddress", server.id, result, channel_sender);
+    send_result(
+        "cuTensorMapReplaceAddress",
+        server.id,
+        result,
+        channel_sender,
+    );
 }
 
 pub fn cuMemGetHandleForAddressRangeExe<C: CommChannel>(server: &mut ServerWorker<C>) {

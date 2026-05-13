@@ -179,10 +179,7 @@ fn cuTensorMapEncodeIm2colWide(
 ) -> CUresult;
 
 #[cuda_custom_hook(proc_id = 901174)]
-fn cuTensorMapReplaceAddress(
-    tensorMap: *mut CUtensorMap,
-    globalAddress: *mut c_void,
-) -> CUresult;
+fn cuTensorMapReplaceAddress(tensorMap: *mut CUtensorMap, globalAddress: *mut c_void) -> CUresult;
 
 #[cuda_custom_hook(proc_id = 901175)]
 fn cuMemGetHandleForAddressRange(
@@ -606,14 +603,12 @@ fn cuModuleLoadFatBinary(
     }
     'client_after_recv: {
         if result == CUresult::CUDA_SUCCESS {
-            assert!(
-                DRIVER_CACHE
-                    .write()
-                    .unwrap()
-                    .images
-                    .insert(*module, std::borrow::Cow::Owned(fatCubin.to_vec()))
-                    .is_none()
-            );
+            assert!(DRIVER_CACHE
+                .write()
+                .unwrap()
+                .images
+                .insert(*module, std::borrow::Cow::Owned(fatCubin.to_vec()))
+                .is_none());
         }
     }
     'server_execution: {
@@ -641,14 +636,12 @@ fn cuModuleLoadDataInternal(
         } else {
             std::borrow::Cow::Owned(image.to_vec())
         };
-        assert!(
-            DRIVER_CACHE
-                .write()
-                .unwrap()
-                .images
-                .insert(*module, image)
-                .is_none()
-        );
+        assert!(DRIVER_CACHE
+            .write()
+            .unwrap()
+            .images
+            .insert(*module, image)
+            .is_none());
     }
     'server_execution: {
         let result = unsafe { cuModuleLoadData(module__ptr, image__ptr.cast()) };
@@ -917,14 +910,12 @@ fn cuLibraryLoadDataInternal(
     }
     'client_after_recv: {
         if result == CUresult::CUDA_SUCCESS {
-            assert!(
-                DRIVER_CACHE
-                    .write()
-                    .unwrap()
-                    .library_images
-                    .insert(*library, std::borrow::Cow::Owned(code.to_vec()))
-                    .is_none()
-            );
+            assert!(DRIVER_CACHE
+                .write()
+                .unwrap()
+                .library_images
+                .insert(*library, std::borrow::Cow::Owned(code.to_vec()))
+                .is_none());
         }
     }
     'server_execution: {
@@ -1637,7 +1628,7 @@ fn cuCtxGetSharedMemConfig(pConfig: *mut CUsharedconfig) -> CUresult;
 
 #[cuda_hook(proc_id = 900307)]
 fn cuCtxGetStreamPriorityRange(leastPriority: *mut c_int, greatestPriority: *mut c_int)
--> CUresult;
+    -> CUresult;
 
 #[cuda_hook(proc_id = 900308, async_api = false)]
 fn cuCtxSetCacheConfig(config: CUfunc_cache) -> CUresult;
@@ -1788,11 +1779,9 @@ fn cuDevResourceGenerateDesc(
         assert!(!resources.is_null());
         let resource_count = nbResources as usize;
         let resource_slice = unsafe { std::slice::from_raw_parts(resources, resource_count) };
-        assert!(
-            resource_slice
-                .iter()
-                .all(|resource| resource.nextResource.is_null())
-        );
+        assert!(resource_slice
+            .iter()
+            .all(|resource| resource.nextResource.is_null()));
     }
 }
 
@@ -2209,11 +2198,8 @@ fn cuMemHostUnregister(p: *mut c_void) -> CUresult;
 fn cuMemHostGetFlags(pFlags: *mut c_uint, p: *mut c_void) -> CUresult;
 
 #[cuda_custom_hook] // unsupported across the remoting boundary
-fn cuMemHostGetDevicePointer_v2(
-    pdptr: *mut CUdeviceptr,
-    p: *mut c_void,
-    Flags: c_uint,
-) -> CUresult;
+fn cuMemHostGetDevicePointer_v2(pdptr: *mut CUdeviceptr, p: *mut c_void, Flags: c_uint)
+    -> CUresult;
 
 #[cuda_hook(proc_id = 900402, async_api = false)]
 fn cuMemFreeAsync(dptr: CUdeviceptr, hStream: CUstream) -> CUresult;
@@ -2638,10 +2624,8 @@ fn cuMemPoolImportFromShareableHandle(
 ) -> CUresult;
 
 #[cuda_custom_hook(proc_id = 901110)]
-fn cuMemPoolExportPointer(
-    shareData_out: *mut CUmemPoolPtrExportData,
-    ptr: CUdeviceptr,
-) -> CUresult;
+fn cuMemPoolExportPointer(shareData_out: *mut CUmemPoolPtrExportData, ptr: CUdeviceptr)
+    -> CUresult;
 
 #[cuda_custom_hook(proc_id = 901111)]
 fn cuMemPoolImportPointer(
@@ -3819,10 +3803,8 @@ fn cuGraphAddHostNode(
 ) -> CUresult;
 
 #[cuda_custom_hook(proc_id = 901150)]
-fn cuGraphHostNodeGetParams(
-    hNode: CUgraphNode,
-    nodeParams: *mut CUDA_HOST_NODE_PARAMS,
-) -> CUresult;
+fn cuGraphHostNodeGetParams(hNode: CUgraphNode, nodeParams: *mut CUDA_HOST_NODE_PARAMS)
+    -> CUresult;
 
 #[cuda_custom_hook(proc_id = 901151)]
 fn cuGraphHostNodeSetParams(

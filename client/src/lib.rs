@@ -5,7 +5,7 @@
 use network::ringbufferchannel::RDMAChannel;
 
 use network::ringbufferchannel::{EmulatorChannel, SHMChannel};
-use network::{Channel, CommChannel, Transportable, tcp};
+use network::{tcp, Channel, CommChannel, Transportable};
 
 #[cfg(not(feature = "passthrough"))]
 mod hijack;
@@ -19,7 +19,7 @@ mod dl;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::ffi::{CString, c_char, c_void};
+use std::ffi::{c_char, c_void, CString};
 use std::io::{Read as _, Write as _};
 use std::net::Shutdown;
 use std::sync::{Mutex, OnceLock, RwLock};
@@ -30,8 +30,8 @@ use cudasys::types::cublasLt::{
     cudaDataType_t as CublasLtCudaDataType,
 };
 use cudasys::types::cuda::{
-    CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS, CUfunction, CUgraphNode, CUkernel,
-    CUlibrary, CUlinkState, CUmodule, CUstreamBatchMemOpParams,
+    CUfunction, CUgraphNode, CUkernel, CUlibrary, CUlinkState, CUmodule, CUstreamBatchMemOpParams,
+    CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS,
 };
 use cudasys::types::cudart::{cudaGraphNode_t, cudaKernelNodeParams};
 type FatBinaryHandle = usize;

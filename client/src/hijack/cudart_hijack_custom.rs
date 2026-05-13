@@ -120,9 +120,7 @@ extern "C" fn cudaLogsRegisterCallback(
 }
 
 #[no_mangle]
-extern "C" fn cudaLogsUnregisterCallback(
-    callback: cudaLogsCallbackHandle,
-) -> cudaError_t {
+extern "C" fn cudaLogsUnregisterCallback(callback: cudaLogsCallbackHandle) -> cudaError_t {
     log::debug!(target: "cudaLogsUnregisterCallback", "");
     if callback.is_null() {
         return cudaError_t::cudaErrorInvalidValue;

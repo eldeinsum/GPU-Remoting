@@ -273,11 +273,9 @@ fn cudaDevResourceGenerateDesc(
         assert!(!resources.is_null());
         let resource_count = nbResources as usize;
         let resource_slice = unsafe { std::slice::from_raw_parts(resources, resource_count) };
-        assert!(
-            resource_slice
-                .iter()
-                .all(|resource| resource.nextResource.is_null())
-        );
+        assert!(resource_slice
+            .iter()
+            .all(|resource| resource.nextResource.is_null()));
     }
 }
 
@@ -2004,7 +2002,7 @@ fn cudaEventRecord(event: cudaEvent_t, stream: cudaStream_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 900426)]
 fn cudaEventRecordWithFlags(event: cudaEvent_t, stream: cudaStream_t, flags: c_uint)
--> cudaError_t;
+    -> cudaError_t;
 
 #[cuda_custom_hook] // calls driver API
 fn cudaEventSynchronize(event: cudaEvent_t) -> cudaError_t;
@@ -2267,10 +2265,7 @@ fn cudaLogsDumpToMemory(
 fn cudaGraphicsUnregisterResource(resource: cudaGraphicsResource_t) -> cudaError_t;
 
 #[cuda_hook(proc_id = 901184)]
-fn cudaGraphicsResourceSetMapFlags(
-    resource: cudaGraphicsResource_t,
-    flags: c_uint,
-) -> cudaError_t;
+fn cudaGraphicsResourceSetMapFlags(resource: cudaGraphicsResource_t, flags: c_uint) -> cudaError_t;
 
 #[cuda_hook(proc_id = 901185)]
 fn cudaGraphicsMapResources(

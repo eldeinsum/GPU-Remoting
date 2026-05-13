@@ -3,14 +3,14 @@ use std::fs;
 use std::io::Write as _;
 use std::path::Path;
 
-use hookdef::{CustomHookAttrs, HookAttrs, is_hacked_type};
+use hookdef::{is_hacked_type, CustomHookAttrs, HookAttrs};
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, format_ident};
+use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned as _;
 use syn::{
-    Attribute, Block, FnArg, ForeignItem, Ident, Item, ItemFn, Meta, Signature, Token, Type,
-    UseTree, Visibility, parse_quote,
+    parse_quote, Attribute, Block, FnArg, ForeignItem, Ident, Item, ItemFn, Meta, Signature, Token,
+    Type, UseTree, Visibility,
 };
 
 struct Hook {

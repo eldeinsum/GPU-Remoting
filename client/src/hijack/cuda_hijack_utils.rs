@@ -63,9 +63,8 @@ pub fn send_fd(socket_path: &[u8], fd: c_int) -> io::Result<()> {
         iov_base: byte.as_mut_ptr().cast(),
         iov_len: byte.len(),
     };
-    let mut control = vec![0u8; unsafe {
-        libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize
-    }];
+    let mut control =
+        vec![0u8; unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize }];
     let mut msg = unsafe { std::mem::zeroed::<libc::msghdr>() };
     msg.msg_iov = &mut iov;
     msg.msg_iovlen = 1;
@@ -101,9 +100,8 @@ fn recv_fd(socket: &UnixStream) -> io::Result<c_int> {
         iov_base: byte.as_mut_ptr().cast(),
         iov_len: byte.len(),
     };
-    let mut control = vec![0u8; unsafe {
-        libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize
-    }];
+    let mut control =
+        vec![0u8; unsafe { libc::CMSG_SPACE(std::mem::size_of::<c_int>() as _) as usize }];
     let mut msg = unsafe { std::mem::zeroed::<libc::msghdr>() };
     msg.msg_iov = &mut iov;
     msg.msg_iovlen = 1;

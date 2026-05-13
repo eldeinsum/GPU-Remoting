@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::io::{self, Read as _, Write as _};
 use std::mem::MaybeUninit;
 use std::net::TcpListener;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;

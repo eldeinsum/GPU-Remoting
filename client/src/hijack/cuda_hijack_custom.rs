@@ -1,4 +1,4 @@
-use super::cuda_hijack_utils::{ServerFdReceiver, send_fd};
+use super::cuda_hijack_utils::{send_fd, ServerFdReceiver};
 use super::*;
 use cudasys::types::cuda::*;
 use network::type_impl::{recv_slice, send_slice};
@@ -138,9 +138,7 @@ extern "C" fn cuCoredumpRegisterCompleteCallback(
 }
 
 #[no_mangle]
-extern "C" fn cuCoredumpDeregisterStartCallback(
-    callback: CUcoredumpCallbackHandle,
-) -> CUresult {
+extern "C" fn cuCoredumpDeregisterStartCallback(callback: CUcoredumpCallbackHandle) -> CUresult {
     log::debug!(target: "cuCoredumpDeregisterStartCallback", "");
     if callback.is_null() {
         return CUresult::CUDA_ERROR_INVALID_VALUE;
@@ -149,9 +147,7 @@ extern "C" fn cuCoredumpDeregisterStartCallback(
 }
 
 #[no_mangle]
-extern "C" fn cuCoredumpDeregisterCompleteCallback(
-    callback: CUcoredumpCallbackHandle,
-) -> CUresult {
+extern "C" fn cuCoredumpDeregisterCompleteCallback(callback: CUcoredumpCallbackHandle) -> CUresult {
     log::debug!(target: "cuCoredumpDeregisterCompleteCallback", "");
     if callback.is_null() {
         return CUresult::CUDA_ERROR_INVALID_VALUE;
