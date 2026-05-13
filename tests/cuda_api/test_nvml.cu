@@ -1424,5 +1424,55 @@ int main()
         return 1;
     }
 
+    nvmlEventSet_t event_set = nullptr;
+    result = nvmlEventSetCreate(&event_set);
+    if (check_success(result, "nvmlEventSetCreate"))
+    {
+        return 1;
+    }
+    if (supported_event_types != 0)
+    {
+        result = nvmlDeviceRegisterEvents(device, supported_event_types, event_set);
+        if (check_optional(result, "nvmlDeviceRegisterEvents"))
+        {
+            return 1;
+        }
+        if (result == NVML_SUCCESS)
+        {
+            nvmlEventData_t event_data = {};
+            result = nvmlEventSetWait_v2(event_set, &event_data, 0);
+            if (result != NVML_ERROR_TIMEOUT &&
+                check_optional(result, "nvmlEventSetWait_v2"))
+            {
+                return 1;
+            }
+        }
+    }
+    result = nvmlEventSetFree(event_set);
+    if (check_success(result, "nvmlEventSetFree"))
+    {
+        return 1;
+    }
+
+    unsigned int excluded_device_count = 0;
+    result = nvmlGetExcludedDeviceCount(&excluded_device_count);
+    if (check_success(result, "nvmlGetExcludedDeviceCount"))
+    {
+        return 1;
+    }
+    nvmlExcludedDeviceInfo_t excluded_device_info = {};
+    result = nvmlGetExcludedDeviceInfoByIndex(0, &excluded_device_info);
+    if (excluded_device_count > 0)
+    {
+        if (check_success(result, "nvmlGetExcludedDeviceInfoByIndex"))
+        {
+            return 1;
+        }
+    }
+    else if (check_optional_indexed(result, "nvmlGetExcludedDeviceInfoByIndex"))
+    {
+        return 1;
+    }
+
     return 0;
 }

@@ -2378,3 +2378,32 @@ fn nvmlDeviceGetCapabilities(
         caps.write(caps_in);
     }
 }
+
+#[cuda_hook(proc_id = 991181)]
+fn nvmlEventSetCreate(set: *mut nvmlEventSet_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991182)]
+fn nvmlDeviceRegisterEvents(
+    device: nvmlDevice_t,
+    eventTypes: c_ulonglong,
+    set: nvmlEventSet_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991183)]
+fn nvmlEventSetWait_v2(
+    set: nvmlEventSet_t,
+    data: *mut nvmlEventData_t,
+    timeoutms: c_uint,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991184)]
+fn nvmlEventSetFree(set: nvmlEventSet_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991185)]
+fn nvmlGetExcludedDeviceCount(deviceCount: *mut c_uint) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991186)]
+fn nvmlGetExcludedDeviceInfoByIndex(
+    index: c_uint,
+    info: *mut nvmlExcludedDeviceInfo_t,
+) -> nvmlReturn_t;
