@@ -130,6 +130,16 @@ legacy_void!(cublasCrot, 1744, (n: c_int, x: *mut cuComplex, incx: c_int, y: *mu
 legacy_void!(cublasZrot, 1745, (n: c_int, x: *mut cuDoubleComplex, incx: c_int, y: *mut cuDoubleComplex, incy: c_int, sc: f64, cs: cuDoubleComplex));
 legacy_void!(cublasCsrot, 1746, (n: c_int, x: *mut cuComplex, incx: c_int, y: *mut cuComplex, incy: c_int, c: f32, s: f32));
 legacy_void!(cublasZdrot, 1747, (n: c_int, x: *mut cuDoubleComplex, incx: c_int, y: *mut cuDoubleComplex, incy: c_int, c: f64, s: f64));
+legacy_void!(cublasSgemv, 1748, (trans: c_char, m: c_int, n: c_int, alpha: f32, A: *const f32, lda: c_int, x: *const f32, incx: c_int, beta: f32, y: *mut f32, incy: c_int));
+legacy_void!(cublasDgemv, 1749, (trans: c_char, m: c_int, n: c_int, alpha: f64, A: *const f64, lda: c_int, x: *const f64, incx: c_int, beta: f64, y: *mut f64, incy: c_int));
+legacy_void!(cublasCgemv, 1750, (trans: c_char, m: c_int, n: c_int, alpha: cuComplex, A: *const cuComplex, lda: c_int, x: *const cuComplex, incx: c_int, beta: cuComplex, y: *mut cuComplex, incy: c_int));
+legacy_void!(cublasZgemv, 1751, (trans: c_char, m: c_int, n: c_int, alpha: cuDoubleComplex, A: *const cuDoubleComplex, lda: c_int, x: *const cuDoubleComplex, incx: c_int, beta: cuDoubleComplex, y: *mut cuDoubleComplex, incy: c_int));
+legacy_void!(cublasSger, 1752, (m: c_int, n: c_int, alpha: f32, x: *const f32, incx: c_int, y: *const f32, incy: c_int, A: *mut f32, lda: c_int));
+legacy_void!(cublasDger, 1753, (m: c_int, n: c_int, alpha: f64, x: *const f64, incx: c_int, y: *const f64, incy: c_int, A: *mut f64, lda: c_int));
+legacy_void!(cublasCgeru, 1754, (m: c_int, n: c_int, alpha: cuComplex, x: *const cuComplex, incx: c_int, y: *const cuComplex, incy: c_int, A: *mut cuComplex, lda: c_int));
+legacy_void!(cublasCgerc, 1755, (m: c_int, n: c_int, alpha: cuComplex, x: *const cuComplex, incx: c_int, y: *const cuComplex, incy: c_int, A: *mut cuComplex, lda: c_int));
+legacy_void!(cublasZgeru, 1756, (m: c_int, n: c_int, alpha: cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, y: *const cuDoubleComplex, incy: c_int, A: *mut cuDoubleComplex, lda: c_int));
+legacy_void!(cublasZgerc, 1757, (m: c_int, n: c_int, alpha: cuDoubleComplex, x: *const cuDoubleComplex, incx: c_int, y: *const cuDoubleComplex, incy: c_int, A: *mut cuDoubleComplex, lda: c_int));
 
 #[no_mangle]
 pub extern "C" fn cublasLoggerConfigure(
