@@ -3463,6 +3463,80 @@ fn cudnnCreateFusedOpsPlan(plan: *mut cudnnFusedOpsPlan_t, ops: cudnnFusedOps_t)
 #[cuda_hook(proc_id = 2515, async_api)]
 fn cudnnDestroyFusedOpsPlan(plan: cudnnFusedOpsPlan_t) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2520)]
+fn cudnnCreateAttnDescriptor(attnDesc: *mut cudnnAttnDescriptor_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2521, async_api)]
+fn cudnnDestroyAttnDescriptor(attnDesc: cudnnAttnDescriptor_t) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2522)]
+fn cudnnSetAttnDescriptor(
+    attnDesc: cudnnAttnDescriptor_t,
+    attnMode: c_uint,
+    nHeads: c_int,
+    smScaler: f64,
+    dataType: cudnnDataType_t,
+    computePrec: cudnnDataType_t,
+    mathType: cudnnMathType_t,
+    attnDropoutDesc: cudnnDropoutDescriptor_t,
+    postDropoutDesc: cudnnDropoutDescriptor_t,
+    qSize: c_int,
+    kSize: c_int,
+    vSize: c_int,
+    qProjSize: c_int,
+    kProjSize: c_int,
+    vProjSize: c_int,
+    oProjSize: c_int,
+    qoMaxSeqLength: c_int,
+    kvMaxSeqLength: c_int,
+    maxBatchSize: c_int,
+    maxBeamSize: c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2523)]
+fn cudnnGetAttnDescriptor(
+    attnDesc: cudnnAttnDescriptor_t,
+    attnMode: *mut c_uint,
+    nHeads: *mut c_int,
+    smScaler: *mut f64,
+    dataType: *mut cudnnDataType_t,
+    computePrec: *mut cudnnDataType_t,
+    mathType: *mut cudnnMathType_t,
+    attnDropoutDesc: *mut cudnnDropoutDescriptor_t,
+    postDropoutDesc: *mut cudnnDropoutDescriptor_t,
+    qSize: *mut c_int,
+    kSize: *mut c_int,
+    vSize: *mut c_int,
+    qProjSize: *mut c_int,
+    kProjSize: *mut c_int,
+    vProjSize: *mut c_int,
+    oProjSize: *mut c_int,
+    qoMaxSeqLength: *mut c_int,
+    kvMaxSeqLength: *mut c_int,
+    maxBatchSize: *mut c_int,
+    maxBeamSize: *mut c_int,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2524)]
+fn cudnnGetMultiHeadAttnBuffers(
+    handle: cudnnHandle_t,
+    attnDesc: cudnnAttnDescriptor_t,
+    weightSizeInBytes: *mut usize,
+    workSpaceSizeInBytes: *mut usize,
+    reserveSpaceSizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2525)]
+fn cudnnGetMultiHeadAttnWeights(
+    handle: cudnnHandle_t,
+    attnDesc: cudnnAttnDescriptor_t,
+    wKind: cudnnMultiHeadAttnWeightKind_t,
+    weightSizeInBytes: usize,
+    #[device] weights: *const c_void,
+    wDesc: cudnnTensorDescriptor_t,
+    wAddr: *mut *mut c_void,
+) -> cudnnStatus_t;
+
 // TODO: shadow_desc
 #[cuda_hook(proc_id = 2500)]
 fn cudnnBackendCreateDescriptor(
