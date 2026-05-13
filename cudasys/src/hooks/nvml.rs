@@ -5436,3 +5436,102 @@ fn nvmlDeviceWorkloadPowerProfileGetCurrentProfiles(
 
 #[cuda_hook(proc_id = 991253)]
 fn nvmlDeviceValidateInforom(device: nvmlDevice_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991254)]
+fn nvmlDeviceGetVgpuSchedulerLog(
+    device: nvmlDevice_t,
+    #[skip] pSchedulerLog: *mut nvmlVgpuSchedulerLog_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let pSchedulerLog_is_null = pSchedulerLog.is_null();
+    }
+    'client_extra_send: {
+        pSchedulerLog_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut pSchedulerLog_is_null = false;
+        pSchedulerLog_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut scheduler_log_storage = std::mem::MaybeUninit::<nvmlVgpuSchedulerLog_t>::uninit();
+        let scheduler_log_ptr = if pSchedulerLog_is_null {
+            std::ptr::null_mut()
+        } else {
+            scheduler_log_storage.as_mut_ptr()
+        };
+        let result = unsafe { nvmlDeviceGetVgpuSchedulerLog(device, scheduler_log_ptr) };
+    }
+    'server_after_send: {
+        if !pSchedulerLog_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            let scheduler_log_out = unsafe {
+                std::slice::from_raw_parts(
+                    scheduler_log_storage.as_ptr().cast::<u8>(),
+                    std::mem::size_of::<nvmlVgpuSchedulerLog_t>(),
+                )
+            };
+            send_slice(scheduler_log_out, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !pSchedulerLog_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            let scheduler_log_out = unsafe {
+                std::slice::from_raw_parts_mut(
+                    pSchedulerLog.cast::<u8>(),
+                    std::mem::size_of::<nvmlVgpuSchedulerLog_t>(),
+                )
+            };
+            recv_slice_to(scheduler_log_out, channel_receiver).unwrap();
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991255)]
+fn nvmlDeviceGetVgpuSchedulerState(
+    device: nvmlDevice_t,
+    #[skip] pSchedulerState: *mut nvmlVgpuSchedulerGetState_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let pSchedulerState_is_null = pSchedulerState.is_null();
+    }
+    'client_extra_send: {
+        pSchedulerState_is_null.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut pSchedulerState_is_null = false;
+        pSchedulerState_is_null.recv(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut scheduler_state_storage =
+            std::mem::MaybeUninit::<nvmlVgpuSchedulerGetState_t>::uninit();
+        let scheduler_state_ptr = if pSchedulerState_is_null {
+            std::ptr::null_mut()
+        } else {
+            scheduler_state_storage.as_mut_ptr()
+        };
+        let result = unsafe { nvmlDeviceGetVgpuSchedulerState(device, scheduler_state_ptr) };
+    }
+    'server_after_send: {
+        if !pSchedulerState_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            let scheduler_state_out = unsafe {
+                std::slice::from_raw_parts(
+                    scheduler_state_storage.as_ptr().cast::<u8>(),
+                    std::mem::size_of::<nvmlVgpuSchedulerGetState_t>(),
+                )
+            };
+            send_slice(scheduler_state_out, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !pSchedulerState_is_null && result == nvmlReturn_t::NVML_SUCCESS {
+            let scheduler_state_out = unsafe {
+                std::slice::from_raw_parts_mut(
+                    pSchedulerState.cast::<u8>(),
+                    std::mem::size_of::<nvmlVgpuSchedulerGetState_t>(),
+                )
+            };
+            recv_slice_to(scheduler_state_out, channel_receiver).unwrap();
+        }
+    }
+}

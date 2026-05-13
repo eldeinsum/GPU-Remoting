@@ -711,6 +711,8 @@ int main()
     nvmlVgpuHeterogeneousMode_t vgpu_heterogeneous = {};
     vgpu_heterogeneous.version = nvmlVgpuHeterogeneousMode_v1;
     nvmlVgpuSchedulerCapabilities_t vgpu_scheduler_caps = {};
+    nvmlVgpuSchedulerGetState_t vgpu_scheduler_state = {};
+    nvmlVgpuSchedulerLog_t vgpu_scheduler_log = {};
     nvmlVgpuSchedulerStateInfo_v2_t vgpu_scheduler_state_v2 = {};
     nvmlVgpuSchedulerLogInfo_v2_t vgpu_scheduler_log_v2 = {};
     nvmlVgpuVersion_t supported_vgpu_version = {};
@@ -811,6 +813,8 @@ int main()
                                       &vgpu_capability),
         nvmlDeviceGetVgpuHeterogeneousMode(device, &vgpu_heterogeneous),
         nvmlDeviceGetVgpuSchedulerCapabilities(device, &vgpu_scheduler_caps),
+        nvmlDeviceGetVgpuSchedulerState(device, &vgpu_scheduler_state),
+        nvmlDeviceGetVgpuSchedulerLog(device, &vgpu_scheduler_log),
         nvmlDeviceGetVgpuSchedulerState_v2(device, &vgpu_scheduler_state_v2),
         nvmlDeviceGetVgpuSchedulerLog_v2(device, &vgpu_scheduler_log_v2),
         nvmlGetVgpuVersion(&supported_vgpu_version, &current_vgpu_version),
@@ -897,6 +901,8 @@ int main()
         "nvmlDeviceGetVgpuCapabilities",
         "nvmlDeviceGetVgpuHeterogeneousMode",
         "nvmlDeviceGetVgpuSchedulerCapabilities",
+        "nvmlDeviceGetVgpuSchedulerState",
+        "nvmlDeviceGetVgpuSchedulerLog",
         "nvmlDeviceGetVgpuSchedulerState_v2",
         "nvmlDeviceGetVgpuSchedulerLog_v2",
         "nvmlGetVgpuVersion",
