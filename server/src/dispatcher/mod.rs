@@ -54,6 +54,23 @@ pub fn dispatch<C: CommChannel>(proc_id: i32, server: &mut ServerWorker<C>) -> b
     true
 }
 
+#[repr(align(16))]
+struct CudnnScalarArg([u8; 16]);
+
+impl CudnnScalarArg {
+    fn as_ptr(&self) -> *const std::ffi::c_void {
+        self.0.as_ptr().cast()
+    }
+}
+
+fn cudnn_recv_scalar_arg<C: CommChannel>(channel_receiver: &C) -> CudnnScalarArg {
+    let bytes = recv_slice::<u8, _>(channel_receiver).unwrap();
+    assert!(bytes.len() <= 16);
+    let mut arg = CudnnScalarArg([0; 16]);
+    arg.0[..bytes.len()].copy_from_slice(&bytes);
+    arg
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -35,6 +35,7 @@ use cudasys::types::cuda::{
     CUDA_BATCH_MEM_OP_NODE_PARAMS, CUDA_KERNEL_NODE_PARAMS,
 };
 use cudasys::types::cudart::{cudaGraphNode_t, cudaKernelNodeParams};
+use cudasys::types::cudnn::{cudnnDataType_t, cudnnFilterDescriptor_t, cudnnTensorDescriptor_t};
 type FatBinaryHandle = usize;
 type HostPtr = usize;
 
@@ -144,6 +145,7 @@ impl ClientThread {
         DRIVER_CACHE.write().unwrap().reset_after_fork();
         RUNTIME_CACHE.write().unwrap().reset_after_fork();
         CUBLAS_CACHE.write().unwrap().reset_after_fork();
+        CUDNN_CACHE.write().unwrap().reset_after_fork();
         let stale = std::mem::replace(self, ClientThread::new());
         std::mem::forget(stale);
     }
@@ -206,6 +208,7 @@ static CLIENT_THREAD: ClientThreadState = ClientThreadState::new();
 static DRIVER_CACHE: RwLock<DriverCache> = RwLock::new(DriverCache::new());
 static RUNTIME_CACHE: RwLock<RuntimeCache> = RwLock::new(RuntimeCache::new());
 static CUBLAS_CACHE: RwLock<CublasCache> = RwLock::new(CublasCache::new());
+static CUDNN_CACHE: RwLock<CudnnCache> = RwLock::new(CudnnCache::new());
 
 struct DriverCache {
     /// Used in `cuModuleGetFunction`, populated by `cuModuleLoadData`.
@@ -503,6 +506,97 @@ struct CublasLtMatmulDescState {
 struct CublasLtTransformDescState {
     pointer_mode: cublasLtPointerMode_t,
     scale_type_size: Option<usize>,
+}
+
+struct CudnnCache {
+    tensor_desc_types: BTreeMap<cudnnTensorDescriptor_t, cudnnDataType_t>,
+    filter_desc_types: BTreeMap<cudnnFilterDescriptor_t, cudnnDataType_t>,
+}
+
+unsafe impl Send for CudnnCache {}
+unsafe impl Sync for CudnnCache {}
+
+impl CudnnCache {
+    const fn new() -> Self {
+        Self {
+            tensor_desc_types: BTreeMap::new(),
+            filter_desc_types: BTreeMap::new(),
+        }
+    }
+
+    fn reset_after_fork(&mut self) {
+        self.tensor_desc_types.clear();
+        self.filter_desc_types.clear();
+    }
+}
+
+fn cudnn_data_type_scalar_size(data_type: cudnnDataType_t) -> Option<usize> {
+    Some(match data_type {
+        cudnnDataType_t::CUDNN_DATA_DOUBLE | cudnnDataType_t::CUDNN_DATA_INT64 => 8,
+        cudnnDataType_t::CUDNN_DATA_FLOAT
+        | cudnnDataType_t::CUDNN_DATA_INT32
+        | cudnnDataType_t::CUDNN_DATA_UINT32
+        | cudnnDataType_t::CUDNN_DATA_FAST_FLOAT_FOR_FP8 => 4,
+        cudnnDataType_t::CUDNN_DATA_HALF | cudnnDataType_t::CUDNN_DATA_BFLOAT16 => 2,
+        cudnnDataType_t::CUDNN_DATA_INT8
+        | cudnnDataType_t::CUDNN_DATA_UINT8
+        | cudnnDataType_t::CUDNN_DATA_BOOLEAN
+        | cudnnDataType_t::CUDNN_DATA_FP8_E4M3
+        | cudnnDataType_t::CUDNN_DATA_FP8_E5M2
+        | cudnnDataType_t::CUDNN_DATA_FP8_E8M0 => 1,
+        cudnnDataType_t::CUDNN_DATA_COMPLEX_FP32 => 8,
+        cudnnDataType_t::CUDNN_DATA_COMPLEX_FP64 => 16,
+        cudnnDataType_t::CUDNN_DATA_INT8x4
+        | cudnnDataType_t::CUDNN_DATA_UINT8x4
+        | cudnnDataType_t::CUDNN_DATA_INT8x32
+        | cudnnDataType_t::CUDNN_DATA_FP4_E2M1
+        | cudnnDataType_t::CUDNN_DATA_INT4
+        | cudnnDataType_t::CUDNN_DATA_UINT4 => return None,
+    })
+}
+
+fn cudnn_record_tensor_desc_type(desc: cudnnTensorDescriptor_t, data_type: cudnnDataType_t) {
+    CUDNN_CACHE
+        .write()
+        .unwrap()
+        .tensor_desc_types
+        .insert(desc, data_type);
+}
+
+fn cudnn_remove_tensor_desc(desc: cudnnTensorDescriptor_t) {
+    CUDNN_CACHE.write().unwrap().tensor_desc_types.remove(&desc);
+}
+
+fn cudnn_tensor_desc_scalar_size(desc: cudnnTensorDescriptor_t) -> usize {
+    CUDNN_CACHE
+        .read()
+        .unwrap()
+        .tensor_desc_types
+        .get(&desc)
+        .and_then(|data_type| cudnn_data_type_scalar_size(*data_type))
+        .unwrap_or(std::mem::size_of::<f32>())
+}
+
+fn cudnn_record_filter_desc_type(desc: cudnnFilterDescriptor_t, data_type: cudnnDataType_t) {
+    CUDNN_CACHE
+        .write()
+        .unwrap()
+        .filter_desc_types
+        .insert(desc, data_type);
+}
+
+fn cudnn_remove_filter_desc(desc: cudnnFilterDescriptor_t) {
+    CUDNN_CACHE.write().unwrap().filter_desc_types.remove(&desc);
+}
+
+fn cudnn_filter_desc_scalar_size(desc: cudnnFilterDescriptor_t) -> usize {
+    CUDNN_CACHE
+        .read()
+        .unwrap()
+        .filter_desc_types
+        .get(&desc)
+        .and_then(|data_type| cudnn_data_type_scalar_size(*data_type))
+        .unwrap_or(std::mem::size_of::<f32>())
 }
 
 fn cublaslt_bind_matmul_desc(client: cublasLtMatmulDesc_t, server: cublasLtMatmulDesc_t) {

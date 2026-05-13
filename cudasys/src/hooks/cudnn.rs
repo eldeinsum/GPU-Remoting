@@ -2,9 +2,6 @@ use crate::types::cudnn::*;
 use codegen::{cuda_custom_hook, cuda_hook};
 use std::os::raw::*;
 
-/// FIXME: void pointer hacking
-type HackedAssumeDouble = f64;
-
 #[cuda_custom_hook] // local: derived from remoted property queries
 fn cudnnGetVersion() -> usize;
 
@@ -56,7 +53,13 @@ fn cudnnSetTensor4dDescriptor(
     c: c_int,
     h: c_int,
     w: c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_tensor_desc_type(tensorDesc, dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1812)]
 fn cudnnSetTensor4dDescriptorEx(
@@ -70,7 +73,13 @@ fn cudnnSetTensor4dDescriptorEx(
     cStride: c_int,
     hStride: c_int,
     wStride: c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_tensor_desc_type(tensorDesc, dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1813)]
 fn cudnnGetTensor4dDescriptor(
@@ -84,7 +93,13 @@ fn cudnnGetTensor4dDescriptor(
     cStride: *mut c_int,
     hStride: *mut c_int,
     wStride: *mut c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_tensor_desc_type(tensorDesc, *dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1805)]
 fn cudnnCreateActivationDescriptor(
@@ -161,7 +176,11 @@ fn cudnnSetTensorNdDescriptor(
     nbDims: c_int,
     #[host(len = nbDims)] dimA: *const c_int,
     #[host(len = nbDims)] strideA: *const c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        cudnn_record_tensor_desc_type(tensorDesc, dataType);
+    }
+}
 
 #[cuda_hook(proc_id = 1815)]
 fn cudnnSetTensorNdDescriptorEx(
@@ -170,7 +189,13 @@ fn cudnnSetTensorNdDescriptorEx(
     dataType: cudnnDataType_t,
     nbDims: c_int,
     #[host(len = nbDims)] dimA: *const c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_tensor_desc_type(tensorDesc, dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1817)]
 fn cudnnGetTensorNdDescriptor(
@@ -180,7 +205,13 @@ fn cudnnGetTensorNdDescriptor(
     nbDims: *mut c_int,
     #[host(output, len = nbDims, cap = nbDimsRequested)] dimA: *mut c_int,
     #[host(output, len = nbDims, cap = nbDimsRequested)] strideA: *mut c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_tensor_desc_type(tensorDesc, *dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1818)]
 fn cudnnGetTensorSizeInBytes(
@@ -189,7 +220,11 @@ fn cudnnGetTensorSizeInBytes(
 ) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 1826, async_api)]
-fn cudnnDestroyTensorDescriptor(tensorDesc: cudnnTensorDescriptor_t) -> cudnnStatus_t;
+fn cudnnDestroyTensorDescriptor(tensorDesc: cudnnTensorDescriptor_t) -> cudnnStatus_t {
+    'client_before_send: {
+        cudnn_remove_tensor_desc(tensorDesc);
+    }
+}
 
 #[cuda_hook(proc_id = 1823)]
 fn cudnnCreateTensorTransformDescriptor(
@@ -235,7 +270,11 @@ fn cudnnInitTransformDest(
 fn cudnnCreateFilterDescriptor(filterDesc: *mut cudnnFilterDescriptor_t) -> cudnnStatus_t;
 
 #[cuda_hook(proc_id = 1820, async_api)]
-fn cudnnDestroyFilterDescriptor(filterDesc: cudnnFilterDescriptor_t) -> cudnnStatus_t;
+fn cudnnDestroyFilterDescriptor(filterDesc: cudnnFilterDescriptor_t) -> cudnnStatus_t {
+    'client_before_send: {
+        cudnn_remove_filter_desc(filterDesc);
+    }
+}
 
 #[cuda_hook(proc_id = 1865, async_api)]
 fn cudnnSetFilterNdDescriptor(
@@ -244,7 +283,11 @@ fn cudnnSetFilterNdDescriptor(
     format: cudnnTensorFormat_t,
     nbDims: c_int,
     #[host(len = nbDims)] filterDimA: *const c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        cudnn_record_filter_desc_type(filterDesc, dataType);
+    }
+}
 
 #[cuda_hook(proc_id = 1819)]
 fn cudnnGetFilter4dDescriptor(
@@ -255,7 +298,13 @@ fn cudnnGetFilter4dDescriptor(
     c: *mut c_int,
     h: *mut c_int,
     w: *mut c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_filter_desc_type(filterDesc, *dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1821)]
 fn cudnnGetFilterNdDescriptor(
@@ -265,7 +314,13 @@ fn cudnnGetFilterNdDescriptor(
     format: *mut cudnnTensorFormat_t,
     nbDims: *mut c_int,
     #[host(output, len = nbDims, cap = nbDimsRequested)] filterDimA: *mut c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_filter_desc_type(filterDesc, *dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1822)]
 fn cudnnGetFilterSizeInBytes(
@@ -422,6 +477,680 @@ fn cudnnGetLRNDescriptor(
 #[cuda_hook(proc_id = 2319, async_api)]
 fn cudnnDestroyLRNDescriptor(lrnDesc: cudnnLRNDescriptor_t) -> cudnnStatus_t;
 
+#[cuda_hook(proc_id = 2320, async_api)]
+fn cudnnTransformTensor(
+    handle: cudnnHandle_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnTransformTensor(
+                handle,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2321, async_api)]
+fn cudnnTransformTensorEx(
+    handle: cudnnHandle_t,
+    transDesc: cudnnTensorTransformDescriptor_t,
+    #[skip] alpha: *const c_void,
+    srcDesc: cudnnTensorDescriptor_t,
+    #[device] srcData: *const c_void,
+    #[skip] beta: *const c_void,
+    destDesc: cudnnTensorDescriptor_t,
+    #[device] destData: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(srcDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(destDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnTransformTensorEx(
+                handle,
+                transDesc,
+                alpha_arg.as_ptr(),
+                srcDesc,
+                srcData,
+                beta_arg.as_ptr(),
+                destDesc,
+                destData,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2322, async_api)]
+fn cudnnAddTensor(
+    handle: cudnnHandle_t,
+    #[skip] alpha: *const c_void,
+    aDesc: cudnnTensorDescriptor_t,
+    #[device] A: *const c_void,
+    #[skip] beta: *const c_void,
+    cDesc: cudnnTensorDescriptor_t,
+    #[device] C: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(aDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(cDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnAddTensor(
+                handle,
+                alpha_arg.as_ptr(),
+                aDesc,
+                A,
+                beta_arg.as_ptr(),
+                cDesc,
+                C,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2323, async_api)]
+fn cudnnSetTensor(
+    handle: cudnnHandle_t,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+    #[skip] valuePtr: *const c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let value_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!valuePtr.is_null());
+        let value_bytes = unsafe { std::slice::from_raw_parts(valuePtr.cast::<u8>(), value_len) };
+    }
+    'client_extra_send: {
+        send_slice(value_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let value_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe { cudnnSetTensor(handle, yDesc, y, value_arg.as_ptr()) };
+    }
+}
+
+#[cuda_hook(proc_id = 2324, async_api)]
+fn cudnnScaleTensor(
+    handle: cudnnHandle_t,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+    #[skip] alpha: *const c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe { cudnnScaleTensor(handle, yDesc, y, alpha_arg.as_ptr()) };
+    }
+}
+
+#[cuda_hook(proc_id = 2325, async_api)]
+fn cudnnOpTensor(
+    handle: cudnnHandle_t,
+    opTensorDesc: cudnnOpTensorDescriptor_t,
+    #[skip] alpha1: *const c_void,
+    aDesc: cudnnTensorDescriptor_t,
+    #[device] A: *const c_void,
+    #[skip] alpha2: *const c_void,
+    bDesc: cudnnTensorDescriptor_t,
+    #[device] B: *const c_void,
+    #[skip] beta: *const c_void,
+    cDesc: cudnnTensorDescriptor_t,
+    #[device] C: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha1_len = cudnn_tensor_desc_scalar_size(aDesc);
+        let alpha2_len = cudnn_tensor_desc_scalar_size(bDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(cDesc);
+        assert!(!alpha1.is_null());
+        assert!(!alpha2.is_null());
+        assert!(!beta.is_null());
+        let alpha1_bytes = unsafe { std::slice::from_raw_parts(alpha1.cast::<u8>(), alpha1_len) };
+        let alpha2_bytes = unsafe { std::slice::from_raw_parts(alpha2.cast::<u8>(), alpha2_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha1_bytes, channel_sender).unwrap();
+        send_slice(alpha2_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha1_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let alpha2_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnOpTensor(
+                handle,
+                opTensorDesc,
+                alpha1_arg.as_ptr(),
+                aDesc,
+                A,
+                alpha2_arg.as_ptr(),
+                bDesc,
+                B,
+                beta_arg.as_ptr(),
+                cDesc,
+                C,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2326)]
+fn cudnnGetReductionIndicesSize(
+    handle: cudnnHandle_t,
+    reduceTensorDesc: cudnnReduceTensorDescriptor_t,
+    aDesc: cudnnTensorDescriptor_t,
+    cDesc: cudnnTensorDescriptor_t,
+    sizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2327)]
+fn cudnnGetReductionWorkspaceSize(
+    handle: cudnnHandle_t,
+    reduceTensorDesc: cudnnReduceTensorDescriptor_t,
+    aDesc: cudnnTensorDescriptor_t,
+    cDesc: cudnnTensorDescriptor_t,
+    sizeInBytes: *mut usize,
+) -> cudnnStatus_t;
+
+#[cuda_hook(proc_id = 2328, async_api)]
+fn cudnnReduceTensor(
+    handle: cudnnHandle_t,
+    reduceTensorDesc: cudnnReduceTensorDescriptor_t,
+    #[device] indices: *mut c_void,
+    indicesSizeInBytes: usize,
+    #[device] workspace: *mut c_void,
+    workspaceSizeInBytes: usize,
+    #[skip] alpha: *const c_void,
+    aDesc: cudnnTensorDescriptor_t,
+    #[device] A: *const c_void,
+    #[skip] beta: *const c_void,
+    cDesc: cudnnTensorDescriptor_t,
+    #[device] C: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(aDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(cDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnReduceTensor(
+                handle,
+                reduceTensorDesc,
+                indices,
+                indicesSizeInBytes,
+                workspace,
+                workspaceSizeInBytes,
+                alpha_arg.as_ptr(),
+                aDesc,
+                A,
+                beta_arg.as_ptr(),
+                cDesc,
+                C,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2329, async_api)]
+fn cudnnSoftmaxForward(
+    handle: cudnnHandle_t,
+    algo: cudnnSoftmaxAlgorithm_t,
+    mode: cudnnSoftmaxMode_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnSoftmaxForward(
+                handle,
+                algo,
+                mode,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2330, async_api)]
+fn cudnnSoftmaxBackward(
+    handle: cudnnHandle_t,
+    algo: cudnnSoftmaxAlgorithm_t,
+    mode: cudnnSoftmaxMode_t,
+    #[skip] alpha: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    #[skip] beta: *const c_void,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(yDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnSoftmaxBackward(
+                handle,
+                algo,
+                mode,
+                alpha_arg.as_ptr(),
+                yDesc,
+                y,
+                dyDesc,
+                dy,
+                beta_arg.as_ptr(),
+                dxDesc,
+                dx,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2331, async_api)]
+fn cudnnPoolingForward(
+    handle: cudnnHandle_t,
+    poolingDesc: cudnnPoolingDescriptor_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnPoolingForward(
+                handle,
+                poolingDesc,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2332, async_api)]
+fn cudnnPoolingBackward(
+    handle: cudnnHandle_t,
+    poolingDesc: cudnnPoolingDescriptor_t,
+    #[skip] alpha: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(yDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnPoolingBackward(
+                handle,
+                poolingDesc,
+                alpha_arg.as_ptr(),
+                yDesc,
+                y,
+                dyDesc,
+                dy,
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                dxDesc,
+                dx,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2333, async_api)]
+fn cudnnActivationForward(
+    handle: cudnnHandle_t,
+    activationDesc: cudnnActivationDescriptor_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnActivationForward(
+                handle,
+                activationDesc,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2334, async_api)]
+fn cudnnActivationBackward(
+    handle: cudnnHandle_t,
+    activationDesc: cudnnActivationDescriptor_t,
+    #[skip] alpha: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(yDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnActivationBackward(
+                handle,
+                activationDesc,
+                alpha_arg.as_ptr(),
+                yDesc,
+                y,
+                dyDesc,
+                dy,
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                dxDesc,
+                dx,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2335, async_api)]
+fn cudnnLRNCrossChannelForward(
+    handle: cudnnHandle_t,
+    normDesc: cudnnLRNDescriptor_t,
+    lrnMode: cudnnLRNMode_t,
+    #[skip] alpha: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnLRNCrossChannelForward(
+                handle,
+                normDesc,
+                lrnMode,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2336, async_api)]
+fn cudnnLRNCrossChannelBackward(
+    handle: cudnnHandle_t,
+    normDesc: cudnnLRNDescriptor_t,
+    lrnMode: cudnnLRNMode_t,
+    #[skip] alpha: *const c_void,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    #[skip] beta: *const c_void,
+    dxDesc: cudnnTensorDescriptor_t,
+    #[device] dx: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(yDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnLRNCrossChannelBackward(
+                handle,
+                normDesc,
+                lrnMode,
+                alpha_arg.as_ptr(),
+                yDesc,
+                y,
+                dyDesc,
+                dy,
+                xDesc,
+                x,
+                beta_arg.as_ptr(),
+                dxDesc,
+                dx,
+            )
+        };
+    }
+}
+
 #[cuda_hook(proc_id = 2104)]
 fn cudnnCreateConvolutionDescriptor(convDesc: *mut cudnnConvolutionDescriptor_t) -> cudnnStatus_t;
 
@@ -520,7 +1249,7 @@ fn cudnnGetConvolutionForwardAlgorithm_v7(
 #[cuda_hook(proc_id = 2103, async_api)]
 fn cudnnConvolutionForward(
     handle: cudnnHandle_t,
-    #[host] alpha: *const HackedAssumeDouble,
+    #[skip] alpha: *const c_void,
     xDesc: cudnnTensorDescriptor_t,
     #[device] x: *const c_void,
     wDesc: cudnnFilterDescriptor_t,
@@ -529,10 +1258,150 @@ fn cudnnConvolutionForward(
     algo: cudnnConvolutionFwdAlgo_t,
     #[device] workSpace: *mut c_void,
     workSpaceSizeInBytes: usize,
-    #[host] beta: *const HackedAssumeDouble,
+    #[skip] beta: *const c_void,
     yDesc: cudnnTensorDescriptor_t,
     #[device] y: *mut c_void,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnConvolutionForward(
+                handle,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                wDesc,
+                w,
+                convDesc,
+                algo,
+                workSpace,
+                workSpaceSizeInBytes,
+                beta_arg.as_ptr(),
+                yDesc,
+                y,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2337, async_api)]
+fn cudnnConvolutionBackwardBias(
+    handle: cudnnHandle_t,
+    #[skip] alpha: *const c_void,
+    dyDesc: cudnnTensorDescriptor_t,
+    #[device] dy: *const c_void,
+    #[skip] beta: *const c_void,
+    dbDesc: cudnnTensorDescriptor_t,
+    #[device] db: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(dyDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dbDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnConvolutionBackwardBias(
+                handle,
+                alpha_arg.as_ptr(),
+                dyDesc,
+                dy,
+                beta_arg.as_ptr(),
+                dbDesc,
+                db,
+            )
+        };
+    }
+}
+
+#[cuda_hook(proc_id = 2338, async_api)]
+fn cudnnConvolutionBiasActivationForward(
+    handle: cudnnHandle_t,
+    #[skip] alpha1: *const c_void,
+    xDesc: cudnnTensorDescriptor_t,
+    #[device] x: *const c_void,
+    wDesc: cudnnFilterDescriptor_t,
+    #[device] w: *const c_void,
+    convDesc: cudnnConvolutionDescriptor_t,
+    algo: cudnnConvolutionFwdAlgo_t,
+    #[device] workSpace: *mut c_void,
+    workSpaceSizeInBytes: usize,
+    #[skip] alpha2: *const c_void,
+    zDesc: cudnnTensorDescriptor_t,
+    #[device] z: *const c_void,
+    biasDesc: cudnnTensorDescriptor_t,
+    #[device] bias: *const c_void,
+    activationDesc: cudnnActivationDescriptor_t,
+    yDesc: cudnnTensorDescriptor_t,
+    #[device] y: *mut c_void,
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha1_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let alpha2_len = cudnn_tensor_desc_scalar_size(zDesc);
+        assert!(!alpha1.is_null());
+        assert!(!alpha2.is_null());
+        let alpha1_bytes = unsafe { std::slice::from_raw_parts(alpha1.cast::<u8>(), alpha1_len) };
+        let alpha2_bytes = unsafe { std::slice::from_raw_parts(alpha2.cast::<u8>(), alpha2_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha1_bytes, channel_sender).unwrap();
+        send_slice(alpha2_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha1_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let alpha2_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnConvolutionBiasActivationForward(
+                handle,
+                alpha1_arg.as_ptr(),
+                xDesc,
+                x,
+                wDesc,
+                w,
+                convDesc,
+                algo,
+                workSpace,
+                workSpaceSizeInBytes,
+                alpha2_arg.as_ptr(),
+                zDesc,
+                z,
+                biasDesc,
+                bias,
+                activationDesc,
+                yDesc,
+                y,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 2008)]
 fn cudnnGetBatchNormalizationForwardTrainingExWorkspaceSize(
@@ -578,8 +1447,8 @@ fn cudnnBatchNormalizationForwardTrainingEx(
     handle: cudnnHandle_t,
     mode: cudnnBatchNormMode_t,
     bnOps: cudnnBatchNormOps_t,
-    #[host] alpha: *const HackedAssumeDouble,
-    #[host] beta: *const HackedAssumeDouble,
+    #[skip] alpha: *const c_void,
+    #[skip] beta: *const c_void,
     xDesc: cudnnTensorDescriptor_t,
     #[device] xData: *const c_void,
     zDesc: cudnnTensorDescriptor_t,
@@ -600,7 +1469,55 @@ fn cudnnBatchNormalizationForwardTrainingEx(
     workSpaceSizeInBytes: usize,
     #[device] reserveSpace: *mut c_void,
     reserveSpaceSizeInBytes: usize,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnBatchNormalizationForwardTrainingEx(
+                handle,
+                mode,
+                bnOps,
+                alpha_arg.as_ptr(),
+                beta_arg.as_ptr(),
+                xDesc,
+                xData,
+                zDesc,
+                zData,
+                yDesc,
+                yData,
+                bnScaleBiasMeanVarDesc,
+                bnScale,
+                bnBias,
+                exponentialAverageFactor,
+                resultRunningMean,
+                resultRunningVariance,
+                epsilon,
+                resultSaveMean,
+                resultSaveInvVariance,
+                activationDesc,
+                workspace,
+                workSpaceSizeInBytes,
+                reserveSpace,
+                reserveSpaceSizeInBytes,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 2007)]
 fn cudnnGetBatchNormalizationBackwardExWorkspaceSize(
@@ -622,10 +1539,10 @@ fn cudnnBatchNormalizationBackwardEx(
     handle: cudnnHandle_t,
     mode: cudnnBatchNormMode_t,
     bnOps: cudnnBatchNormOps_t,
-    #[host] alphaDataDiff: *const HackedAssumeDouble,
-    #[host] betaDataDiff: *const HackedAssumeDouble,
-    #[host] alphaParamDiff: *const HackedAssumeDouble,
-    #[host] betaParamDiff: *const HackedAssumeDouble,
+    #[skip] alphaDataDiff: *const c_void,
+    #[skip] betaDataDiff: *const c_void,
+    #[skip] alphaParamDiff: *const c_void,
+    #[skip] betaParamDiff: *const c_void,
     xDesc: cudnnTensorDescriptor_t,
     #[device] xData: *const c_void,
     yDesc: cudnnTensorDescriptor_t,
@@ -649,7 +1566,75 @@ fn cudnnBatchNormalizationBackwardEx(
     workSpaceSizeInBytes: usize,
     #[device] reserveSpace: *mut c_void,
     reserveSpaceSizeInBytes: usize,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_data_diff_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_data_diff_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        let alpha_param_diff_len = cudnn_tensor_desc_scalar_size(dBnScaleBiasDesc);
+        let beta_param_diff_len = cudnn_tensor_desc_scalar_size(dBnScaleBiasDesc);
+        assert!(!alphaDataDiff.is_null());
+        assert!(!betaDataDiff.is_null());
+        assert!(!alphaParamDiff.is_null());
+        assert!(!betaParamDiff.is_null());
+        let alpha_data_diff_bytes =
+            unsafe { std::slice::from_raw_parts(alphaDataDiff.cast::<u8>(), alpha_data_diff_len) };
+        let beta_data_diff_bytes =
+            unsafe { std::slice::from_raw_parts(betaDataDiff.cast::<u8>(), beta_data_diff_len) };
+        let alpha_param_diff_bytes = unsafe {
+            std::slice::from_raw_parts(alphaParamDiff.cast::<u8>(), alpha_param_diff_len)
+        };
+        let beta_param_diff_bytes =
+            unsafe { std::slice::from_raw_parts(betaParamDiff.cast::<u8>(), beta_param_diff_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_data_diff_bytes, channel_sender).unwrap();
+        send_slice(beta_data_diff_bytes, channel_sender).unwrap();
+        send_slice(alpha_param_diff_bytes, channel_sender).unwrap();
+        send_slice(beta_param_diff_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_data_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_data_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let alpha_param_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_param_diff_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnBatchNormalizationBackwardEx(
+                handle,
+                mode,
+                bnOps,
+                alpha_data_diff_arg.as_ptr(),
+                beta_data_diff_arg.as_ptr(),
+                alpha_param_diff_arg.as_ptr(),
+                beta_param_diff_arg.as_ptr(),
+                xDesc,
+                xData,
+                yDesc,
+                yData,
+                dyDesc,
+                dyData,
+                dzDesc,
+                dzData,
+                dxDesc,
+                dxData,
+                dBnScaleBiasDesc,
+                bnScaleData,
+                bnBiasData,
+                dBnScaleData,
+                dBnBiasData,
+                epsilon,
+                savedMean,
+                savedInvVariance,
+                activationDesc,
+                workSpace,
+                workSpaceSizeInBytes,
+                reserveSpace,
+                reserveSpaceSizeInBytes,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 2113)]
 fn cudnnGetConvolutionBackwardDataAlgorithm_v7(
@@ -684,7 +1669,7 @@ fn cudnnGetConvolutionBackwardDataWorkspaceSize(
 #[cuda_hook(proc_id = 2101, async_api)]
 fn cudnnConvolutionBackwardData(
     handle: cudnnHandle_t,
-    #[host] alpha: *const HackedAssumeDouble,
+    #[skip] alpha: *const c_void,
     wDesc: cudnnFilterDescriptor_t,
     #[device] w: *const c_void,
     dyDesc: cudnnTensorDescriptor_t,
@@ -693,10 +1678,46 @@ fn cudnnConvolutionBackwardData(
     algo: cudnnConvolutionBwdDataAlgo_t,
     #[device] workSpace: *mut c_void,
     workSpaceSizeInBytes: usize,
-    #[host] beta: *const HackedAssumeDouble,
+    #[skip] beta: *const c_void,
     dxDesc: cudnnTensorDescriptor_t,
     #[device] dx: *mut c_void,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(dyDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(dxDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnConvolutionBackwardData(
+                handle,
+                alpha_arg.as_ptr(),
+                wDesc,
+                w,
+                dyDesc,
+                dy,
+                convDesc,
+                algo,
+                workSpace,
+                workSpaceSizeInBytes,
+                beta_arg.as_ptr(),
+                dxDesc,
+                dx,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 2213)]
 fn cudnnGetConvolutionBackwardFilterAlgorithm_v7(
@@ -731,7 +1752,7 @@ fn cudnnGetConvolutionBackwardFilterWorkspaceSize(
 #[cuda_hook(proc_id = 2202, async_api)]
 fn cudnnConvolutionBackwardFilter(
     handle: cudnnHandle_t,
-    #[host] alpha: *const HackedAssumeDouble,
+    #[skip] alpha: *const c_void,
     xDesc: cudnnTensorDescriptor_t,
     #[device] x: *const c_void,
     dyDesc: cudnnTensorDescriptor_t,
@@ -740,17 +1761,53 @@ fn cudnnConvolutionBackwardFilter(
     algo: cudnnConvolutionBwdFilterAlgo_t,
     #[device] workSpace: *mut c_void,
     workSpaceSizeInBytes: usize,
-    #[host] beta: *const HackedAssumeDouble,
+    #[skip] beta: *const c_void,
     dwDesc: cudnnFilterDescriptor_t,
     #[device] dw: *mut c_void,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_filter_desc_scalar_size(dwDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnConvolutionBackwardFilter(
+                handle,
+                alpha_arg.as_ptr(),
+                xDesc,
+                x,
+                dyDesc,
+                dy,
+                convDesc,
+                algo,
+                workSpace,
+                workSpaceSizeInBytes,
+                beta_arg.as_ptr(),
+                dwDesc,
+                dw,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 1802, async_api)]
 fn cudnnBatchNormalizationForwardInference(
     handle: cudnnHandle_t,
     mode: cudnnBatchNormMode_t,
-    #[host] alpha: *const HackedAssumeDouble,
-    #[host] beta: *const HackedAssumeDouble,
+    #[skip] alpha: *const c_void,
+    #[skip] beta: *const c_void,
     xDesc: cudnnTensorDescriptor_t,
     #[device] x: *const c_void,
     yDesc: cudnnTensorDescriptor_t,
@@ -761,7 +1818,44 @@ fn cudnnBatchNormalizationForwardInference(
     #[device] estimatedMean: *const c_void,
     #[device] estimatedVariance: *const c_void,
     epsilon: f64,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_before_send: {
+        let alpha_len = cudnn_tensor_desc_scalar_size(xDesc);
+        let beta_len = cudnn_tensor_desc_scalar_size(yDesc);
+        assert!(!alpha.is_null());
+        assert!(!beta.is_null());
+        let alpha_bytes = unsafe { std::slice::from_raw_parts(alpha.cast::<u8>(), alpha_len) };
+        let beta_bytes = unsafe { std::slice::from_raw_parts(beta.cast::<u8>(), beta_len) };
+    }
+    'client_extra_send: {
+        send_slice(alpha_bytes, channel_sender).unwrap();
+        send_slice(beta_bytes, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let alpha_arg = cudnn_recv_scalar_arg(channel_receiver);
+        let beta_arg = cudnn_recv_scalar_arg(channel_receiver);
+    }
+    'server_execution: {
+        let result = unsafe {
+            cudnnBatchNormalizationForwardInference(
+                handle,
+                mode,
+                alpha_arg.as_ptr(),
+                beta_arg.as_ptr(),
+                xDesc,
+                x,
+                yDesc,
+                y,
+                bnScaleBiasMeanVarDesc,
+                bnScale,
+                bnBias,
+                estimatedMean,
+                estimatedVariance,
+                epsilon,
+            )
+        };
+    }
+}
 
 #[cuda_hook(proc_id = 1864)]
 fn cudnnSetFilter4dDescriptor(
@@ -772,7 +1866,13 @@ fn cudnnSetFilter4dDescriptor(
     c: c_int,
     h: c_int,
     w: c_int,
-) -> cudnnStatus_t;
+) -> cudnnStatus_t {
+    'client_after_recv: {
+        if result == cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+            cudnn_record_filter_desc_type(filterDesc, dataType);
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 2121)]
 fn cudnnGetConvolutionNdForwardOutputDim(
