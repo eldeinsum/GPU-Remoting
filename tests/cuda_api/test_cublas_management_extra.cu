@@ -37,6 +37,8 @@ static void expect_true(bool cond, const char *label) {
     }
 }
 
+static void test_logger_callback(const char *) {}
+
 static void test_version_and_status(cublasHandle_t handle) {
     int legacy_version = 0;
     int handle_version = 0;
@@ -62,6 +64,17 @@ static void test_version_and_status(cublasHandle_t handle) {
     expect_true(name && std::strcmp(name, "CUBLAS_STATUS_SUCCESS") == 0,
                 "status name");
     expect_true(desc && std::strlen(desc) > 0, "status string");
+}
+
+static void test_logger_and_xerbla() {
+    cublasLogCallback callback = nullptr;
+    CHECK_CUBLAS(cublasSetLoggerCallback(test_logger_callback));
+    CHECK_CUBLAS(cublasGetLoggerCallback(&callback));
+    expect_true(callback == test_logger_callback, "logger callback");
+    CHECK_CUBLAS(cublasSetLoggerCallback(nullptr));
+    CHECK_CUBLAS(cublasGetLoggerCallback(&callback));
+    expect_true(callback == nullptr, "cleared logger callback");
+    cublasXerbla("gpu-remoting", 1);
 }
 
 static void test_stream_and_modes(cublasHandle_t handle) {
@@ -194,6 +207,7 @@ int main() {
     cublasHandle_t handle = nullptr;
     CHECK_CUBLAS(cublasCreate(&handle));
     test_version_and_status(handle);
+    test_logger_and_xerbla();
     test_stream_and_modes(handle);
     test_emulation_controls(handle);
     CHECK_CUBLAS(cublasDestroy(handle));

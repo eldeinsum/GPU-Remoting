@@ -519,6 +519,31 @@ pub extern "C" fn cublasLoggerConfigure(
     })
 }
 
+fn cublas_logger_callback_state() -> &'static Mutex<cublasLogCallback> {
+    static STATE: OnceLock<Mutex<cublasLogCallback>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(None))
+}
+
+#[no_mangle]
+pub extern "C" fn cublasSetLoggerCallback(userCallback: cublasLogCallback) -> cublasStatus_t {
+    *cublas_logger_callback_state().lock().unwrap() = userCallback;
+    cublasStatus_t::CUBLAS_STATUS_SUCCESS
+}
+
+#[no_mangle]
+pub extern "C" fn cublasGetLoggerCallback(userCallback: *mut cublasLogCallback) -> cublasStatus_t {
+    if userCallback.is_null() {
+        return cublasStatus_t::CUBLAS_STATUS_INVALID_VALUE;
+    }
+    unsafe {
+        *userCallback = *cublas_logger_callback_state().lock().unwrap();
+    }
+    cublasStatus_t::CUBLAS_STATUS_SUCCESS
+}
+
+#[no_mangle]
+pub extern "C" fn cublasXerbla(_srName: *const c_char, _info: c_int) {}
+
 fn status_name(status: cublasStatus_t) -> &'static str {
     match status {
         cublasStatus_t::CUBLAS_STATUS_SUCCESS => "CUBLAS_STATUS_SUCCESS",
