@@ -42,6 +42,23 @@ static void expect_close(const std::vector<float> &got,
     }
 }
 
+static void expect_matrix_close(const std::vector<float> &got, int ld, int rows,
+                                int cols, const std::vector<float> &want,
+                                const char *label) {
+    for (int col = 0; col < cols; ++col) {
+        for (int row = 0; row < rows; ++row) {
+            const size_t got_index = static_cast<size_t>(col * ld + row);
+            const size_t want_index = static_cast<size_t>(col * rows + row);
+            if (std::fabs(got[got_index] - want[want_index]) > 1e-5f) {
+                std::fprintf(stderr,
+                             "%s mismatch at row %d col %d: got %.6f want %.6f\n",
+                             label, row, col, got[got_index], want[want_index]);
+                std::exit(1);
+            }
+        }
+    }
+}
+
 static void test_vector_32() {
     const int n = 3;
     std::vector<float> host = {1.0f, -1.0f, 2.0f, -2.0f, 3.0f};
@@ -62,6 +79,36 @@ static void test_vector_32() {
     CHECK_CUDA(cudaFree(device));
 }
 
+static void test_matrix_32() {
+    const int rows = 2;
+    const int cols = 3;
+    const int lda = 4;
+    const int device_ld = 3;
+    const int host_ld = 5;
+    const std::vector<float> values = {1.0f, 2.0f, 3.0f,
+                                       4.0f, 5.0f, 6.0f};
+    std::vector<float> host(static_cast<size_t>(lda * cols), -7.0f);
+    for (int col = 0; col < cols; ++col) {
+        for (int row = 0; row < rows; ++row) {
+            host[static_cast<size_t>(col * lda + row)] =
+                values[static_cast<size_t>(col * rows + row)];
+        }
+    }
+
+    float *device = nullptr;
+    CHECK_CUDA(cudaMalloc(&device, static_cast<size_t>(device_ld * cols) *
+                                       sizeof(float)));
+    CHECK_CUBLAS(cublasSetMatrix(rows, cols, sizeof(float), host.data(), lda,
+                                 device, device_ld));
+
+    std::vector<float> out(static_cast<size_t>(host_ld * cols), -9.0f);
+    CHECK_CUBLAS(cublasGetMatrix(rows, cols, sizeof(float), device, device_ld,
+                                 out.data(), host_ld));
+    expect_matrix_close(out, host_ld, rows, cols, values, "getMatrix");
+
+    CHECK_CUDA(cudaFree(device));
+}
+
 static void test_vector_64() {
     const long long n = 3;
     std::vector<float> host = {4.0f, -1.0f, 5.0f, -2.0f, 6.0f};
@@ -78,9 +125,41 @@ static void test_vector_64() {
     CHECK_CUDA(cudaFree(device));
 }
 
+static void test_matrix_64() {
+    const long long rows = 2;
+    const long long cols = 2;
+    const long long lda = 3;
+    const long long device_ld = 4;
+    const long long host_ld = 3;
+    const std::vector<float> values = {7.0f, 8.0f, 9.0f, 10.0f};
+    std::vector<float> host(static_cast<size_t>(lda * cols), -7.0f);
+    for (long long col = 0; col < cols; ++col) {
+        for (long long row = 0; row < rows; ++row) {
+            host[static_cast<size_t>(col * lda + row)] =
+                values[static_cast<size_t>(col * rows + row)];
+        }
+    }
+
+    float *device = nullptr;
+    CHECK_CUDA(cudaMalloc(&device, static_cast<size_t>(device_ld * cols) *
+                                       sizeof(float)));
+    CHECK_CUBLAS(cublasSetMatrix_64(rows, cols, sizeof(float), host.data(), lda,
+                                    device, device_ld));
+
+    std::vector<float> out(static_cast<size_t>(host_ld * cols), -9.0f);
+    CHECK_CUBLAS(cublasGetMatrix_64(rows, cols, sizeof(float), device,
+                                    device_ld, out.data(), host_ld));
+    expect_matrix_close(out, static_cast<int>(host_ld), static_cast<int>(rows),
+                        static_cast<int>(cols), values, "getMatrix_64");
+
+    CHECK_CUDA(cudaFree(device));
+}
+
 int main() {
     test_vector_32();
+    test_matrix_32();
     test_vector_64();
+    test_matrix_64();
     std::puts("cuBLAS vector API test passed");
     return 0;
 }

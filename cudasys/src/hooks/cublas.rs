@@ -18583,11 +18583,140 @@ fn cublasSetMatrix(
     rows: c_int,
     cols: c_int,
     elemSize: c_int,
-    #[host(len = rows * cols * elemSize)] A: *const c_void,
+    #[skip] A: *const c_void,
     lda: c_int,
     #[device] B: *mut c_void,
     ldb: c_int,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let rows_usize = if rows > 0 {
+            usize::try_from(rows).unwrap()
+        } else {
+            0
+        };
+        let cols_usize = if cols > 0 {
+            usize::try_from(cols).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let lda_isize = isize::try_from(lda).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        let mut packed = vec![0u8; rows_usize * cols_usize * elem_size];
+        if !packed.is_empty() {
+            assert!(!A.is_null());
+            assert!(lda >= rows);
+            for col in 0..cols_usize {
+                for row in 0..rows_usize {
+                    let src = unsafe {
+                        A.cast::<u8>().offset(
+                            (isize::try_from(col).unwrap() * lda_isize
+                                + isize::try_from(row).unwrap())
+                                * elem_size_isize,
+                        )
+                    };
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            src,
+                            packed
+                                .as_mut_ptr()
+                                .add((col * rows_usize + row) * elem_size),
+                            elem_size,
+                        );
+                    }
+                }
+            }
+        }
+    }
+    'client_extra_send: {
+        send_slice(&packed, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+        let a_arg = if packed.is_empty() {
+            std::ptr::null()
+        } else {
+            packed.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSetMatrix(rows, cols, elemSize, a_arg, rows, B, ldb) };
+    }
+}
+
+#[cuda_hook(proc_id = 1116)]
+fn cublasSetMatrix_64(
+    rows: i64,
+    cols: i64,
+    elemSize: i64,
+    #[skip] A: *const c_void,
+    lda: i64,
+    #[device] B: *mut c_void,
+    ldb: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let rows_usize = if rows > 0 {
+            usize::try_from(rows).unwrap()
+        } else {
+            0
+        };
+        let cols_usize = if cols > 0 {
+            usize::try_from(cols).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let lda_isize = isize::try_from(lda).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        let mut packed = vec![0u8; rows_usize * cols_usize * elem_size];
+        if !packed.is_empty() {
+            assert!(!A.is_null());
+            assert!(lda >= rows);
+            for col in 0..cols_usize {
+                for row in 0..rows_usize {
+                    let src = unsafe {
+                        A.cast::<u8>().offset(
+                            (isize::try_from(col).unwrap() * lda_isize
+                                + isize::try_from(row).unwrap())
+                                * elem_size_isize,
+                        )
+                    };
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            src,
+                            packed
+                                .as_mut_ptr()
+                                .add((col * rows_usize + row) * elem_size),
+                            elem_size,
+                        );
+                    }
+                }
+            }
+        }
+    }
+    'client_extra_send: {
+        send_slice(&packed, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+        let a_arg = if packed.is_empty() {
+            std::ptr::null()
+        } else {
+            packed.as_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasSetMatrix_64(rows, cols, elemSize, a_arg, rows, B, ldb) };
+    }
+}
 
 #[cuda_hook(proc_id = 1115, async_api)]
 fn cublasSetMatrixAsync(
@@ -18608,9 +18737,180 @@ fn cublasGetMatrix(
     elemSize: c_int,
     #[device] A: *const c_void,
     lda: c_int,
-    #[host(output, len = rows * cols * elemSize)] B: *mut c_void,
+    #[skip] B: *mut c_void,
     ldb: c_int,
-) -> cublasStatus_t;
+) -> cublasStatus_t {
+    'client_before_send: {
+        let rows_usize = if rows > 0 {
+            usize::try_from(rows).unwrap()
+        } else {
+            0
+        };
+        let cols_usize = if cols > 0 {
+            usize::try_from(cols).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let ldb_isize = isize::try_from(ldb).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        if rows_usize * cols_usize * elem_size > 0 {
+            assert!(!B.is_null());
+            assert!(ldb >= rows);
+        }
+    }
+    'server_extra_recv: {
+        let rows_usize = if rows > 0 {
+            usize::try_from(rows).unwrap()
+        } else {
+            0
+        };
+        let cols_usize = if cols > 0 {
+            usize::try_from(cols).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let mut packed = vec![0u8; rows_usize * cols_usize * elem_size];
+        let b_arg = if packed.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            packed.as_mut_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasGetMatrix(rows, cols, elemSize, A, lda, b_arg, rows) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            send_slice(&packed, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert_eq!(packed.len(), rows_usize * cols_usize * elem_size);
+            for col in 0..cols_usize {
+                for row in 0..rows_usize {
+                    let dst = unsafe {
+                        B.cast::<u8>().offset(
+                            (isize::try_from(col).unwrap() * ldb_isize
+                                + isize::try_from(row).unwrap())
+                                * elem_size_isize,
+                        )
+                    };
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            packed.as_ptr().add((col * rows_usize + row) * elem_size),
+                            dst,
+                            elem_size,
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 1117)]
+fn cublasGetMatrix_64(
+    rows: i64,
+    cols: i64,
+    elemSize: i64,
+    #[device] A: *const c_void,
+    lda: i64,
+    #[skip] B: *mut c_void,
+    ldb: i64,
+) -> cublasStatus_t {
+    'client_before_send: {
+        let rows_usize = if rows > 0 {
+            usize::try_from(rows).unwrap()
+        } else {
+            0
+        };
+        let cols_usize = if cols > 0 {
+            usize::try_from(cols).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let ldb_isize = isize::try_from(ldb).unwrap();
+        let elem_size_isize = isize::try_from(elemSize).unwrap();
+        if rows_usize * cols_usize * elem_size > 0 {
+            assert!(!B.is_null());
+            assert!(ldb >= rows);
+        }
+    }
+    'server_extra_recv: {
+        let rows_usize = if rows > 0 {
+            usize::try_from(rows).unwrap()
+        } else {
+            0
+        };
+        let cols_usize = if cols > 0 {
+            usize::try_from(cols).unwrap()
+        } else {
+            0
+        };
+        let elem_size = if elemSize > 0 {
+            usize::try_from(elemSize).unwrap()
+        } else {
+            0
+        };
+        let mut packed = vec![0u8; rows_usize * cols_usize * elem_size];
+        let b_arg = if packed.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            packed.as_mut_ptr().cast::<c_void>()
+        };
+    }
+    'server_execution: {
+        let result = unsafe { cublasGetMatrix_64(rows, cols, elemSize, A, lda, b_arg, rows) };
+    }
+    'server_after_send: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            send_slice(&packed, channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if result == cublasStatus_t::CUBLAS_STATUS_SUCCESS {
+            let packed = recv_slice::<u8, _>(channel_receiver).unwrap();
+            assert_eq!(packed.len(), rows_usize * cols_usize * elem_size);
+            for col in 0..cols_usize {
+                for row in 0..rows_usize {
+                    let dst = unsafe {
+                        B.cast::<u8>().offset(
+                            (isize::try_from(col).unwrap() * ldb_isize
+                                + isize::try_from(row).unwrap())
+                                * elem_size_isize,
+                        )
+                    };
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            packed.as_ptr().add((col * rows_usize + row) * elem_size),
+                            dst,
+                            elem_size,
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[cuda_hook(proc_id = 1126)]
 fn cublasScopy_v2(
