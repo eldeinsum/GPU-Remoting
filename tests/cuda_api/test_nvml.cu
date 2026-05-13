@@ -629,6 +629,146 @@ int main()
         return 1;
     }
 
+    nvmlSystemDriverBranchInfo_t driver_branch = {};
+    driver_branch.version = nvmlSystemDriverBranchInfo_v1;
+    result = nvmlSystemGetDriverBranch(&driver_branch, sizeof(driver_branch));
+    if (check_optional(result, "nvmlSystemGetDriverBranch"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(driver_branch.branch, "nvmlSystemGetDriverBranch"))
+    {
+        return 1;
+    }
+
+    nvmlC2cModeInfo_v1_t c2c_mode = {};
+    result = nvmlDeviceGetC2cModeInfoV(device, &c2c_mode);
+    if (check_optional(result, "nvmlDeviceGetC2cModeInfoV"))
+    {
+        return 1;
+    }
+
+    nvmlDeviceAddressingMode_t addressing_mode = {};
+    addressing_mode.version = nvmlDeviceAddressingMode_v1;
+    result = nvmlDeviceGetAddressingMode(device, &addressing_mode);
+    if (check_optional(result, "nvmlDeviceGetAddressingMode"))
+    {
+        return 1;
+    }
+
+    nvmlRepairStatus_t repair_status = {};
+    repair_status.version = nvmlRepairStatus_v1;
+    result = nvmlDeviceGetRepairStatus(device, &repair_status);
+    if (check_optional(result, "nvmlDeviceGetRepairStatus"))
+    {
+        return 1;
+    }
+
+    nvmlPciInfoExt_t pci_ext = {};
+    pci_ext.version = nvmlPciInfoExt_v1;
+    result = nvmlDeviceGetPciInfoExt(device, &pci_ext);
+    if (check_optional(result, "nvmlDeviceGetPciInfoExt"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && check_nonempty(pci_ext.busId, "nvmlDeviceGetPciInfoExt"))
+    {
+        return 1;
+    }
+
+    nvmlFanSpeedInfo_t fan_speed_rpm = {};
+    fan_speed_rpm.version = nvmlFanSpeedInfo_v1;
+    fan_speed_rpm.fan = 0;
+    result = nvmlDeviceGetFanSpeedRPM(device, &fan_speed_rpm);
+    if (check_optional(result, "nvmlDeviceGetFanSpeedRPM"))
+    {
+        return 1;
+    }
+
+    nvmlCoolerInfo_t cooler_info = {};
+    cooler_info.version = nvmlCoolerInfo_v1;
+    cooler_info.index = 0;
+    result = nvmlDeviceGetCoolerInfo(device, &cooler_info);
+    if (check_optional(result, "nvmlDeviceGetCoolerInfo"))
+    {
+        return 1;
+    }
+
+    nvmlTemperature_t temperature_v = {};
+    temperature_v.version = nvmlTemperature_v1;
+    temperature_v.sensorType = NVML_TEMPERATURE_GPU;
+    result = nvmlDeviceGetTemperatureV(device, &temperature_v);
+    if (check_optional(result, "nvmlDeviceGetTemperatureV"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS && temperature_v.temperature <= 0)
+    {
+        std::cout << "Unexpected temperature: " << temperature_v.temperature
+                  << std::endl;
+        return 1;
+    }
+
+    nvmlMarginTemperature_t margin_temperature = {};
+    margin_temperature.version = nvmlMarginTemperature_v1;
+    result = nvmlDeviceGetMarginTemperature(device, &margin_temperature);
+    if (check_optional(result, "nvmlDeviceGetMarginTemperature"))
+    {
+        return 1;
+    }
+
+    nvmlClockOffset_t clock_offsets = {};
+    clock_offsets.version = nvmlClockOffset_v1;
+    clock_offsets.type = NVML_CLOCK_GRAPHICS;
+    clock_offsets.pstate = NVML_PSTATE_0;
+    result = nvmlDeviceGetClockOffsets(device, &clock_offsets);
+    if (check_optional(result, "nvmlDeviceGetClockOffsets"))
+    {
+        return 1;
+    }
+
+    nvmlDevicePerfModes_t performance_modes = {};
+    performance_modes.version = nvmlDevicePerfModes_v1;
+    result = nvmlDeviceGetPerformanceModes(device, &performance_modes);
+    if (check_optional(result, "nvmlDeviceGetPerformanceModes"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(performance_modes.str, "nvmlDeviceGetPerformanceModes"))
+    {
+        return 1;
+    }
+
+    nvmlDeviceCurrentClockFreqs_t current_clock_freqs = {};
+    current_clock_freqs.version = nvmlDeviceCurrentClockFreqs_v1;
+    result = nvmlDeviceGetCurrentClockFreqs(device, &current_clock_freqs);
+    if (check_optional(result, "nvmlDeviceGetCurrentClockFreqs"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS &&
+        check_nonempty(current_clock_freqs.str, "nvmlDeviceGetCurrentClockFreqs"))
+    {
+        return 1;
+    }
+
+    nvmlDevicePowerMizerModes_v1_t power_mizer = {};
+    result = nvmlDeviceGetPowerMizerMode_v1(device, &power_mizer);
+    if (check_optional(result, "nvmlDeviceGetPowerMizerMode_v1"))
+    {
+        return 1;
+    }
+
+    nvmlGpuFabricInfoV_t fabric_info_v = {};
+    fabric_info_v.version = nvmlGpuFabricInfo_v3;
+    result = nvmlDeviceGetGpuFabricInfoV(device, &fabric_info_v);
+    if (check_optional(result, "nvmlDeviceGetGpuFabricInfoV"))
+    {
+        return 1;
+    }
+
     result = nvmlDeviceGetPowerManagementLimitConstraints(device, &min_limit, &max_limit);
     if (check_optional(result, "nvmlDeviceGetPowerManagementLimitConstraints"))
     {

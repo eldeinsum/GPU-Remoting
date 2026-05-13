@@ -658,3 +658,262 @@ fn nvmlDeviceGetRowRemapperHistogram(
     device: nvmlDevice_t,
     values: *mut nvmlRowRemapperHistogramValues_t,
 ) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991119)]
+fn nvmlSystemGetDriverBranch(
+    branchInfo: *mut nvmlSystemDriverBranchInfo_t,
+    length: c_uint,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!branchInfo.is_null());
+        unsafe { std::ptr::read_unaligned(branchInfo) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut branchInfo_in = std::mem::MaybeUninit::<nvmlSystemDriverBranchInfo_t>::uninit();
+        branchInfo_in.recv(channel_receiver).unwrap();
+        let branchInfo_in = unsafe { branchInfo_in.assume_init() };
+    }
+    'server_before_execution: {
+        branchInfo.write(branchInfo_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991120)]
+fn nvmlDeviceGetC2cModeInfoV(
+    device: nvmlDevice_t,
+    c2cModeInfo: *mut nvmlC2cModeInfo_v1_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991121)]
+fn nvmlDeviceGetAddressingMode(
+    device: nvmlDevice_t,
+    mode: *mut nvmlDeviceAddressingMode_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!mode.is_null());
+        unsafe { std::ptr::read_unaligned(mode) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut mode_in = std::mem::MaybeUninit::<nvmlDeviceAddressingMode_t>::uninit();
+        mode_in.recv(channel_receiver).unwrap();
+        let mode_in = unsafe { mode_in.assume_init() };
+    }
+    'server_before_execution: {
+        mode.write(mode_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991122)]
+fn nvmlDeviceGetRepairStatus(
+    device: nvmlDevice_t,
+    repairStatus: *mut nvmlRepairStatus_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!repairStatus.is_null());
+        unsafe { std::ptr::read_unaligned(repairStatus) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut repairStatus_in = std::mem::MaybeUninit::<nvmlRepairStatus_t>::uninit();
+        repairStatus_in.recv(channel_receiver).unwrap();
+        let repairStatus_in = unsafe { repairStatus_in.assume_init() };
+    }
+    'server_before_execution: {
+        repairStatus.write(repairStatus_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991123)]
+fn nvmlDeviceGetPciInfoExt(device: nvmlDevice_t, pci: *mut nvmlPciInfoExt_t) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!pci.is_null());
+        unsafe { std::ptr::read_unaligned(pci) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut pci_in = std::mem::MaybeUninit::<nvmlPciInfoExt_t>::uninit();
+        pci_in.recv(channel_receiver).unwrap();
+        let pci_in = unsafe { pci_in.assume_init() };
+    }
+    'server_before_execution: {
+        pci.write(pci_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991124)]
+fn nvmlDeviceGetFanSpeedRPM(
+    device: nvmlDevice_t,
+    fanSpeed: *mut nvmlFanSpeedInfo_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!fanSpeed.is_null());
+        unsafe { std::ptr::read_unaligned(fanSpeed) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut fanSpeed_in = std::mem::MaybeUninit::<nvmlFanSpeedInfo_t>::uninit();
+        fanSpeed_in.recv(channel_receiver).unwrap();
+        let fanSpeed_in = unsafe { fanSpeed_in.assume_init() };
+    }
+    'server_before_execution: {
+        fanSpeed.write(fanSpeed_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991125)]
+fn nvmlDeviceGetCoolerInfo(
+    device: nvmlDevice_t,
+    coolerInfo: *mut nvmlCoolerInfo_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!coolerInfo.is_null());
+        unsafe { std::ptr::read_unaligned(coolerInfo) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut coolerInfo_in = std::mem::MaybeUninit::<nvmlCoolerInfo_t>::uninit();
+        coolerInfo_in.recv(channel_receiver).unwrap();
+        let coolerInfo_in = unsafe { coolerInfo_in.assume_init() };
+    }
+    'server_before_execution: {
+        coolerInfo.write(coolerInfo_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991126)]
+fn nvmlDeviceGetTemperatureV(
+    device: nvmlDevice_t,
+    temperature: *mut nvmlTemperature_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!temperature.is_null());
+        unsafe { std::ptr::read_unaligned(temperature) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut temperature_in = std::mem::MaybeUninit::<nvmlTemperature_t>::uninit();
+        temperature_in.recv(channel_receiver).unwrap();
+        let temperature_in = unsafe { temperature_in.assume_init() };
+    }
+    'server_before_execution: {
+        temperature.write(temperature_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991127)]
+fn nvmlDeviceGetMarginTemperature(
+    device: nvmlDevice_t,
+    marginTempInfo: *mut nvmlMarginTemperature_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!marginTempInfo.is_null());
+        unsafe { std::ptr::read_unaligned(marginTempInfo) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut marginTempInfo_in = std::mem::MaybeUninit::<nvmlMarginTemperature_t>::uninit();
+        marginTempInfo_in.recv(channel_receiver).unwrap();
+        let marginTempInfo_in = unsafe { marginTempInfo_in.assume_init() };
+    }
+    'server_before_execution: {
+        marginTempInfo.write(marginTempInfo_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991128)]
+fn nvmlDeviceGetClockOffsets(device: nvmlDevice_t, info: *mut nvmlClockOffset_t) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!info.is_null());
+        unsafe { std::ptr::read_unaligned(info) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut info_in = std::mem::MaybeUninit::<nvmlClockOffset_t>::uninit();
+        info_in.recv(channel_receiver).unwrap();
+        let info_in = unsafe { info_in.assume_init() };
+    }
+    'server_before_execution: {
+        info.write(info_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991129)]
+fn nvmlDeviceGetPerformanceModes(
+    device: nvmlDevice_t,
+    perfModes: *mut nvmlDevicePerfModes_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!perfModes.is_null());
+        unsafe { std::ptr::read_unaligned(perfModes) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut perfModes_in = std::mem::MaybeUninit::<nvmlDevicePerfModes_t>::uninit();
+        perfModes_in.recv(channel_receiver).unwrap();
+        let perfModes_in = unsafe { perfModes_in.assume_init() };
+    }
+    'server_before_execution: {
+        perfModes.write(perfModes_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991130)]
+fn nvmlDeviceGetCurrentClockFreqs(
+    device: nvmlDevice_t,
+    currentClockFreqs: *mut nvmlDeviceCurrentClockFreqs_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!currentClockFreqs.is_null());
+        unsafe { std::ptr::read_unaligned(currentClockFreqs) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut currentClockFreqs_in =
+            std::mem::MaybeUninit::<nvmlDeviceCurrentClockFreqs_t>::uninit();
+        currentClockFreqs_in.recv(channel_receiver).unwrap();
+        let currentClockFreqs_in = unsafe { currentClockFreqs_in.assume_init() };
+    }
+    'server_before_execution: {
+        currentClockFreqs.write(currentClockFreqs_in);
+    }
+}
+
+#[cuda_hook(proc_id = 991131)]
+fn nvmlDeviceGetPowerMizerMode_v1(
+    device: nvmlDevice_t,
+    powerMizerMode: *mut nvmlDevicePowerMizerModes_v1_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991132)]
+fn nvmlDeviceGetGpuFabricInfoV(
+    device: nvmlDevice_t,
+    gpuFabricInfo: *mut nvmlGpuFabricInfoV_t,
+) -> nvmlReturn_t {
+    'client_extra_send: {
+        assert!(!gpuFabricInfo.is_null());
+        unsafe { std::ptr::read_unaligned(gpuFabricInfo) }
+            .send(channel_sender)
+            .unwrap();
+    }
+    'server_extra_recv: {
+        let mut gpuFabricInfo_in = std::mem::MaybeUninit::<nvmlGpuFabricInfoV_t>::uninit();
+        gpuFabricInfo_in.recv(channel_receiver).unwrap();
+        let gpuFabricInfo_in = unsafe { gpuFabricInfo_in.assume_init() };
+    }
+    'server_before_execution: {
+        gpuFabricInfo.write(gpuFabricInfo_in);
+    }
+}
