@@ -231,6 +231,44 @@ static void run_complex_rotg_case(cublasHandle_t handle, VecT a0, VecT b0,
 }
 
 template <typename T>
+static void run_real_rotg_ex_case(cublasHandle_t handle, T a0, T b0,
+                                  cudaDataType_t execution_type,
+                                  const char *label) {
+    const cudaDataType_t value_type = cuda_type<T>();
+    T host_a = a0;
+    T host_b = b0;
+    T host_c = make_value<T>(0);
+    T host_s = make_value<T>(0);
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUBLAS(cublasRotgEx(handle, &host_a, &host_b, value_type, &host_c,
+                              &host_s, value_type, execution_type));
+
+    T *device_a = to_device_scalar(a0);
+    T *device_b = to_device_scalar(b0);
+    T *device_c = to_device_scalar(make_value<T>(0));
+    T *device_s = to_device_scalar(make_value<T>(0));
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+    CHECK_CUBLAS(cublasRotgEx(handle, device_a, device_b, value_type, device_c,
+                              device_s, value_type, execution_type));
+
+    expect_close(from_device_scalar(device_a), host_a, label);
+    expect_close(from_device_scalar(device_b), host_b, label);
+    expect_close(from_device_scalar(device_c), host_c, label);
+    expect_close(from_device_scalar(device_s), host_s, label);
+    if (std::fabs(scalar_value(host_c) * scalar_value(b0) -
+                  scalar_value(host_s) * scalar_value(a0)) > 5e-2) {
+        std::fprintf(stderr, "%s rotation invariant mismatch\n", label);
+        std::exit(1);
+    }
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_s));
+    CHECK_CUDA(cudaFree(device_c));
+    CHECK_CUDA(cudaFree(device_b));
+    CHECK_CUDA(cudaFree(device_a));
+}
+
+template <typename T>
 static void rotm_expected(const std::vector<T> &x, const std::vector<T> &y,
                           const std::array<T, 5> &param, std::vector<T> *out_x,
                           std::vector<T> *out_y) {
@@ -515,6 +553,48 @@ static void run_rotmg_case(cublasHandle_t handle, T d10, T d20, T x10, T y10,
     CHECK_CUDA(cudaFree(device_d1));
 }
 
+template <typename T>
+static void run_rotmg_ex_case(cublasHandle_t handle, T d10, T d20, T x10,
+                              T y10, cudaDataType_t execution_type,
+                              const char *label) {
+    const cudaDataType_t value_type = cuda_type<T>();
+    T host_d1 = d10;
+    T host_d2 = d20;
+    T host_x1 = x10;
+    T host_y1 = y10;
+    std::array<T, 5> host_param{};
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUBLAS(cublasRotmgEx(handle, &host_d1, value_type, &host_d2,
+                               value_type, &host_x1, value_type, &host_y1,
+                               value_type, host_param.data(), value_type,
+                               execution_type));
+
+    T *device_d1 = to_device_scalar(d10);
+    T *device_d2 = to_device_scalar(d20);
+    T *device_x1 = to_device_scalar(x10);
+    T *device_y1 = to_device_scalar(y10);
+    std::vector<T> zero_param(5, make_value<T>(0));
+    T *device_param = to_device_vector(zero_param);
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
+    CHECK_CUBLAS(cublasRotmgEx(handle, device_d1, value_type, device_d2,
+                               value_type, device_x1, value_type, device_y1,
+                               value_type, device_param, value_type,
+                               execution_type));
+
+    expect_close(from_device_scalar(device_d1), host_d1, label);
+    expect_close(from_device_scalar(device_d2), host_d2, label);
+    expect_close(from_device_scalar(device_x1), host_x1, label);
+    std::vector<T> host_param_vec(host_param.begin(), host_param.end());
+    expect_vector(from_device_vector(device_param, 5), host_param_vec, label);
+
+    CHECK_CUBLAS(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST));
+    CHECK_CUDA(cudaFree(device_param));
+    CHECK_CUDA(cudaFree(device_y1));
+    CHECK_CUDA(cudaFree(device_x1));
+    CHECK_CUDA(cudaFree(device_d2));
+    CHECK_CUDA(cudaFree(device_d1));
+}
+
 int main() {
     cublasHandle_t handle = nullptr;
     CHECK_CUBLAS(cublasCreate(&handle));
@@ -529,6 +609,16 @@ int main() {
     run_complex_rotg_case<cuDoubleComplex, double>(
         handle, cuDoubleComplex{2.0, -1.0}, cuDoubleComplex{-3.0, 4.0},
         cublasZrotg_v2, "cublasZrotg_v2");
+    run_real_rotg_ex_case<float>(handle, 3.0f, 4.0f, CUDA_R_32F,
+                                 "cublasRotgEx float");
+    run_real_rotg_ex_case<double>(handle, 6.0, -8.0, CUDA_R_64F,
+                                  "cublasRotgEx double");
+    run_real_rotg_ex_case<__half>(handle, make_value<__half>(3),
+                                  make_value<__half>(4), CUDA_R_32F,
+                                  "cublasRotgEx half");
+    run_real_rotg_ex_case<__nv_bfloat16>(
+        handle, make_value<__nv_bfloat16>(3), make_value<__nv_bfloat16>(4),
+        CUDA_R_32F, "cublasRotgEx bfloat16");
 
     run_rotm_case<float>(handle, cublasSrotm_v2, cublasSrotm_v2_64,
                          "cublasSrotm_v2");
@@ -544,6 +634,18 @@ int main() {
                           "cublasSrotmg_v2");
     run_rotmg_case<double>(handle, 2.5, 1.5, -3.0, 4.0, cublasDrotmg_v2,
                            "cublasDrotmg_v2");
+    run_rotmg_ex_case<float>(handle, 2.0f, 3.0f, 4.0f, -1.5f, CUDA_R_32F,
+                             "cublasRotmgEx float");
+    run_rotmg_ex_case<double>(handle, 2.5, 1.5, -3.0, 4.0, CUDA_R_64F,
+                              "cublasRotmgEx double");
+    run_rotmg_ex_case<__half>(handle, make_value<__half>(2),
+                              make_value<__half>(3), make_value<__half>(4),
+                              make_value<__half>(-1.5), CUDA_R_32F,
+                              "cublasRotmgEx half");
+    run_rotmg_ex_case<__nv_bfloat16>(
+        handle, make_value<__nv_bfloat16>(2), make_value<__nv_bfloat16>(3),
+        make_value<__nv_bfloat16>(4), make_value<__nv_bfloat16>(-1.5),
+        CUDA_R_32F, "cublasRotmgEx bfloat16");
 
     CHECK_CUBLAS(cublasDestroy(handle));
     std::puts("cuBLAS Level-1 rotm/rotg test passed");
