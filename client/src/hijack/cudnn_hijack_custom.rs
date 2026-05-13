@@ -1,12 +1,108 @@
+use cudasys::types::cudart::cudaError_t;
 use cudasys::types::cudnn::*;
+use network::{CommChannelInner, Transportable};
+use std::collections::BTreeMap;
+use std::ffi::CString;
 use std::os::raw::*;
+use std::sync::{Mutex, OnceLock};
+
+use crate::{ClientThread, CLIENT_THREAD};
+
+fn cached_status_text(status: cudnnStatus_t) -> *const c_char {
+    static STATUS_TEXTS: OnceLock<Mutex<BTreeMap<c_int, CString>>> = OnceLock::new();
+    let code = status as c_int;
+    let mut texts = STATUS_TEXTS
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .unwrap();
+    let text = texts
+        .entry(code)
+        .or_insert_with(|| CString::new(format!("{status:?} ({code})")).unwrap());
+    text.as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn cudnnGetVersion() -> usize {
+    let mut major = 0;
+    let mut minor = 0;
+    let mut patch = 0;
+    let result =
+        super::cudnn_hijack::cudnnGetProperty(libraryPropertyType::MAJOR_VERSION, &mut major);
+    if result != cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+        return 0;
+    }
+    let result =
+        super::cudnn_hijack::cudnnGetProperty(libraryPropertyType::MINOR_VERSION, &mut minor);
+    if result != cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+        return 0;
+    }
+    let result =
+        super::cudnn_hijack::cudnnGetProperty(libraryPropertyType::PATCH_LEVEL, &mut patch);
+    if result != cudnnStatus_t::CUDNN_STATUS_SUCCESS {
+        return 0;
+    }
+
+    (major as usize) * 10000 + (minor as usize) * 100 + patch as usize
+}
+
+#[no_mangle]
+pub extern "C" fn cudnnGetMaxDeviceVersion() -> usize {
+    CLIENT_THREAD.with_borrow_mut(|client| {
+        client.ensure_current_process();
+        log::debug!(target: "cudnnGetMaxDeviceVersion", "[#{}]", client.id);
+        let ClientThread {
+            channel_sender,
+            channel_receiver,
+            ..
+        } = client;
+
+        1801i32
+            .send(channel_sender)
+            .expect("failed to send cudnnGetMaxDeviceVersion proc_id");
+        channel_sender
+            .flush_out()
+            .expect("failed to flush cudnnGetMaxDeviceVersion request");
+
+        let mut version = 0usize;
+        version
+            .recv(channel_receiver)
+            .expect("failed to receive cudnnGetMaxDeviceVersion result");
+        channel_receiver
+            .recv_ts()
+            .expect("failed to receive cudnnGetMaxDeviceVersion timestamp");
+        version
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn cudnnGetCudartVersion() -> usize {
+    let mut version = 0;
+    let result = super::cudart_hijack::cudaRuntimeGetVersion(&mut version);
+    if result == cudaError_t::cudaSuccess {
+        version as usize
+    } else {
+        0
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn cudnnGetErrorString(error_status: cudnnStatus_t) -> *const c_char {
     log::debug!(target: "cudnnGetErrorString", "{error_status:?}");
-    let result = format!("{error_status:?} ({})", error_status as u32);
-    let c_str = std::ffi::CString::new(result).unwrap();
-    c_str.into_raw()
+    cached_status_text(error_status)
+}
+
+#[no_mangle]
+pub extern "C" fn cudnnGetLastErrorString(message: *mut c_char, max_size: usize) {
+    if message.is_null() || max_size == 0 {
+        return;
+    }
+
+    let text = b"no error";
+    let len = text.len().min(max_size.saturating_sub(1));
+    unsafe {
+        std::ptr::copy_nonoverlapping(text.as_ptr().cast::<c_char>(), message, len);
+        *message.add(len) = 0;
+    }
 }
 
 #[no_mangle]

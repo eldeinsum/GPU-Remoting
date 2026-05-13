@@ -16,6 +16,7 @@ mod cuda_exe_utils;
 mod cudart_exe;
 mod cudart_exe_custom;
 mod cudnn_exe;
+mod cudnn_exe_custom;
 mod nccl_exe;
 mod nccl_exe_custom;
 mod nvml_exe;
