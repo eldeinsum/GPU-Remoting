@@ -3672,3 +3672,216 @@ fn nvmlDeviceGetPgpuMetadataString(
         }
     }
 }
+
+#[cuda_hook(proc_id = 991225)]
+fn nvmlGpmMetricsGet(#[skip] metricsGet: *mut nvmlGpmMetricsGet_t) -> nvmlReturn_t {
+    'client_before_send: {
+        let metricsGet_is_null = metricsGet.is_null();
+        let (metrics_version_in, metrics_count_in, sample1_in, sample2_in, metric_ids_in) =
+            if metricsGet_is_null {
+                (
+                    0u32,
+                    0u32,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    Vec::<c_uint>::new(),
+                )
+            } else {
+                let metrics_get_in = unsafe { std::ptr::read_unaligned(metricsGet) };
+                let metric_count = std::cmp::min(
+                    metrics_get_in.numMetrics as usize,
+                    metrics_get_in.metrics.len(),
+                );
+                let metric_ids = metrics_get_in.metrics[..metric_count]
+                    .iter()
+                    .map(|metric| metric.metricId)
+                    .collect::<Vec<_>>();
+                (
+                    metrics_get_in.version,
+                    metrics_get_in.numMetrics,
+                    metrics_get_in.sample1,
+                    metrics_get_in.sample2,
+                    metric_ids,
+                )
+            };
+    }
+    'client_extra_send: {
+        metricsGet_is_null.send(channel_sender).unwrap();
+        metrics_version_in.send(channel_sender).unwrap();
+        metrics_count_in.send(channel_sender).unwrap();
+        sample1_in.send(channel_sender).unwrap();
+        sample2_in.send(channel_sender).unwrap();
+        send_slice(&metric_ids_in, channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut metricsGet_is_null = false;
+        metricsGet_is_null.recv(channel_receiver).unwrap();
+        let mut metrics_version_in = 0u32;
+        metrics_version_in.recv(channel_receiver).unwrap();
+        let mut metrics_count_in = 0u32;
+        metrics_count_in.recv(channel_receiver).unwrap();
+        let mut sample1_in: nvmlGpmSample_t = std::ptr::null_mut();
+        sample1_in.recv(channel_receiver).unwrap();
+        let mut sample2_in: nvmlGpmSample_t = std::ptr::null_mut();
+        sample2_in.recv(channel_receiver).unwrap();
+        let metric_ids_in = recv_slice::<c_uint, _>(channel_receiver).unwrap();
+    }
+    'server_execution: {
+        let mut metrics_storage: nvmlGpmMetricsGet_t = unsafe { std::mem::zeroed() };
+        let metrics_ptr = if metricsGet_is_null {
+            std::ptr::null_mut()
+        } else {
+            metrics_storage.version = metrics_version_in;
+            metrics_storage.numMetrics =
+                std::cmp::min(metrics_count_in as usize, metrics_storage.metrics.len()) as c_uint;
+            metrics_storage.sample1 = sample1_in;
+            metrics_storage.sample2 = sample2_in;
+            for (index, metric_id) in metric_ids_in.iter().enumerate() {
+                metrics_storage.metrics[index].metricId = *metric_id;
+            }
+            &mut metrics_storage
+        };
+        let result = unsafe { nvmlGpmMetricsGet(metrics_ptr) };
+    }
+    'server_after_send: {
+        if !metricsGet_is_null {
+            metrics_storage.version.send(channel_sender).unwrap();
+            metrics_storage.numMetrics.send(channel_sender).unwrap();
+            let metric_count = std::cmp::min(
+                metrics_storage.numMetrics as usize,
+                metrics_storage.metrics.len(),
+            );
+            for metric in metrics_storage.metrics[..metric_count].iter() {
+                metric.metricId.send(channel_sender).unwrap();
+                metric.nvmlReturn.send(channel_sender).unwrap();
+                metric.value.send(channel_sender).unwrap();
+                for info_ptr in [
+                    metric.metricInfo.shortName,
+                    metric.metricInfo.longName,
+                    metric.metricInfo.unit,
+                ] {
+                    let info_bytes = if info_ptr.is_null() {
+                        &[][..]
+                    } else {
+                        unsafe { std::ffi::CStr::from_ptr(info_ptr) }.to_bytes_with_nul()
+                    };
+                    send_slice(info_bytes, channel_sender).unwrap();
+                }
+            }
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !metricsGet_is_null {
+            let mut metrics_version_out = 0u32;
+            metrics_version_out.recv(channel_receiver).unwrap();
+            let mut metrics_count_out = 0u32;
+            metrics_count_out.recv(channel_receiver).unwrap();
+            let metrics_get_out = unsafe { &mut *metricsGet };
+            metrics_get_out.version = metrics_version_out;
+            metrics_get_out.numMetrics = metrics_count_out;
+            let metric_count =
+                std::cmp::min(metrics_count_out as usize, metrics_get_out.metrics.len());
+            for metric in metrics_get_out.metrics[..metric_count].iter_mut() {
+                metric.metricId.recv(channel_receiver).unwrap();
+                metric.nvmlReturn.recv(channel_receiver).unwrap();
+                metric.value.recv(channel_receiver).unwrap();
+                let short_name = recv_slice::<u8, _>(channel_receiver).unwrap();
+                let long_name = recv_slice::<u8, _>(channel_receiver).unwrap();
+                let unit = recv_slice::<u8, _>(channel_receiver).unwrap();
+                metric.metricInfo.shortName = if short_name.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    std::ffi::CString::from_vec_with_nul(short_name.into_vec())
+                        .unwrap()
+                        .into_raw()
+                };
+                metric.metricInfo.longName = if long_name.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    std::ffi::CString::from_vec_with_nul(long_name.into_vec())
+                        .unwrap()
+                        .into_raw()
+                };
+                metric.metricInfo.unit = if unit.is_empty() {
+                    std::ptr::null_mut()
+                } else {
+                    std::ffi::CString::from_vec_with_nul(unit.into_vec())
+                        .unwrap()
+                        .into_raw()
+                };
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991226)]
+fn nvmlGpmSampleFree(gpmSample: nvmlGpmSample_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991227)]
+fn nvmlGpmSampleAlloc(gpmSample: *mut nvmlGpmSample_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991228)]
+fn nvmlGpmSampleGet(device: nvmlDevice_t, gpmSample: nvmlGpmSample_t) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991229)]
+fn nvmlGpmMigSampleGet(
+    device: nvmlDevice_t,
+    gpuInstanceId: c_uint,
+    gpmSample: nvmlGpmSample_t,
+) -> nvmlReturn_t;
+
+#[cuda_hook(proc_id = 991230)]
+fn nvmlGpmQueryDeviceSupport(
+    device: nvmlDevice_t,
+    #[skip] gpmSupport: *mut nvmlGpmSupport_t,
+) -> nvmlReturn_t {
+    'client_before_send: {
+        let gpmSupport_is_null = gpmSupport.is_null();
+        let gpmSupport_in = if gpmSupport_is_null {
+            nvmlGpmSupport_t {
+                version: 0,
+                isSupportedDevice: 0,
+            }
+        } else {
+            unsafe { std::ptr::read_unaligned(gpmSupport) }
+        };
+    }
+    'client_extra_send: {
+        gpmSupport_is_null.send(channel_sender).unwrap();
+        gpmSupport_in.send(channel_sender).unwrap();
+    }
+    'server_extra_recv: {
+        let mut gpmSupport_is_null = false;
+        gpmSupport_is_null.recv(channel_receiver).unwrap();
+        let mut gpmSupport_storage = std::mem::MaybeUninit::<nvmlGpmSupport_t>::uninit();
+        gpmSupport_storage.recv(channel_receiver).unwrap();
+        let mut gpmSupport_storage = unsafe { gpmSupport_storage.assume_init() };
+    }
+    'server_execution: {
+        let gpmSupport_ptr = if gpmSupport_is_null {
+            std::ptr::null_mut()
+        } else {
+            &mut gpmSupport_storage
+        };
+        let result = unsafe { nvmlGpmQueryDeviceSupport(device, gpmSupport_ptr) };
+    }
+    'server_after_send: {
+        if !gpmSupport_is_null {
+            gpmSupport_storage.send(channel_sender).unwrap();
+            channel_sender.flush_out().unwrap();
+        }
+    }
+    'client_after_recv: {
+        if !gpmSupport_is_null {
+            let mut gpmSupport_out = std::mem::MaybeUninit::<nvmlGpmSupport_t>::uninit();
+            gpmSupport_out.recv(channel_receiver).unwrap();
+            unsafe {
+                std::ptr::write(gpmSupport, gpmSupport_out.assume_init());
+            }
+        }
+    }
+}
+
+#[cuda_hook(proc_id = 991231)]
+fn nvmlGpmQueryIfStreamingEnabled(device: nvmlDevice_t, state: *mut c_uint) -> nvmlReturn_t;

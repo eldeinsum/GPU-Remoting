@@ -699,6 +699,8 @@ int main()
     nvmlVgpuSchedulerLogInfo_v2_t vgpu_scheduler_log_v2 = {};
     nvmlVgpuVersion_t supported_vgpu_version = {};
     nvmlVgpuVersion_t current_vgpu_version = {};
+    nvmlGpmSupport_t gpm_support = {};
+    gpm_support.version = NVML_GPM_SUPPORT_VERSION;
     nvmlReturn_t more_optional_results[] = {
         nvmlDeviceGetModuleId(device, &value),
         nvmlDeviceGetNumaNodeId(device, &value),
@@ -792,6 +794,7 @@ int main()
         nvmlDeviceGetVgpuSchedulerState_v2(device, &vgpu_scheduler_state_v2),
         nvmlDeviceGetVgpuSchedulerLog_v2(device, &vgpu_scheduler_log_v2),
         nvmlGetVgpuVersion(&supported_vgpu_version, &current_vgpu_version),
+        nvmlGpmQueryDeviceSupport(device, &gpm_support),
     };
     const char *more_optional_labels[] = {
         "nvmlDeviceGetModuleId",
@@ -873,6 +876,7 @@ int main()
         "nvmlDeviceGetVgpuSchedulerState_v2",
         "nvmlDeviceGetVgpuSchedulerLog_v2",
         "nvmlGetVgpuVersion",
+        "nvmlGpmQueryDeviceSupport",
     };
     static_assert(sizeof(more_optional_results) / sizeof(more_optional_results[0]) ==
                   sizeof(more_optional_labels) / sizeof(more_optional_labels[0]));
@@ -896,6 +900,88 @@ int main()
         check_optional(result, "nvmlDeviceGetConfComputeGpuAttestationReport"))
     {
         return 1;
+    }
+
+    unsigned int gpm_stream_state = 0;
+    result = nvmlGpmQueryIfStreamingEnabled(device, &gpm_stream_state);
+    if (check_optional(result, "nvmlGpmQueryIfStreamingEnabled"))
+    {
+        return 1;
+    }
+
+    nvmlGpmSample_t gpm_sample1 = nullptr;
+    nvmlGpmSample_t gpm_sample2 = nullptr;
+    result = nvmlGpmSampleAlloc(&gpm_sample1);
+    if (check_optional(result, "nvmlGpmSampleAlloc"))
+    {
+        return 1;
+    }
+    if (result == NVML_SUCCESS)
+    {
+        result = nvmlGpmSampleAlloc(&gpm_sample2);
+        if (check_optional(result, "nvmlGpmSampleAlloc"))
+        {
+            nvmlGpmSampleFree(gpm_sample1);
+            return 1;
+        }
+        if (result != NVML_SUCCESS)
+        {
+            nvmlGpmSampleFree(gpm_sample1);
+            gpm_sample1 = nullptr;
+        }
+    }
+    if (gpm_sample1 != nullptr && gpm_sample2 != nullptr)
+    {
+        result = nvmlGpmSampleGet(device, gpm_sample1);
+        if (check_optional(result, "nvmlGpmSampleGet"))
+        {
+            nvmlGpmSampleFree(gpm_sample1);
+            nvmlGpmSampleFree(gpm_sample2);
+            return 1;
+        }
+        usleep(150000);
+        result = nvmlGpmSampleGet(device, gpm_sample2);
+        if (check_optional(result, "nvmlGpmSampleGet"))
+        {
+            nvmlGpmSampleFree(gpm_sample1);
+            nvmlGpmSampleFree(gpm_sample2);
+            return 1;
+        }
+        result = nvmlGpmMigSampleGet(device, 0, gpm_sample1);
+        if (check_optional_indexed(result, "nvmlGpmMigSampleGet"))
+        {
+            nvmlGpmSampleFree(gpm_sample1);
+            nvmlGpmSampleFree(gpm_sample2);
+            return 1;
+        }
+
+        nvmlGpmMetricsGet_t gpm_metrics = {};
+        gpm_metrics.version = NVML_GPM_METRICS_GET_VERSION;
+        gpm_metrics.numMetrics = 1;
+        gpm_metrics.sample1 = gpm_sample1;
+        gpm_metrics.sample2 = gpm_sample2;
+        gpm_metrics.metrics[0].metricId = NVML_GPM_METRIC_SM_UTIL;
+        result = nvmlGpmMetricsGet(&gpm_metrics);
+        if (check_success(result, "nvmlGpmMetricsGet"))
+        {
+            nvmlGpmSampleFree(gpm_sample1);
+            nvmlGpmSampleFree(gpm_sample2);
+            return 1;
+        }
+        if (gpm_metrics.metrics[0].metricInfo.shortName == nullptr ||
+            gpm_metrics.metrics[0].metricInfo.shortName[0] == '\0')
+        {
+            std::cout << "nvmlGpmMetricsGet returned empty metric metadata"
+                      << std::endl;
+            nvmlGpmSampleFree(gpm_sample1);
+            nvmlGpmSampleFree(gpm_sample2);
+            return 1;
+        }
+        if (check_success(nvmlGpmSampleFree(gpm_sample1), "nvmlGpmSampleFree") ||
+            check_success(nvmlGpmSampleFree(gpm_sample2), "nvmlGpmSampleFree"))
+        {
+            return 1;
+        }
     }
 
     result = nvmlDeviceOnSameBoard(device, device, &same_board);
